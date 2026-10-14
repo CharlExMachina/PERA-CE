@@ -20,6 +20,7 @@ The controls, each the player's own binding of it:
 	melee            a team game: every player, the red team's, the blue team's
 	switch weapon    what is shown: all of it, the player watched only, nothing
 	switch grenade   the free camera's speed
+	flashlight       the controls' names at the foot of the view, shown or not
 	move, look       the free camera flies; in third person, look turns the
 	                 camera about the player
 	jump, crouch     the free camera up and down
@@ -106,6 +107,7 @@ enum
 	_spectator_press_team,
 	_spectator_press_overlay,
 	_spectator_press_speed,
+	_spectator_press_help,
 	NUMBER_OF_SPECTATOR_PRESSES
 };
 
@@ -217,6 +219,10 @@ static real const spectator_speeds[NUMBER_OF_SPECTATOR_SPEEDS] = { 3.0f, 8.0f, 2
 static struct spectator_item_timer spectator_item_timers[MAXIMUM_SPECTATOR_ITEM_TIMERS];
 static short spectator_item_timer_count;
 static long spectator_item_timers_second = NONE;
+
+/* whether each local player has put away the controls' names at the foot of
+its view (kept from game to game) */
+static boolean spectator_help_hidden[MAXIMUM_LOCAL_PLAYERS];
 
 static wchar_t const *const spectator_item_names[NUMBER_OF_SPECTATOR_ITEM_KINDS] =
 {
@@ -430,6 +436,8 @@ static void spectator_view_controls(
 	}
 	if (TEST_FLAG(pressed, _spectator_press_overlay))
 		view->overlay = (short)((view->overlay + 1) % NUMBER_OF_SPECTATOR_OVERLAYS);
+	if (TEST_FLAG(pressed, _spectator_press_help))
+		spectator_help_hidden[local_player_index] = !spectator_help_hidden[local_player_index];
 	if (TEST_FLAG(pressed, _spectator_press_speed))
 		view->speed = (short)((view->speed + 1) % NUMBER_OF_SPECTATOR_SPEEDS);
 
@@ -949,7 +957,8 @@ static void spectator_draw_item_timers(
 health or the time to their respawn, the camera, and the controls */
 static void spectator_draw_watched(
 	struct spectator_view const *view,
-	rectangle2d const *bounds)
+	rectangle2d const *bounds,
+	boolean help)
 {
 	static wchar_t const *const camera_names[NUMBER_OF_SPECTATOR_CAMERAS] =
 	{
@@ -968,7 +977,7 @@ static void spectator_draw_watched(
 	short hint_height = spectator_line_height(SPECTATOR_HINT_SCALE);
 	short status_height = spectator_line_height(SPECTATOR_STATUS_SCALE);
 	short name_height = spectator_line_height(SPECTATOR_NAME_SCALE);
-	short hint_y = (short)(bounds->y1 - 2 * hint_height - 2);
+	short hint_y = (short)(bounds->y1 - (help ? 2 * hint_height : 0) - 2);
 	short status_y = (short)(hint_y - status_height - 2);
 	short bars_y = (short)(status_y - 2 * SPECTATOR_BAR_HEIGHT - 8);
 	short name_y = (short)(bars_y - name_height - 2);
@@ -977,13 +986,13 @@ static void spectator_draw_watched(
 
 	if (name_height <= 0)
 		return;
-	if (view->overlay == _spectator_overlay_all)
+	if (help)
 	{
 		real_argb_color dim = *global_real_argb_white;
 
 		dim.alpha = 0.75f;
 		spectator_draw_text(bounds->x0, hint_y, bounds->x1, 2, SPECTATOR_HINT_SCALE, &dim,
-			L"FIRE  NEXT PLAYER     GRENADE  PREVIOUS PLAYER");
+			L"FIRE  NEXT PLAYER     GRENADE  PREVIOUS PLAYER     FLASHLIGHT  HIDE THIS");
 		spectator_draw_text(bounds->x0, (short)(hint_y + hint_height), bounds->x1, 2, SPECTATOR_HINT_SCALE, &dim,
 			game_engine_has_teams() ?
 				L"ACTION  FREE CAMERA     MELEE  TEAM     SWITCH WEAPON  DISPLAY" :
@@ -1068,6 +1077,7 @@ void spectator_handle_input(
 	SET_FLAG(down, _spectator_press_team, TEST_FLAG(unit_control_flags, _unit_control_use_equipment_bit));
 	SET_FLAG(down, _spectator_press_overlay, switch_weapon);
 	SET_FLAG(down, _spectator_press_speed, switch_grenade);
+	SET_FLAG(down, _spectator_press_help, TEST_FLAG(unit_control_flags, _unit_control_integrated_light_bit));
 	/* (a press once, however long it is held; none carried into the scores
 	shown at a game's end) */
 	if (!game_engine_showing_postgame())
@@ -1124,5 +1134,5 @@ void spectator_draw(
 		spectator_draw_players(view, local_player_get_player_index(local_player_index), &bounds);
 		spectator_draw_item_timers(&bounds);
 	}
-	spectator_draw_watched(view, &bounds);
+	spectator_draw_watched(view, &bounds, !spectator_help_hidden[local_player_index]);
 }

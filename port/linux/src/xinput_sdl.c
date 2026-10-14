@@ -635,8 +635,9 @@ and then and throws a grenade every seven seconds; "look:<seed>" stands
 still, only turning and looking up and down (where remote players aim and
 whether they stand); "spectate:<seed>" plays a spectator
 (port/linux/game/spectator.c): it looks about, takes the next player every
-ten seconds, a team game's teams every seventeen, and of every forty seconds
-flies the free camera for ten */
+ten seconds, a team game's teams every seventeen, puts the controls' names
+away or back every thirteen, and of every forty seconds flies the free
+camera for ten */
 static int test_input_holding_action;
 static Uint64 test_input_holding_action_since;
 
@@ -696,7 +697,7 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 	}
 	if (spectating)
 	{
-		/* (by the controller's own buttons: fire, melee, action, jump) */
+		/* (by the controller's own buttons: fire, melee, flashlight, action, jump) */
 		double phase = fmod(t, 40.0);
 
 		pad->sThumbRX = (SHORT)(sin(t * 0.4) * 9000.0);
@@ -704,6 +705,8 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 			pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER] = 255;
 		if (fmod(t, 17.0) < 0.2)
 			pad->bAnalogButtons[XINPUT_GAMEPAD_B] = 255;
+		if (fmod(t, 13.0) < 0.2)
+			pad->bAnalogButtons[XINPUT_GAMEPAD_WHITE] = 255;
 		if ((phase >= 25.0 && phase < 25.2) || (phase >= 35.0 && phase < 35.2))
 			pad->bAnalogButtons[XINPUT_GAMEPAD_X] = 255;
 		if (phase >= 25.0 && phase < 35.0)

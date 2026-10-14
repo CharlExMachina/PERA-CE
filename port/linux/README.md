@@ -635,8 +635,9 @@ controller, with the bindings of the player):
 | Throw grenade | Selects the player before. |
 | Action | Changes between the free camera and third person. |
 | Melee | In a team game: all the players, only the red team, or only the blue team. With a team selected, fire and throw grenade select only the living players of that team. |
-| Switch weapon | Changes what the screen shows: all the data, only the selected player, or nothing. |
+| Switch weapon | Changes what the screen shows: all the data, only the selected player, or nothing. With nothing, the names of the controls are also hidden. |
 | Switch grenade | Changes the speed of the free camera. |
+| Flashlight | Shows or hides the names of the controls at the bottom of the screen. |
 
 The screen of a spectator shows these data:
 
