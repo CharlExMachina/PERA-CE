@@ -597,6 +597,75 @@ Each machine uses its own loopback address, from 127.0.0.2. The option
 `--start` starts the game when all the machines are in the lobby. If the
 host has no `network.address`, do not give `--host`.
 
+### Spectators
+
+The host of a multiplayer game (system link or internet play, not co-op)
+can make a player a spectator. A spectator does not play. The game does not
+spawn a spectator, and a spectator is in no team for the game's rules (the
+last team alive, the balance of the teams).
+
+Only the host selects the spectators, during a game:
+
+- Hold the scoreboard key, right-click to release the mouse, and select the
+  name of a player. Select **Make a spectator**. The host can select its own
+  name. Select **Return to the game** to make the player play again.
+- Or enter `spectate <player name>` in the developer console. Tab completes
+  the name. The command changes the player to a spectator, or back to a
+  player.
+
+A player who becomes a spectator leaves the game at once. This is not a
+death and does not change the score. A player who returns spawns as a new
+player does. The spectators stay spectators in the subsequent games of the
+host, until the host returns them or they leave. The scoreboard shows
+SPECTATOR as the score of a spectator.
+
+A spectator has two cameras:
+
+- Third person: the camera stays behind the selected player. Look to turn
+  the camera around the player.
+- Free camera: the camera flies through the map. Move and look to fly.
+  Jump moves the camera up, and crouch moves it down.
+
+A spectator uses the controls of the player (the keys, the mouse or the
+controller, with the bindings of the player):
+
+| Control | Function |
+| --- | --- |
+| Fire | Selects the subsequent player. |
+| Throw grenade | Selects the player before. |
+| Action | Changes between the free camera and third person. |
+| Melee | In a team game: all the players, only the red team, or only the blue team. With a team selected, fire and throw grenade select only the living players of that team. |
+| Switch weapon | Changes what the screen shows: all the data, only the selected player, or nothing. |
+| Switch grenade | Changes the speed of the free camera. |
+
+The screen of a spectator shows these data:
+
+- The name of the selected player, with the shields and the health of the
+  player (as bars and as numbers, where 100 is full).
+- If the selected player is dead, the time until the player spawns again.
+  The camera stays on the body until then.
+- All the players, each with its shields and health, or with the time
+  until it spawns again. In a team game, each name has the color of its
+  team.
+- The power items of the map (overshield, active camouflage, rocket
+  launcher, sniper rifle): the time until each spawns again, and if each is
+  in its position (UP) or not (TAKEN).
+
+The game spawns each item again at fixed times of the game clock, not at a
+time after a player takes it. Thus all the machines calculate the same
+times from the map, and the host does not send them. A client calculates
+the time until a player spawns again from the time that it learned of the
+death. This time can be different from the time of the host by a fraction
+of a second, and it can be incorrect for a player who died before the
+spectator joined.
+
+Limits:
+
+- A spectator cannot see the view of a player in first person.
+- A machine with an older build does not know the spectators. If the host
+  makes a player of such a machine a spectator, the player does not spawn
+  and has no spectator cameras.
+
 ## Internet play
 
 Machines with an invite link can play system link on the internet. This

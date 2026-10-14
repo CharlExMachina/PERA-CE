@@ -125,6 +125,10 @@ enum
 	_distributed_message_map_share_offer = 84,
 	_distributed_message_map_share_sources = 85,
 	_distributed_message_map_share_progress = 86,
+	/* a multiplayer game's spectators, a bit a player, as the host picks
+	them: to every client reliably, when they change and when a machine has
+	loaded (network_spectator.c) */
+	_distributed_message_spectators = 87,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };
@@ -293,6 +297,17 @@ word network_votekick_request_entry_size(void);
 /* (a client) the host's count */
 void network_votekick_handle_status(void const *entries);
 word network_votekick_status_entry_size(void);
+
+/* ---------- prototypes/NETWORK_SPECTATOR.C */
+
+void network_spectator_new_game(void);
+/* after each tick, on the host */
+void network_spectator_host_tick(void);
+/* (the host) a client machine has loaded the game: it is told the spectators */
+void network_spectator_machine_loaded(long machine_index);
+/* (a client) the host's spectators */
+void network_spectator_handle(void const *entries);
+word network_spectator_entry_size(void);
 
 /* ---------- prototypes/NETWORK_ACTORS.C */
 

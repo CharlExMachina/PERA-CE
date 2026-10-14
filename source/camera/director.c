@@ -122,6 +122,7 @@ symbols in this file:
 #include "camera_scripting.h"
 #include "dead_camera.h"
 #include "coop_spectate.h" /* port: port/linux/game/coop_spectate.c */
+#include "spectator.h" /* port: port/linux/game/spectator.c */
 #include "editor_flying_camera.h"
 #include "first_person_camera.h"
 #include "flying_camera.h"
@@ -704,6 +705,25 @@ static void director_choose_camera_game(
 		the level's first checkpoint, watches too */
 		boolean use_dead_camera = player->unit_index == NONE &&
 			(player->statistics.deaths > 0 || players_coop_waiting_to_start(player_index));
+
+		/* port: a multiplayer spectator, whom the host keeps out of the game,
+		has its own cameras, on a client too (port/linux/game/spectator.c) */
+		if (spectator_local_player(local_player_index))
+		{
+			if (director->camera_proc != (director_camera_update_proc)spectator_camera_update)
+			{
+				director_set_camera(
+					local_player_index,
+					(director_camera_update_proc)spectator_camera_update,
+					FALSE);
+			}
+			return;
+		}
+		else if (director->camera_proc == (director_camera_update_proc)spectator_camera_update)
+		{
+			/* (a player again: the player's own camera) */
+			director_choose_game_perspective(local_player_index, TRUE);
+		}
 
 		/* (port: not a client in another's game, the host's rules: a flying
 		camera would see all of it, and one behind the player round its

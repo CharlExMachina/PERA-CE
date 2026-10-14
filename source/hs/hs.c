@@ -2806,6 +2806,7 @@ symbols in this file:
 #include "networking/network_game_manager.h"
 #include "networking/network_server_manager.h"
 #include "network_votekick.h" /* port: port/linux/game/network_votekick.c */
+#include "network_spectator.h" /* port: port/linux/game/network_spectator.c */
 #include "objects/damage.h"
 #include "objects/object_lights.h"
 #include "objects/scenery.h"
@@ -15466,6 +15467,27 @@ static boolean hs_compile_and_evaluate_command(
 				length--;
 			name[length] = 0;
 			return kick ? network_game_server_kick_player(name) : network_game_server_ban_player(name);
+		}
+	}
+	/* port: the host's spectate command ("spectate <player name>", or the
+	name's start: Tab completes it), which makes the player a spectator of
+	its multiplayer game, or a player again (network_spectator.c) */
+	{
+		char const *text = hs_host_player_command(expression, "spectate");
+
+		if (text)
+		{
+			char name[64];
+			long length = 0;
+
+			while (*text == ' ' || *text == '\t' || *text == '"')
+				text++;
+			while (*text && *text != '"' && *text != ')' && length < (long)sizeof(name) - 1)
+				name[length++] = *text++;
+			while (length > 0 && (name[length - 1] == ' ' || name[length - 1] == '\t'))
+				length--;
+			name[length] = 0;
+			return network_spectator_player_named(name);
 		}
 	}
 	csstrncpy(buffer, expression, sizeof(buffer));

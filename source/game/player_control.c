@@ -211,6 +211,7 @@ symbols in this file:
 
 #include "real_math.h"
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
+#include "spectator.h" /* port: port/linux/game/spectator.c */
 
 /* ---------- constants */
 
@@ -792,6 +793,19 @@ static void handle_one_player_input(
 		}
 	}
 
+	/* port: a multiplayer spectator has no unit: its controls move its
+	camera and pick whom it watches (port/linux/game/spectator.c) */
+	if (spectator_local_player(local_player_index))
+	{
+		spectator_handle_input(
+			local_player_index,
+			&input.facing_delta,
+			&input.throttle,
+			input.unit_control_flags,
+			TEST_FLAG(input.player_control_flags, _player_control_rotate_weapons_bit),
+			TEST_FLAG(input.player_control_flags, _player_control_rotate_grenades_bit));
+	}
+
 	player->control_flags = input.unit_control_flags;
 	player->throttle = input.throttle;
 	player->primary_trigger = input.primary_trigger;
@@ -1127,6 +1141,17 @@ static void get_local_player_input_blob(
 					}
 				}
 			}
+			/* port: a multiplayer spectator, who has no unit, turns its camera
+			as fast as its player looks (port/linux/game/spectator.c) */
+			else if (spectator_local_player(local_player_index))
+			{
+				look_yaw_rate = DEGREES_TO_RADIANS(
+					player_look_yaw_rate[local_player_index]) *
+					(1.f / TICKS_PER_SECOND);
+				look_pitch_rate = DEGREES_TO_RADIANS(
+					player_look_pitch_rate[local_player_index]) *
+					(1.f / TICKS_PER_SECOND);
+			}
 
 			input->throttle.i = input_state->forward_movement;
 			input->throttle.j = input_state->strafe;
@@ -1414,6 +1439,15 @@ static void get_local_player_input_blob(
 							_unit_control_crouch_modifier_bit,
 							effective_buttons[_button_crouch]);
 					}
+				}
+				/* port: a multiplayer spectator's crouch lowers its free camera
+				(port/linux/game/spectator.c) */
+				else if (spectator_local_player(local_player_index))
+				{
+					SET_FLAG(
+						input->unit_control_flags,
+						_unit_control_crouch_modifier_bit,
+						effective_buttons[_button_crouch]);
 				}
 
 				/* port: the fire control's pull, not how long it is held

@@ -633,7 +633,10 @@ network tests (port/linux/game/network_test.c), different for each seed:
 it walks and strafes in circles, turns, fires every few seconds, jumps now
 and then and throws a grenade every seven seconds; "look:<seed>" stands
 still, only turning and looking up and down (where remote players aim and
-whether they stand) */
+whether they stand); "spectate:<seed>" plays a spectator
+(port/linux/game/spectator.c): it looks about, takes the next player every
+ten seconds, a team game's teams every seventeen, and of every forty seconds
+flies the free camera for ten */
 static int test_input_holding_action;
 static Uint64 test_input_holding_action_since;
 
@@ -652,6 +655,7 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 	static int checked;
 	static int seed = -1;
 	static int looking;
+	static int spectating;
 	double t;
 
 	if (!checked)
@@ -668,6 +672,11 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 			seed = atoi(setting + 5);
 			looking = 1;
 		}
+		else if (!strncmp(setting, "spectate:", 9))
+		{
+			seed = atoi(setting + 9);
+			spectating = 1;
+		}
 	}
 	if (seed < 0)
 		return;
@@ -683,6 +692,26 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 	{
 		pad->sThumbRX = (SHORT)(sin(t * 0.5) * 14000.0);
 		pad->sThumbRY = (SHORT)(sin(t * 0.3) * 32000.0);
+		return;
+	}
+	if (spectating)
+	{
+		/* (by the controller's own buttons: fire, melee, action, jump) */
+		double phase = fmod(t, 40.0);
+
+		pad->sThumbRX = (SHORT)(sin(t * 0.4) * 9000.0);
+		if (fmod(t, 10.0) < 0.2)
+			pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER] = 255;
+		if (fmod(t, 17.0) < 0.2)
+			pad->bAnalogButtons[XINPUT_GAMEPAD_B] = 255;
+		if ((phase >= 25.0 && phase < 25.2) || (phase >= 35.0 && phase < 35.2))
+			pad->bAnalogButtons[XINPUT_GAMEPAD_X] = 255;
+		if (phase >= 25.0 && phase < 35.0)
+		{
+			pad->sThumbLY = 24000;
+			if (phase < 28.0)
+				pad->bAnalogButtons[XINPUT_GAMEPAD_A] = 255;
+		}
 		return;
 	}
 	pad->sThumbLY = (SHORT)(sin(t * 0.9) * 32000.0);
