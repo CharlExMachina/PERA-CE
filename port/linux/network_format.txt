@@ -7,6 +7,7 @@ bound DISTRIBUTED_RELAYED_ACTION_MINIMUM_SIZE 14
 bound DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE 3 + 4 + (4 + 2) + (12 + 3 * 6) + 2 + 2 * 2 + 4 * 2 + 2 * NUMBER_OF_PLAYER_POWERUPS + 2 + 1
 bound DISTRIBUTED_UNIT_STATE_MINIMUM_SIZE 3
 bound GAME_ALLEGIANCE_BITVECTOR_LONGS 4
+bound HALO_PORT_MAXIMUM_NETWORK_PLAYERS 128
 bound LEVEL_NAME_BYTES 64
 bound MAP_SHARE_HASH_BYTES 32
 bound MAXIMUM_DEVICE_GROUPS 1024
@@ -20,6 +21,7 @@ bound MAXIMUM_QUEUED_DAMAGE_ANIMATIONS 32
 bound MAXIMUM_QUEUED_EVENTS 128
 bound MAXIMUM_REGIONS_PER_OBJECT 8
 bound MAXIMUM_STATISTICS_PER_MESSAGE 64
+bound MAXIMUM_TRACKED_PLAYERS HALO_PORT_MAXIMUM_NETWORK_PLAYERS
 bound MAXIMUM_WEAPONS_PER_UNIT 4
 bound NUMBER_OF_ANGLES enum f0ce7d0319b6
 bound NUMBER_OF_OBJECT_CHANGE_COLORS enum b00724872e2d
@@ -72,6 +74,7 @@ enum _distributed_message_player_inputs 14
 enum _distributed_message_player_prediction 1
 enum _distributed_message_player_statistics 3
 enum _distributed_message_relayed_actions 15
+enum _distributed_message_spectators 87
 enum _distributed_message_structure_bsp 65
 enum _distributed_message_unit_states 2
 enum _distributed_message_vehicle_prediction 12
@@ -260,6 +263,7 @@ struct distributed_pings_message 35c6009dee29
 struct distributed_player_input b8d724b59f5c
 struct distributed_player_ping 377e0e3045f4
 struct distributed_player_statistics 2a44afb8f96c
+struct distributed_spectators d3ec5d50a41d
 struct distributed_statistics_message 79134e6e9811
 struct distributed_structure_bsp 53f7d5067cc9
 struct distributed_structure_bsp_message 096278a05681

@@ -75,6 +75,7 @@ machine (their datum identifiers need not be).
 #include "units/bipeds.h"
 #include "network_coop.h"
 #include "network_distributed.h"
+#include "network_spectator.h"
 #include "network_voice.h"
 #include "map_share.h"
 #include "profile_sections.h"
@@ -2718,8 +2719,14 @@ static void distributed_host_plan_players(
 			struct distributed_viewer *viewer = &distributed_viewers[machine_index][index];
 			boolean scoped = FALSE;
 
-			if (viewer_index < 0 || viewer_index >= MAXIMUM_TRACKED_PLAYERS)
+			/* (a spectator sees the game from no place of its own: its machine
+			is sent every player as one that has had none alive is,
+			network_spectator.c) */
+			if (viewer_index < 0 || viewer_index >= MAXIMUM_TRACKED_PLAYERS ||
+				network_spectator_player(player_list[index]))
+			{
 				viewer->valid = FALSE;
+			}
 			else if (placed[viewer_index])
 			{
 				struct unit_datum *unit = unit_get(distributed_living_unit(distributed_player(viewer_index)));
@@ -3367,6 +3374,7 @@ void network_distributed_new_game(
 	network_actors_new_game();
 	network_coop_new_game();
 	network_votekick_new_game();
+	network_spectator_new_game();
 }
 
 /* after each tick (game_time.c) */
@@ -3424,6 +3432,7 @@ void network_distributed_tick(
 		if (game_time_get() % GAME_STATE_INTERVAL_TICKS == 0)
 			profile_scope(distributed_tick_send_game_state_section, distributed_send_game_state(NONE);)
 		network_votekick_host_tick();
+		network_spectator_host_tick();
 	}
 	else if (connection == _game_connection_network_client)
 	{
@@ -4044,6 +4053,7 @@ void network_distributed_handle_message(
 	case _distributed_message_pickups: entry_size = sizeof(struct distributed_pickup); break;
 	case _distributed_message_votekick: entry_size = network_votekick_request_entry_size(); break;
 	case _distributed_message_votekick_status: entry_size = network_votekick_status_entry_size(); break;
+	case _distributed_message_spectators: entry_size = network_spectator_entry_size(); break;
 	case _distributed_message_player_inputs: entry_size = sizeof(struct distributed_player_input); break;
 	case _distributed_message_relayed_actions: entry_size = DISTRIBUTED_RELAYED_ACTION_MINIMUM_SIZE; break;
 	case _distributed_message_game_state:
@@ -4069,6 +4079,7 @@ void network_distributed_handle_message(
 	case _distributed_message_coop_skip_vote:
 	case _distributed_message_votekick:
 	case _distributed_message_votekick_status:
+	case _distributed_message_spectators:
 		if (header.count < 1)
 			return;
 		break;
@@ -4147,6 +4158,9 @@ void network_distributed_handle_message(
 		break;
 	case _distributed_message_votekick_status:
 		network_votekick_handle_status(entries);
+		break;
+	case _distributed_message_spectators:
+		network_spectator_handle(entries);
 		break;
 	case _distributed_message_coop_device_groups:
 		network_coop_handle_device_groups(entries, header.count);
@@ -4265,6 +4279,8 @@ void network_distributed_handle_message(
 			distributed_send_all_statistics(machine_index);
 			distributed_send_game_state(machine_index);
 		}
+		/* (and who watches the game: network_spectator.c) */
+		network_spectator_machine_loaded(machine_index);
 		break;
 	}
 	case _distributed_message_damage_events:

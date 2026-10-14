@@ -276,6 +276,31 @@ as it changes), for the scoreboard, whose right click frees the mouse to
 pick a player; the host's own scoreboard adds Kick and Ban. Builds without
 votes drop both kinds as unknown, so the network version is unchanged.
 
+A multiplayer game's spectators (`network_spectator.c`, their view in
+`spectator.c`): the host alone picks which players watch the game instead
+of playing it (a name on its scoreboard, or the console's `spectate <player
+name>`), its own players too. The host spawns no spectator
+(`game_engine_should_spawn_player`), counts none among a team's players
+(the last team alive, odd man out, the teams' balance), and takes the unit
+of a player it makes one out of the game as it takes a player's who leaves:
+no death, no score. It sends every client `_distributed_message_spectators`
+(a bit a player, by absolute index) reliably when they change and to each
+machine once it has loaded, and no client asks for anything. The host's
+spectators last from game to game, each known by its slot, name and
+machine, so that a slot another player takes is no spectator's. A
+spectator's machine has no place it sees the game from: the host sends it
+every player's unit and input every tick, as it does a machine that has had
+no player alive (`distributed_host_plan_players`), so that whoever it
+watches moves smoothly. A client, whose camera is otherwise its player's
+own, has the spectator's cameras (the free camera, third person) only while
+the host says its player is one. What a spectator is shown needs nothing
+more of the host: the items' timers are the game clock's against the map's
+placements (`game_engine_update_item_spawn` spawns them at multiples of
+their period, taken or not), and the players' shields, health and respawn
+counts are what every client has. Builds without spectators drop the kind
+as unknown, so the network version is unchanged: such a build's player made
+a spectator is not spawned, and watches nothing.
+
 Voice chat (`network_voice.c`, the sound in `port/linux/src/voice_audio.c`)
 travels as distributed messages too, but in the lobby as well as in a game:
 `network_voice_handles_message` takes them before the netcode's checks that
@@ -689,7 +714,9 @@ Unity's Netcode for Entities, lightyear, netfox and the Ares source):
 game without the menus (in a team game the joining player takes the other
 team), and `debug.test_input` plays controller 1 with a scripted bot (or,
 `look:<seed>`, one that stands still, only turning and looking up and
-down); each machine logs every player's position, health and shields,
+down; `spectate:<seed>`, a spectator's controls: the next player, a team
+game's teams and the free camera in turn); each machine logs every player's
+position, health and shields,
 where they aim and face, their animation state and how hard they move,
 weapons, grenades, score, kills and deaths every second, with the objects
 made and removed and the hits reported, dealt, rejected and replayed, so

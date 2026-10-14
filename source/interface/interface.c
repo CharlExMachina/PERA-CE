@@ -105,6 +105,7 @@ symbols in this file:
 #include "units/unit_definitions.h"
 #include "units/units.h"
 #include "map_share.h" /* port: port/linux/game/map_share.c */
+#include "spectator.h" /* port: port/linux/game/spectator.c */
 
 /* ---------- constants */
 
@@ -718,6 +719,9 @@ void interface_draw_screen(
 	}
 
 	hud_draw_screen();
+	/* port: what a multiplayer spectator is shown, under the scores
+	(port/linux/game/spectator.c) */
+	spectator_draw(render.local_player_index);
 	game_engine_post_rasterize();
 
 	return;

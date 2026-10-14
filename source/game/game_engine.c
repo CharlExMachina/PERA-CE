@@ -570,6 +570,7 @@ symbols in this file:
 #include "networking/network_game_manager.h"
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
 #include "network_votekick.h" /* port: port/linux/game/network_votekick.c */
+#include "network_spectator.h" /* port: port/linux/game/network_spectator.c */
 #include "network_voice.h" /* port: port/linux/game/network_voice.c */
 /* (network_server_manager_internal.h's: the host's game record) */
 struct network_game *network_game_server_get_game(struct network_game_server *server);
@@ -1868,11 +1869,13 @@ static boolean scoreboard_team_columns(
 (halo_scoreboard_pointer_update: a right click frees it): a player's name
 picked opens a menu of what may be done to them, the players' vote to kick
 them (network_votekick.c), muting their voice (network_voice.c), and the
-host's Kick and Ban, Ban picked twice */
+host's Kick and Ban, Ban picked twice, and its making them a spectator or a
+player again (network_spectator.c), its own players too */
 enum
 {
 	_scoreboard_item_vote,
 	_scoreboard_item_mute,
+	_scoreboard_item_spectate,
 	_scoreboard_item_kick,
 	_scoreboard_item_ban,
 	_scoreboard_item_cancel,
@@ -1914,6 +1917,10 @@ static void scoreboard_menu_items(
 	boolean *offered)
 {
 	struct network_votekick_status status;
+	struct player_datum *menu_player = player_try_and_get(scoreboard_menu.player_index);
+	/* (one of this machine's own, which the host's menu opens for too: only
+	to make it a spectator) */
+	boolean own = menu_player && menu_player->local_player_index != NONE;
 	short item;
 
 	for (item = 0; item < NUMBER_OF_SCOREBOARD_ITEMS; item++)
@@ -1921,7 +1928,7 @@ static void scoreboard_menu_items(
 		offered[item] = FALSE;
 		labels[item][0] = 0;
 	}
-	offered[_scoreboard_item_vote] = TRUE;
+	offered[_scoreboard_item_vote] = !own;
 	if (network_votekick_get_status(&status) &&
 		status.player_index == DATUM_INDEX_TO_ABSOLUTE_INDEX(scoreboard_menu.player_index))
 	{
@@ -1936,7 +1943,7 @@ static void scoreboard_menu_items(
 	{
 		struct player_datum *player = player_try_and_get(scoreboard_menu.player_index);
 
-		if (player && network_voice_available())
+		if (player && network_voice_available() && !own)
 		{
 			offered[_scoreboard_item_mute] = TRUE;
 			usprintf(labels[_scoreboard_item_mute],
@@ -1944,7 +1951,13 @@ static void scoreboard_menu_items(
 					L"Mute voice");
 		}
 	}
-	if (network_votekick_host())
+	if (network_spectator_host())
+	{
+		offered[_scoreboard_item_spectate] = TRUE;
+		usprintf(labels[_scoreboard_item_spectate],
+			network_spectator_player(scoreboard_menu.player_index) ? L"Return to the game" : L"Make a spectator");
+	}
+	if (network_votekick_host() && !own)
 	{
 		offered[_scoreboard_item_kick] = TRUE;
 		offered[_scoreboard_item_ban] = TRUE;
@@ -2016,6 +2029,9 @@ static void scoreboard_menu_pick(
 		}
 		break;
 	}
+	case _scoreboard_item_spectate:
+		network_spectator_host_set(player_index, !network_spectator_player(scoreboard_menu.player_index));
+		break;
 	case _scoreboard_item_kick:
 		network_votekick_host_kick(player_index, FALSE);
 		break;
@@ -2322,7 +2338,10 @@ static void game_engine_rasterize_scoreboard(
 		if (!campaign)
 		{
 			game_engine->format_player_score(entry->player_index, score_string);
-			if (game_engine_player_is_out_of_lives(entry->player_index))
+			/* (port: a spectator, port/linux/game/network_spectator.c) */
+			if (network_spectator_player(entry->player_index))
+				status_string = L"SPECTATOR";
+			else if (game_engine_player_is_out_of_lives(entry->player_index))
 				status_string = string_list_index != NONE ? unicode_string_list_get_string(string_list_index, 0x8A) : L"";
 			else if (player->quit_out_of_game)
 				status_string = string_list_index != NONE ? unicode_string_list_get_string(string_list_index, 0x8B) : L"";
@@ -2387,8 +2406,9 @@ static void game_engine_rasterize_scoreboard(
 				alpha);
 		}
 		/* port: another machine's player, picked with the pointer: lit
-		under it (not under the menu), and its menu opened when clicked */
-		if (pointer_state > 0 && player->local_player_index == NONE)
+		under it (not under the menu), and its menu opened when clicked (the
+		host's own too, which it may make a spectator) */
+		if (pointer_state > 0 && (player->local_player_index == NONE || network_spectator_host()))
 		{
 			rectangle2d rectangle;
 			rectangle2d menu_rectangle;
@@ -3376,9 +3396,15 @@ long players_in_game(
 	struct data_iterator iterator;
 	long player_count = 0;
 
+	/* port: but for the spectators, who play in no game: a game of one
+	player and those who watch does not end for having one team left
+	(port/linux/game/network_spectator.c) */
 	data_iterator_new(&iterator, player_data);
 	while (data_iterator_next(&iterator))
-		player_count++;
+	{
+		if (!network_spectator_player(iterator.datum_index))
+			player_count++;
+	}
 
 	return player_count;
 }
@@ -4995,6 +5021,12 @@ void game_engine_player_killed(
 	if (!game_engine)
 		return;
 
+	/* port: a player the host made a spectator leaves the game for it: no
+	one's kill, no death of theirs, nothing said of it and no wait to
+	respawn (port/linux/game/network_spectator.c) */
+	if (network_spectator_player(dead_player_index))
+		return;
+
 	/* the distributed netcode: a client's copy of a death has the host's
 	killer (port/linux/game/network_distributed.c) */
 	network_distributed_player_killed(&killing_player_index, &killing_object_index, dead_player_index,
@@ -5062,8 +5094,12 @@ void game_engine_player_killed(
 		data_iterator_new(&iterator, player_data);
 		while ((player = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
 		{
-			if (!player->quit_out_of_game && VALID_INDEX(player->team_index, 2))
+			/* (a spectator is on neither: network_spectator.c) */
+			if (!player->quit_out_of_game && VALID_INDEX(player->team_index, 2) &&
+				!network_spectator_player(iterator.datum_index))
+			{
 				count[player->team_index]++;
+			}
 		}
 		if (count[dead_player->team_index] >= count[1 - dead_player->team_index] + 2)
 		{
@@ -5724,8 +5760,11 @@ static boolean game_engine_player_is_odd_man_out(
 		other_player = (struct player_datum *)data_iterator_next(&iterator);
 		while (other_player)
 		{
+			/* port: a spectator, who has no unit either, died after no one
+			(port/linux/game/network_spectator.c) */
 			if (other_player->unit_index==NONE &&
 				other_player!=player &&
+				!network_spectator_player(iterator.datum_index) &&
 				(other_player->death_time>player->death_time ||
 					(other_player->death_time==player->death_time &&
 						DATUM_INDEX_TO_ABSOLUTE_INDEX(player_index)<
@@ -6917,7 +6956,10 @@ boolean multiple_teams_alive(
 		player = (struct player_datum *)data_iterator_next(&iterator);
 		while (player)
 		{
+			/* port: a spectator is no player of its team
+			(port/linux/game/network_spectator.c) */
 			if (!player->quit_out_of_game &&
+				!network_spectator_player(iterator.datum_index) &&
 				(player->unit_index != NONE ||
 					(!game_engine_player_is_odd_man_out(iterator.datum_index) &&
 						!game_engine_player_is_out_of_lives(
@@ -6966,7 +7008,10 @@ boolean team_has_players(
 		player = (struct player_datum *)data_iterator_next(&iterator);
 		while (player)
 		{
+			/* port: a spectator is no player of its team
+			(port/linux/game/network_spectator.c) */
 			if (!player->quit_out_of_game &&
+				!network_spectator_player(iterator.datum_index) &&
 				(player->unit_index != NONE ||
 					(!game_engine_player_is_odd_man_out(iterator.datum_index) &&
 						!game_engine_player_is_out_of_lives(
@@ -7139,7 +7184,9 @@ boolean game_engine_man_out(
 	long player_index)
 {
 	struct player_datum *player = player_get(player_index);
+	/* port: a spectator is out too (port/linux/game/network_spectator.c) */
 	boolean man_out = player->quit_out_of_game ||
+		network_spectator_player(player_index) ||
 		game_engine_player_is_out_of_lives(player_index) ||
 		game_engine_player_is_odd_man_out(player_index);
 
@@ -8920,6 +8967,26 @@ static void game_engine_update_item_spawn(
 	return;
 }
 
+/* port: whether a netgame equipment placement spawns its item in this game
+(its game types), and every how many ticks, as game_engine_update_item_spawn
+has it: a spectator's item timers (port/linux/game/spectator.c) */
+boolean game_engine_netgame_equipment_period(
+	struct scenario_netgame_equipment const *equipment,
+	long *period)
+{
+	short respawn_time = equipment->spawn_time;
+
+	if (!game_engine ||
+		!match_game_type(game_engine_get_type(), NUMBEROF(equipment->game_type), equipment->game_type))
+	{
+		return FALSE;
+	}
+	if (respawn_time == 0 && equipment->item_collection.index != NONE)
+		respawn_time = item_collection_definition_get(equipment->item_collection.index)->spawn_time;
+	*period = (respawn_time != 0 ? respawn_time : 30) * TICKS_PER_SECOND;
+	return TRUE;
+}
+
 static void handle_custom_starting_equipment(
 	long unit_index,
 	long *fragmentation_grenade_count,
@@ -9209,7 +9276,13 @@ boolean game_engine_get_state_message(
 			player->state_message = NONE;
 		}
 
-		if (player->unit_index == NONE)
+		/* port: a spectator waits for nothing: its view says what it watches
+		(port/linux/game/spectator.c) */
+		if (player->unit_index == NONE && network_spectator_player(player_index))
+		{
+			result = FALSE;
+		}
+		else if (player->unit_index == NONE)
 		{
 			state_message_parameter = 0;
 			if (player->quit_out_of_game == TRUE)
@@ -9274,6 +9347,7 @@ void game_engine_client_respawn_countdown(
 		return;
 	player = player_get(player_index);
 	if (player->quit_out_of_game == TRUE ||
+		network_spectator_player(player_index) ||
 		player->statistics.deaths == 0 ||
 		player->respawn_timer <= 1 ||
 		game_engine_player_is_out_of_lives(player_index) ||
@@ -9304,7 +9378,9 @@ boolean game_engine_should_spawn_player(
 	{
 		struct player_datum *player = player_get(player_index);
 
-		if (player->quit_out_of_game == TRUE)
+		/* port: nor a spectator, whom the host keeps out of the game
+		(port/linux/game/network_spectator.c) */
+		if (player->quit_out_of_game == TRUE || network_spectator_player(player_index))
 		{
 			should_spawn = FALSE;
 		}
