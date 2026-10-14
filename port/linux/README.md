@@ -426,8 +426,9 @@ Mesa. To stop this, set the environment variable `mesa_glthread=false`.
 
 The builds from GitHub Actions (refer to the main [README](../../README.md#download))
 can update themselves. At start-up, the game asks GitHub for the latest
-release. The game does not wait for the answer. If the latest release is not
-newer, the game does nothing.
+release of the repository whose workflow made the build: the builds of a
+fork update from the fork. The game does not wait for the answer. If the
+latest release is not newer, the game does nothing.
 
 If the latest release is newer, the game asks: "Do you want to update?"
 

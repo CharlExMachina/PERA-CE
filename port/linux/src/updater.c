@@ -8,7 +8,8 @@ A build of the main branch made by GitHub Actions knows its build number
 (HALO_BUILD_NUMBER, the workflow's run number, which names its release:
 build-<number>); other builds have none and never look for updates. When
 update.auto in config.toml is true (the default), the game asks GitHub for
-the latest release when it starts, on a thread of its own: the game starts
+the latest release of the repository whose workflow made the build
+(HALO_BUILD_REPOSITORY) when it starts, on a thread of its own: the game starts
 meanwhile, and nothing happens if the release is not newer or cannot be
 reached. If it is newer, the game asks whether to update:
 
@@ -45,8 +46,13 @@ update.h's: posix_update.c on Linux, win32_update.c on Windows.
 #ifndef HALO_BUILD_FLAVOR
 #define HALO_BUILD_FLAVOR "release"
 #endif
+/* (the repository whose workflow made the build, whose releases its number
+counts: a fork's builds update from the fork) */
+#ifndef HALO_BUILD_REPOSITORY
+#define HALO_BUILD_REPOSITORY "OpenCommunityEdition/OpenCE"
+#endif
 
-#define UPDATE_REPOSITORY "OpenCommunityEdition/OpenCE"
+#define UPDATE_REPOSITORY HALO_BUILD_REPOSITORY
 #ifdef _WIN32
 #define UPDATE_PLATFORM "windows"
 #define PATH_SEPARATOR "\\"

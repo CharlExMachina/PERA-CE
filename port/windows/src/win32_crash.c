@@ -22,9 +22,10 @@ from halo.pdb, which the workflow uploads for each build of main
 they are sent; one that could not be sent (no network) goes the next time
 the game starts ("halo.exe --crash-upload", in the background).
 
-Only numbered builds (the workflow's builds of main, whose symbols Sentry
-has) report crashes; the HALO_CRASH_REPORTS_ANY_BUILD environment variable
-makes any build report (for testing). Abort() and the C runtime's invalid
+Only the project's numbered builds (its workflow's builds of main, whose
+symbols Sentry has) report crashes, not a fork's; the
+HALO_CRASH_REPORTS_ANY_BUILD environment variable makes any build report
+(for testing). Abort() and the C runtime's invalid
 parameter checks, which end the process without an exception, raise one
 here, so they are reported too.
 */
@@ -49,7 +50,12 @@ here, so they are reported too.
 #ifndef HALO_BUILD_FLAVOR
 #define HALO_BUILD_FLAVOR "release"
 #endif
+#ifndef HALO_BUILD_REPOSITORY
+#define HALO_BUILD_REPOSITORY SENTRY_REPOSITORY
+#endif
 
+/* the repository whose builds' symbols the project's Sentry has */
+#define SENTRY_REPOSITORY "OpenCommunityEdition/OpenCE"
 /* the minidump endpoint of the project's DSN,
 https://e656c596e8f90402b0f47a2613b69e50@o4512207906603008.ingest.de.sentry.io/4512207917744208
 (a DSN is public: it only lets a client send events) */
@@ -731,7 +737,8 @@ static void crash_uploader(void)
 
 static int crash_reports_enabled(void)
 {
-	return HALO_BUILD_NUMBER > 0 || GetEnvironmentVariableW(L"HALO_CRASH_REPORTS_ANY_BUILD", NULL, 0) > 0;
+	return (HALO_BUILD_NUMBER > 0 && !strcmp(HALO_BUILD_REPOSITORY, SENTRY_REPOSITORY)) ||
+		GetEnvironmentVariableW(L"HALO_CRASH_REPORTS_ANY_BUILD", NULL, 0) > 0;
 }
 
 /* starts this executable again with the option and its arguments, with no

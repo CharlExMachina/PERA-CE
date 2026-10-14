@@ -427,9 +427,10 @@ jobs:
     # https://halocombatevolved.com/ (port/web/README.md, "Hosting"). Only
     # main, only once every platform built and the release is out (the site
     # and the release are one build), and a deployment is never cancelled
-    # halfway. The repository's Pages source must be GitHub Actions.
+    # halfway. The repository's Pages source must be GitHub Actions; a
+    # repository with no Pages site (a fork) deploys nothing.
     needs: [release]
-    if: ${{ github.ref == 'refs/heads/main' }}
+    if: ${{ github.ref == 'refs/heads/main' && github.event.repository.has_pages }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
