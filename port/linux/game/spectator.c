@@ -18,9 +18,11 @@ The controls, each the player's own binding of it:
 	throw grenade    the player before
 	action           the free camera, back to the player
 	melee            a team game: every player, the red team's, the blue team's
-	switch weapon    what is shown: all of it, the player watched only, nothing
+	switch weapon    what is shown, in turn: all of it; the players; the players
+	                 and the items; the items; all but the scores; the scores;
+	                 nothing
 	switch grenade   the free camera's speed
-	flashlight       the controls' names at the foot of the view, shown or not
+	flashlight       the controls' names, shown or not
 	move, look       the free camera flies; in third person, look turns the
 	                 camera about the player
 	jump, crouch     the free camera up and down
@@ -31,10 +33,13 @@ stays on the body, and the time to their respawn is shown, as the game
 counts it on this machine (a client's count is its own, started when it
 learnt of the death).
 
-What is shown: whom the spectator watches, with their shields and health;
-every player's shields and health, or the time to their respawn; and the
-map's power items (overshields, camouflage, rocket launchers, sniper
-rifles), each with the time to its next spawn. An item spawns again every so
+What is shown: at the foot of the view, whom the spectator watches, with
+their shields and health; at its top left, every player's shields and
+health, or the time to their respawn; at its top, the scores (a team game's
+teams', else the leading players'); at its bottom right, the controls, each
+with the key or button the player has it on; and at its top right the map's
+power items (overshields, camouflage, rocket launchers, sniper rifles), each
+with the time to its next spawn. An item spawns again every so
 often by the game's clock, whether it was taken or not
 (game_engine_update_item_spawn), so every machine counts the same time from
 the map's own placements: the host sends nothing for it.
@@ -69,8 +74,9 @@ the map's own placements: the host sends nothing for it.
 #include "network_spectator.h"
 #include "spectator.h"
 
-/* game_engine.c's */
+/* game_engine.c's, port_config.c's */
 boolean game_engine_netgame_equipment_period(struct scenario_netgame_equipment const *equipment, long *period);
+char const *config_string(char const *name);
 
 /* ---------- constants */
 
@@ -90,12 +96,29 @@ enum
 	NUMBER_OF_SPECTATOR_TEAMS
 };
 
+/* what is shown, which switch weapon changes in turn */
 enum
 {
 	_spectator_overlay_all,
-	_spectator_overlay_watched,
+	_spectator_overlay_players,
+	_spectator_overlay_players_and_items,
+	_spectator_overlay_items,
+	_spectator_overlay_all_but_scores,
+	_spectator_overlay_scores,
 	_spectator_overlay_none,
 	NUMBER_OF_SPECTATOR_OVERLAYS
+};
+
+/* its parts: the player watched (the foot of the view), the players (its
+top left), the items' timers (its top right), the scores (its top) and the
+controls (its bottom right) */
+enum
+{
+	_spectator_part_watched_bit,
+	_spectator_part_players_bit,
+	_spectator_part_items_bit,
+	_spectator_part_scores_bit,
+	_spectator_part_controls_bit,
 };
 
 /* the controls' presses */
@@ -152,13 +175,21 @@ how far over the body it looks */
 
 enum
 {
-	SPECTATOR_BAR_WIDTH = 200,
+	SPECTATOR_BAR_WIDTH = 160,
 	SPECTATOR_BAR_HEIGHT = 5,
-	SPECTATOR_LIST_TOP = 44,
+	/* how far from the view's edges what is shown in its corners is */
+	SPECTATOR_MARGIN = 10,
 	SPECTATOR_LIST_NAME_WIDTH = 110,
 	SPECTATOR_LIST_BAR_WIDTH = 56,
 	SPECTATOR_LIST_BAR_HEIGHT = 3,
-	SPECTATOR_TIMER_WIDTH = 230,
+	SPECTATOR_TIMER_WIDTH = 190,
+	/* the scores: a team game's row's width, a player's row's, and the
+	players' rows in a game without teams */
+	SPECTATOR_TEAM_SCORE_WIDTH = 230,
+	SPECTATOR_SCORE_WIDTH = 150,
+	MAXIMUM_SPECTATOR_SCORE_ROWS = 4,
+	MAXIMUM_SPECTATOR_CONTROLS = 10,
+	SPECTATOR_CONTROL_TEXT_LENGTH = 48,
 };
 
 /* ---------- structures */
@@ -223,6 +254,20 @@ static long spectator_item_timers_second = NONE;
 /* whether each local player has put away the controls' names at the foot of
 its view (kept from game to game) */
 static boolean spectator_help_hidden[MAXIMUM_LOCAL_PLAYERS];
+
+/* the parts of each of what is shown */
+static byte const spectator_overlay_parts[NUMBER_OF_SPECTATOR_OVERLAYS] =
+{
+	FLAG(_spectator_part_watched_bit) | FLAG(_spectator_part_players_bit) | FLAG(_spectator_part_items_bit) |
+		FLAG(_spectator_part_scores_bit) | FLAG(_spectator_part_controls_bit),
+	FLAG(_spectator_part_players_bit),
+	FLAG(_spectator_part_players_bit) | FLAG(_spectator_part_items_bit),
+	FLAG(_spectator_part_items_bit),
+	FLAG(_spectator_part_watched_bit) | FLAG(_spectator_part_players_bit) | FLAG(_spectator_part_items_bit) |
+		FLAG(_spectator_part_controls_bit),
+	FLAG(_spectator_part_scores_bit),
+	0,
+};
 
 static wchar_t const *const spectator_item_names[NUMBER_OF_SPECTATOR_ITEM_KINDS] =
 {
@@ -833,18 +878,39 @@ static long spectator_respawn_seconds(
 	return (player->respawn_timer + TICKS_PER_SECOND - 1) / TICKS_PER_SECOND;
 }
 
+/* how wide a line of text is drawn at a scale */
+static short spectator_text_width(
+	real scale,
+	wchar_t const *text)
+{
+	long font_index = hud_get_font_index();
+	rectangle2d bounds;
+	rectangle2d ink;
+	rectangle2d cursor;
+
+	if (font_index == NONE || !text[0])
+		return 0;
+	bounds.x0 = 0;
+	bounds.y0 = 0;
+	bounds.x1 = 4000;
+	bounds.y1 = 200;
+	draw_string_set_draw_mode(font_index, NONE, 0, 0, global_real_argb_white);
+	draw_unicode_string_compute_bounds(&bounds, text, &ink, &cursor);
+	return ink.x1 > bounds.x0 ? (short)((ink.x1 - bounds.x0) * scale + 1.0f) : 0;
+}
+
 /* every player, in its team's color: its shields and health, or the time to
-its respawn; the player watched lit */
+its respawn; the player watched lit. At the view's top left. */
 static void spectator_draw_players(
 	struct spectator_view const *view,
 	long self,
-	rectangle2d const *bounds)
+	rectangle2d const *frame)
 {
 	struct data_iterator iterator;
 	struct player_datum *player;
 	short row_height = (short)(spectator_line_height(SPECTATOR_LIST_SCALE) + 2);
-	short y = (short)(bounds->y0 + SPECTATOR_LIST_TOP);
-	short x = bounds->x0;
+	short y = frame->y0;
+	short x = frame->x0;
 	short rows = 0;
 	short pass;
 
@@ -906,12 +972,12 @@ static void spectator_draw_players(
 }
 
 /* the map's power items: each kind, the time to its next spawn, and how
-many of it lie where they spawn */
+many of it lie where they spawn. At the view's top right. */
 static void spectator_draw_item_timers(
-	rectangle2d const *bounds)
+	rectangle2d const *frame)
 {
 	short row_height = (short)(spectator_line_height(SPECTATOR_STATUS_SCALE) + 2);
-	short y = (short)(bounds->y0 + SPECTATOR_LIST_TOP);
+	short y = frame->y0;
 	short index;
 
 	spectator_item_timers_update();
@@ -945,20 +1011,223 @@ static void spectator_draw_item_timers(
 		{
 			color.alpha = 0.75f;
 		}
-		spectator_draw_quad((short)(bounds->x1 - SPECTATOR_TIMER_WIDTH - 4), (short)(y - 1), (short)(bounds->x1 + 2),
+		spectator_draw_quad((short)(frame->x1 - SPECTATOR_TIMER_WIDTH - 4), (short)(y - 1), (short)(frame->x1 + 2),
 			(short)(y + row_height - 1), 0x50000000);
-		spectator_draw_text((short)(bounds->x1 - SPECTATOR_TIMER_WIDTH), y, bounds->x1, 1, SPECTATOR_STATUS_SCALE, &color,
+		spectator_draw_text((short)(frame->x1 - SPECTATOR_TIMER_WIDTH), y, frame->x1, 1, SPECTATOR_STATUS_SCALE, &color,
 			text);
 		y = (short)(y + row_height);
 	}
 }
 
+/* the scores, as the game type words them: a team game's two teams', side
+by side; else the leading players', a row each. At the middle of the view's
+top. */
+static void spectator_draw_scores(
+	long self,
+	rectangle2d const *frame)
+{
+	short center = (short)((frame->x0 + frame->x1) / 2);
+	short y = frame->y0;
+	wchar_t score[256];
+	wchar_t text[64];
+
+	if (!game_engine || !game_engine->format_player_score)
+		return;
+	if (game_engine_has_teams() && game_engine->format_team_name)
+	{
+		short row_height = (short)(spectator_line_height(SPECTATOR_NAME_SCALE) + 2);
+		struct player_datum team;
+		real_argb_color color;
+
+		if (row_height <= 2)
+			return;
+		spectator_draw_quad((short)(center - SPECTATOR_TEAM_SCORE_WIDTH / 2), (short)(y - 1),
+			(short)(center + SPECTATOR_TEAM_SCORE_WIDTH / 2), (short)(y + row_height - 1), 0x50000000);
+		/* (red's to the left of the middle, blue's to its right) */
+		csmemset(&team, 0, sizeof(team));
+		team.team_index = 0;
+		spectator_player_color(&team, &color);
+		score[0] = 0;
+		game_engine->format_team_name(0, score);
+		usnprintf(text, NUMBEROF(text) - 1, L"RED   %.20s", score);
+		text[NUMBEROF(text) - 1] = 0;
+		spectator_draw_text((short)(center - SPECTATOR_TEAM_SCORE_WIDTH / 2), y, (short)(center - 8), 1,
+			SPECTATOR_NAME_SCALE, &color, text);
+		team.team_index = 1;
+		spectator_player_color(&team, &color);
+		score[0] = 0;
+		game_engine->format_team_name(1, score);
+		usnprintf(text, NUMBEROF(text) - 1, L"%.20s   BLUE", score);
+		text[NUMBEROF(text) - 1] = 0;
+		spectator_draw_text((short)(center + 8), y, (short)(center + SPECTATOR_TEAM_SCORE_WIDTH / 2), 0,
+			SPECTATOR_NAME_SCALE, &color, text);
+	}
+	else if (game_engine->get_player_score)
+	{
+		short row_height = (short)(spectator_line_height(SPECTATOR_STATUS_SCALE) + 2);
+		long leaders[MAXIMUM_SPECTATOR_SCORE_ROWS];
+		long scores[MAXIMUM_SPECTATOR_SCORE_ROWS];
+		struct data_iterator iterator;
+		short count = 0;
+		short index;
+
+		if (row_height <= 2)
+			return;
+		/* (the players of the highest scores, the first of two alike first) */
+		data_iterator_new(&iterator, player_data);
+		while (data_iterator_next(&iterator))
+		{
+			long player_score;
+			short place;
+
+			if (!spectator_player_watchable(self, iterator.datum_index))
+				continue;
+			player_score = game_engine->get_player_score(iterator.datum_index, _get_score_individual);
+			for (place = count; place > 0 && scores[place - 1] < player_score; place--)
+			{
+				if (place < MAXIMUM_SPECTATOR_SCORE_ROWS)
+				{
+					leaders[place] = leaders[place - 1];
+					scores[place] = scores[place - 1];
+				}
+			}
+			if (place < MAXIMUM_SPECTATOR_SCORE_ROWS)
+			{
+				leaders[place] = iterator.datum_index;
+				scores[place] = player_score;
+				if (count < MAXIMUM_SPECTATOR_SCORE_ROWS)
+					count++;
+			}
+		}
+		for (index = 0; index < count; index++)
+		{
+			struct player_datum *player = player_get(leaders[index]);
+			real_argb_color color = *global_real_argb_white;
+
+			spectator_draw_quad((short)(center - SPECTATOR_SCORE_WIDTH / 2 - 4), (short)(y - 1),
+				(short)(center + SPECTATOR_SCORE_WIDTH / 2 + 4), (short)(y + row_height - 1), 0x50000000);
+			usnprintf(text, NUMBEROF(text) - 1, L"%d   %.12s", index + 1, player->name);
+			text[NUMBEROF(text) - 1] = 0;
+			spectator_draw_text((short)(center - SPECTATOR_SCORE_WIDTH / 2), y, (short)(center + 30), 0,
+				SPECTATOR_STATUS_SCALE, &color, text);
+			score[0] = 0;
+			game_engine->format_player_score(leaders[index], score);
+			usnprintf(text, NUMBEROF(text) - 1, L"%.20s", score);
+			text[NUMBEROF(text) - 1] = 0;
+			spectator_draw_text((short)(center + 30), y, (short)(center + SPECTATOR_SCORE_WIDTH / 2), 1,
+				SPECTATOR_STATUS_SCALE, &color, text);
+			y = (short)(y + row_height);
+		}
+	}
+}
+
+/* a control with the key or button it is on, as "(MB1) Next Player": the
+first of its setting's (controls.fire and the others, config.toml: a list of
+keys' and mouse buttons' names), the mouse's buttons by their numbers */
+static void spectator_control_text(
+	char const *setting,
+	wchar_t const *does,
+	wchar_t *text)
+{
+	static struct
+	{
+		char const *name;
+		char const *shown;
+	} const names[] =
+	{
+		{ "MOUSE LEFT", "MB1" },
+		{ "MOUSE RIGHT", "MB2" },
+		{ "MOUSE MIDDLE", "MB3" },
+		{ "MOUSE 4", "MB4" },
+		{ "MOUSE 5", "MB5" },
+		{ "WHEEL UP", "WHEEL UP" },
+		{ "WHEEL DOWN", "WHEEL DOWN" },
+		{ "LEFT CTRL", "CTRL" },
+		{ "RIGHT CTRL", "RCTRL" },
+		{ "LEFT SHIFT", "SHIFT" },
+		{ "RIGHT SHIFT", "RSHIFT" },
+		{ "LEFT ALT", "ALT" },
+		{ "RIGHT ALT", "RALT" },
+	};
+	char const *value = config_string(setting);
+	char key[24];
+	wchar_t wide_key[24];
+	short length = 0;
+	short index;
+
+	while (value && (*value == ' ' || *value == '\t'))
+		value++;
+	for (; value && *value && *value != ',' && length < (short)sizeof(key) - 1; value++)
+		key[length++] = (char)(*value >= 'a' && *value <= 'z' ? *value - 'a' + 'A' : *value);
+	while (length > 0 && (key[length - 1] == ' ' || key[length - 1] == '\t'))
+		length--;
+	key[length] = 0;
+	for (index = 0; index < (short)NUMBEROF(names); index++)
+	{
+		if (!strcmp(key, names[index].name))
+		{
+			csstrncpy(key, names[index].shown, sizeof(key) - 1);
+			key[sizeof(key) - 1] = 0;
+		}
+	}
+	for (index = 0; key[index]; index++)
+		wide_key[index] = (wchar_t)(unsigned char)key[index];
+	wide_key[index] = 0;
+	if (wide_key[0])
+		usnprintf(text, SPECTATOR_CONTROL_TEXT_LENGTH - 1, L"(%s) %s", wide_key, does);
+	else
+		usnprintf(text, SPECTATOR_CONTROL_TEXT_LENGTH - 1, L"%s", does);
+	text[SPECTATOR_CONTROL_TEXT_LENGTH - 1] = 0;
+}
+
+/* the controls, a row each, one under the other at the view's bottom right:
+those of the camera the spectator has */
+static void spectator_draw_controls(
+	struct spectator_view const *view,
+	rectangle2d const *frame)
+{
+	wchar_t rows[MAXIMUM_SPECTATOR_CONTROLS][SPECTATOR_CONTROL_TEXT_LENGTH];
+	real_argb_color color = *global_real_argb_white;
+	short row_height = (short)(spectator_line_height(SPECTATOR_LIST_SCALE) + 1);
+	boolean free_camera = view->camera == _spectator_camera_free;
+	short count = 0;
+	short width = 0;
+	short index;
+	short x, y;
+
+	if (row_height <= 1)
+		return;
+	spectator_control_text("controls.fire", L"Next Player", rows[count++]);
+	spectator_control_text("controls.throw_grenade", L"Previous Player", rows[count++]);
+	spectator_control_text("controls.action", free_camera ? L"Follow Player" : L"Freecam", rows[count++]);
+	if (game_engine_has_teams())
+		spectator_control_text("controls.melee", L"Team Filter", rows[count++]);
+	if (free_camera)
+	{
+		spectator_control_text("controls.jump", L"Freecam Up", rows[count++]);
+		spectator_control_text("controls.crouch", L"Freecam Down", rows[count++]);
+		spectator_control_text("controls.switch_grenade", L"Freecam Speed", rows[count++]);
+	}
+	spectator_control_text("controls.switch_weapon", L"Change Display", rows[count++]);
+	spectator_control_text("controls.flashlight", L"Hide Controls", rows[count++]);
+	for (index = 0; index < count; index++)
+		width = (short)MAX(width, spectator_text_width(SPECTATOR_LIST_SCALE, rows[index]));
+	x = (short)(frame->x1 - width);
+	y = (short)(frame->y1 - count * row_height);
+	spectator_draw_quad((short)(x - 6), (short)(y - 3), (short)(frame->x1 + 4), (short)(frame->y1 + 2), 0x50000000);
+	color.alpha = 0.9f;
+	for (index = 0; index < count; index++)
+	{
+		spectator_draw_text(x, (short)(y + index * row_height), (short)(frame->x1 + 4), 0, SPECTATOR_LIST_SCALE, &color,
+			rows[index]);
+	}
+}
+
 /* at the foot of the view: whom the spectator watches, their shields and
-health or the time to their respawn, the camera, and the controls */
+health or the time to their respawn, and the camera */
 static void spectator_draw_watched(
 	struct spectator_view const *view,
-	rectangle2d const *bounds,
-	boolean help)
+	rectangle2d const *bounds)
 {
 	static wchar_t const *const camera_names[NUMBER_OF_SPECTATOR_CAMERAS] =
 	{
@@ -974,11 +1243,9 @@ static void spectator_draw_watched(
 	struct player_datum *player = view->camera != _spectator_camera_free && view->watched_player_index != NONE ?
 		player_try_and_get(view->watched_player_index) : NULL;
 	real_argb_color color = *global_real_argb_white;
-	short hint_height = spectator_line_height(SPECTATOR_HINT_SCALE);
 	short status_height = spectator_line_height(SPECTATOR_STATUS_SCALE);
 	short name_height = spectator_line_height(SPECTATOR_NAME_SCALE);
-	short hint_y = (short)(bounds->y1 - (help ? 2 * hint_height : 0) - 2);
-	short status_y = (short)(hint_y - status_height - 2);
+	short status_y = (short)(bounds->y1 - status_height - 4);
 	short bars_y = (short)(status_y - 2 * SPECTATOR_BAR_HEIGHT - 8);
 	short name_y = (short)(bars_y - name_height - 2);
 	short center = (short)((bounds->x0 + bounds->x1) / 2);
@@ -986,18 +1253,6 @@ static void spectator_draw_watched(
 
 	if (name_height <= 0)
 		return;
-	if (help)
-	{
-		real_argb_color dim = *global_real_argb_white;
-
-		dim.alpha = 0.75f;
-		spectator_draw_text(bounds->x0, hint_y, bounds->x1, 2, SPECTATOR_HINT_SCALE, &dim,
-			L"FIRE  NEXT PLAYER     GRENADE  PREVIOUS PLAYER     FLASHLIGHT  HIDE THIS");
-		spectator_draw_text(bounds->x0, (short)(hint_y + hint_height), bounds->x1, 2, SPECTATOR_HINT_SCALE, &dim,
-			game_engine_has_teams() ?
-				L"ACTION  FREE CAMERA     MELEE  TEAM     SWITCH WEAPON  DISPLAY" :
-				L"ACTION  FREE CAMERA     SWITCH WEAPON  DISPLAY");
-	}
 	if (!player)
 	{
 		usnprintf(text, NUMBEROF(text) - 1, L"%s%s", camera_names[_spectator_camera_free],
@@ -1022,12 +1277,12 @@ static void spectator_draw_watched(
 			/* (beside the bars, of 100: shields before them, health after) */
 			usnprintf(text, NUMBEROF(text) - 1, L"%ld", (long)(object->object.shield_vitality * 100.0f + 0.5f));
 			text[NUMBEROF(text) - 1] = 0;
-			spectator_draw_text((short)(center - SPECTATOR_BAR_WIDTH / 2 - 66), (short)(bars_y - 2),
+			spectator_draw_text((short)(center - SPECTATOR_BAR_WIDTH / 2 - 46), (short)(bars_y - 2),
 				(short)(center - SPECTATOR_BAR_WIDTH / 2 - 6), 1, SPECTATOR_HINT_SCALE, &color, text);
 			usnprintf(text, NUMBEROF(text) - 1, L"%ld", (long)(object->object.body_vitality * 100.0f + 0.5f));
 			text[NUMBEROF(text) - 1] = 0;
 			spectator_draw_text((short)(center + SPECTATOR_BAR_WIDTH / 2 + 6), (short)(bars_y - 2),
-				(short)(center + SPECTATOR_BAR_WIDTH / 2 + 66), 0, SPECTATOR_HINT_SCALE, &color, text);
+				(short)(center + SPECTATOR_BAR_WIDTH / 2 + 46), 0, SPECTATOR_HINT_SCALE, &color, text);
 		}
 		usnprintf(text, NUMBEROF(text) - 1, L"%s%s", camera_names[view->camera],
 			game_engine_has_teams() ? team_names[view->team] : L"");
@@ -1122,17 +1377,34 @@ void spectator_draw(
 {
 	struct spectator_view const *view = spectator_view_get(local_player_index);
 	rectangle2d bounds = render.camera.window_bounds;
+	rectangle2d frame;
+	unsigned long parts;
+	long self;
 
 	if (!spectator_view_current(view) || !spectator_local_player(local_player_index) ||
-		view->overlay == _spectator_overlay_none || cinematic_in_progress() || game_engine_showing_postgame())
+		cinematic_in_progress() || game_engine_showing_postgame())
 	{
 		return;
 	}
+	parts = spectator_overlay_parts[PIN(view->overlay, 0, NUMBER_OF_SPECTATOR_OVERLAYS - 1)];
+	if (!parts)
+		return;
+	self = local_player_get_player_index(local_player_index);
+	/* (the foot's within the frame the game keeps its own text in; the
+	corners' and the top's near the view's edges) */
 	offset_rectangle2d(&bounds, (short)-render.camera.viewport_bounds.x0, (short)-render.camera.viewport_bounds.y0);
-	if (view->overlay == _spectator_overlay_all)
-	{
-		spectator_draw_players(view, local_player_get_player_index(local_player_index), &bounds);
-		spectator_draw_item_timers(&bounds);
-	}
-	spectator_draw_watched(view, &bounds, !spectator_help_hidden[local_player_index]);
+	frame.x0 = SPECTATOR_MARGIN;
+	frame.y0 = SPECTATOR_MARGIN;
+	frame.x1 = (short)(render.camera.viewport_bounds.x1 - render.camera.viewport_bounds.x0 - SPECTATOR_MARGIN);
+	frame.y1 = (short)(render.camera.viewport_bounds.y1 - render.camera.viewport_bounds.y0 - SPECTATOR_MARGIN);
+	if (TEST_FLAG(parts, _spectator_part_players_bit))
+		spectator_draw_players(view, self, &frame);
+	if (TEST_FLAG(parts, _spectator_part_items_bit))
+		spectator_draw_item_timers(&frame);
+	if (TEST_FLAG(parts, _spectator_part_scores_bit))
+		spectator_draw_scores(self, &frame);
+	if (TEST_FLAG(parts, _spectator_part_watched_bit))
+		spectator_draw_watched(view, &bounds);
+	if (TEST_FLAG(parts, _spectator_part_controls_bit) && !spectator_help_hidden[local_player_index])
+		spectator_draw_controls(view, &frame);
 }

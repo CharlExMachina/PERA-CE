@@ -33,7 +33,7 @@ void spectator_camera_update(
 	void *command);
 
 /* what a spectator is shown over its view: whom it watches, their shields
-and health, every player's, and the items' timers */
+and health, every player's, the scores, the items' timers and the controls */
 void spectator_draw(
 	short local_player_index);
 

@@ -127,7 +127,7 @@ enum
 	_distributed_message_map_share_progress = 86,
 	/* a multiplayer game's spectators, a bit a player, as the host picks
 	them: to every client reliably, when they change and when a machine has
-	loaded (network_spectator.c) */
+	loaded, and in the lobby too (network_spectator.c) */
 	_distributed_message_spectators = 87,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
@@ -305,9 +305,10 @@ void network_spectator_new_game(void);
 void network_spectator_host_tick(void);
 /* (the host) a client machine has loaded the game: it is told the spectators */
 void network_spectator_machine_loaded(long machine_index);
-/* (a client) the host's spectators */
-void network_spectator_handle(void const *entries);
-word network_spectator_entry_size(void);
+/* (a client) the host's spectators, in the lobby too: taken before the
+netcode's checks that a game is running, as voice chat's are */
+boolean network_spectator_handles_message(word const *message, word size);
+void network_spectator_handle_message(long machine_index, word const *message, word size);
 
 /* ---------- prototypes/NETWORK_ACTORS.C */
 
