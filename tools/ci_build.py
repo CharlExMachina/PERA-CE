@@ -15,7 +15,9 @@ and is skipped with an older one). A profile build is a debug build with
 configure.py --profile, so that the profiling build is built too. CI_COMPILER_LAUNCHER (ccache, say) is
 passed on as --compiler-launcher. A build of the main branch gets the run's
 number (HALO_BUILD_NUMBER), which its release is named after and the
-self-updater compares (and the web site's version.json names).
+self-updater compares (and the web site's version.json names), and the
+run's repository (HALO_BUILD_REPOSITORY), whose releases the self-updater
+looks at.
 
 The web build (port/web/README.md) needs Emscripten (emcc on the PATH, as
 emsdk_env.sh puts it); dist/halo-web-<config>/ is the whole site, which a
@@ -74,6 +76,11 @@ def main() -> int:
     if os.environ.get("GITHUB_REF") == "refs/heads/main" and os.environ.get("GITHUB_RUN_NUMBER", "").isdigit():
         os.environ["HALO_BUILD_NUMBER"] = os.environ["GITHUB_RUN_NUMBER"]
         print(f"build number {os.environ['HALO_BUILD_NUMBER']}", flush=True)
+        # (and the repository whose run it is, where the release goes: a
+        # fork's builds update from the fork, whose numbers theirs are)
+        if os.environ.get("GITHUB_REPOSITORY"):
+            os.environ["HALO_BUILD_REPOSITORY"] = os.environ["GITHUB_REPOSITORY"]
+            print(f"build repository {os.environ['HALO_BUILD_REPOSITORY']}", flush=True)
     run(configure)
 
     if args.platform == "web":

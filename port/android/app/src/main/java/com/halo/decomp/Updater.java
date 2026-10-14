@@ -33,8 +33,9 @@ import java.util.zip.ZipInputStream;
  * (BuildConfig.HALO_BUILD_NUMBER, the workflow's run number, which names its
  * release: build-number); other builds have none and never look. When
  * update.auto in config.toml is true (the default), the game asks GitHub for
- * the latest release when it starts, on a thread of its own, and if it is
- * newer asks the player whether to update:
+ * the latest release of the repository whose workflow made the build
+ * (BuildConfig.HALO_BUILD_REPOSITORY) when it starts, on a thread of its own,
+ * and if it is newer asks the player whether to update:
  *
  * - Yes: the release's app (halo-android-release.zip or -debug.zip) is
  *   downloaded and handed to Android's package installer, which replaces the
@@ -47,7 +48,7 @@ import java.util.zip.ZipInputStream;
  * app must keep for Android to install a new version over it.
  */
 final class Updater {
-    private static final String REPOSITORY = "OpenCommunityEdition/OpenCE";
+    private static final String REPOSITORY = BuildConfig.HALO_BUILD_REPOSITORY;
     private static final String USER_AGENT = "halo-ce-universal-updater";
     private static final int TIMEOUT_MILLISECONDS = 20000;
     /** the most a download (a release's zip, about 35 MB) or the app in it may be */

@@ -68,12 +68,18 @@ ZLIB_DEFINES = ("-DZ_PREFIX", "-Dz_errmsg=z_port_errmsg")
 def updater_defines(release: bool) -> str:
     """the self-updater's build (port/linux/src/updater.c): its number, from
     HALO_BUILD_NUMBER (tools/ci_build.py gives it for builds of main; none
-    elsewhere, which never look for updates), and its configuration"""
+    elsewhere, which never look for updates), its configuration, and the
+    repository whose releases the number counts, from HALO_BUILD_REPOSITORY
+    (tools/ci_build.py again; the project's without it)"""
     number = os.environ.get("HALO_BUILD_NUMBER", "0")
     if not number.isdigit():
         number = "0"
     flavor = "release" if release else "debug"
-    return f'-DHALO_BUILD_NUMBER={number} -DHALO_BUILD_FLAVOR=\\"{flavor}\\"'
+    defines = f'-DHALO_BUILD_NUMBER={number} -DHALO_BUILD_FLAVOR=\\"{flavor}\\"'
+    repository = os.environ.get("HALO_BUILD_REPOSITORY", "")
+    if re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        defines += f' -DHALO_BUILD_REPOSITORY=\\"{repository}\\"'
+    return defines
 
 WINDOWS_ABI_FLAGS = [
     "--target=i686-pc-windows-msvc",

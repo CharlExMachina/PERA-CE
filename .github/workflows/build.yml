@@ -15,6 +15,11 @@ name: Build
 # - Windows, whose minutes cost twice Linux's, builds only Windows;
 # - artifacts are kept for three days.
 #
+# The BUILD_PLATFORMS variable of the repository (Settings → Secrets and
+# variables → Actions → Variables) names the platforms to build, of linux,
+# android, windows and web ("windows", or "linux windows"); without it, all
+# four. A fork that plays on one platform builds and releases only that one.
+#
 # A successful build of main is also published as a GitHub release, the
 # newest marked latest, so that
 # https://github.com/<repository>/releases/latest/download/<file> always
@@ -52,6 +57,7 @@ jobs:
     # links against Debian 11's 32-bit glibc (tools/linux_sysroot.py), not
     # Arch's, so that it starts on SteamOS and older distributions; Arch's
     # 32-bit glibc is for the tests.
+    if: ${{ vars.BUILD_PLATFORMS == '' || contains(vars.BUILD_PLATFORMS, 'linux') }}
     runs-on: ubuntu-24.04
     container: archlinux:latest
     timeout-minutes: 40
@@ -111,6 +117,7 @@ jobs:
 
   android:
     # The runner image has the Android SDK and NDK, a JDK and CMake.
+    if: ${{ vars.BUILD_PLATFORMS == '' || contains(vars.BUILD_PLATFORMS, 'android') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -192,6 +199,7 @@ jobs:
   windows:
     # The runner image has LLVM, Python and Visual Studio's x86 libraries and
     # Windows SDK.
+    if: ${{ vars.BUILD_PLATFORMS == '' || contains(vars.BUILD_PLATFORMS, 'windows') }}
     runs-on: windows-2025
     timeout-minutes: 40
     defaults:
@@ -266,6 +274,7 @@ jobs:
     # importer and service worker, its sockets, that it starts in a
     # headless Chromium (with no game data, as far as the menus' map), and
     # that two browsers join a room through a local MQTT broker.
+    if: ${{ vars.BUILD_PLATFORMS == '' || contains(vars.BUILD_PLATFORMS, 'web') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
@@ -342,9 +351,13 @@ jobs:
     # build-<run number> and marked latest
     # (every file keeps its name from release to release, for the README's
     # latest/download links); then all but the newest five build-* releases
-    # go, tags and all. Only for main, and only when every platform built.
+    # go, tags and all. Only for main, and only when every platform built
+    # (every one that BUILD_PLATFORMS names: the release has the builds of
+    # those alone).
     needs: [linux, android, windows, web]
-    if: ${{ github.ref == 'refs/heads/main' }}
+    if: >-
+      ${{ !cancelled() && github.ref == 'refs/heads/main' && contains(needs.*.result, 'success') &&
+      !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -427,9 +440,13 @@ jobs:
     # https://halocombatevolved.com/ (port/web/README.md, "Hosting"). Only
     # main, only once every platform built and the release is out (the site
     # and the release are one build), and a deployment is never cancelled
-    # halfway. The repository's Pages source must be GitHub Actions.
+    # halfway. The repository's Pages source must be GitHub Actions; a
+    # repository with no Pages site (a fork), or one that builds no web
+    # port, deploys nothing.
     needs: [release]
-    if: ${{ github.ref == 'refs/heads/main' }}
+    if: >-
+      ${{ github.ref == 'refs/heads/main' && github.event.repository.has_pages &&
+      (vars.BUILD_PLATFORMS == '' || contains(vars.BUILD_PLATFORMS, 'web')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -458,7 +475,8 @@ jobs:
 
   notify:
     # A Discord embed for the run, to the DISCORD_WEBHOOK secret (nothing
-    # without it): green when every platform built, red when one did not,
+    # without it): green when every platform built (a platform that
+    # BUILD_PLATFORMS leaves out is skipped), red when one did not,
     # with each platform's result, this run's release (main only), and links
     # to the latest release's builds and the site.
     needs: [linux, android, windows, web, release, pages]
@@ -497,11 +515,11 @@ jobs:
               *) echo "➖ Skipped" ;;
             esac
           }
-          if [ "$LINUX" = success ] && [ "$ANDROID" = success ] && [ "$WINDOWS" = success ] && [ "$WEB" = success ]; then
-            title="Build succeeded"; color=5763719
-          else
-            title="Build failed"; color=15548997
-          fi
+          case " $LINUX $ANDROID $WINDOWS $WEB " in
+            *" failure "* | *" cancelled "*) title="Build failed"; color=15548997 ;;
+            *" success "*) title="Build succeeded"; color=5763719 ;;
+            *) title="Build failed"; color=15548997 ;;
+          esac
           latest="$SERVER/$REPOSITORY/releases/latest"
           downloads="[Linux]($latest/download/halo-linux-release.zip) · [Windows]($latest/download/halo-windows-release.zip) · [Android]($latest/download/halo-android-release.zip) · [Web]($SITE_URL) ([all builds]($latest))"
           if [ -n "$RELEASE_TAG" ]; then

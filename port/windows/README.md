@@ -115,7 +115,8 @@ Thus the build also includes the declarations of the Linux build
 
 A crash writes the faulting address and the calls that led to it to
 `debug.txt` and to the log. The builds of the workflow (the releases)
-also send a crash report to the Sentry project of the developers:
+also send a crash report to the Sentry project of the developers (the
+builds of the workflow of a fork do not: Sentry has no symbols for them):
 
 1. The game starts a second copy of `halo.exe` (`halo.exe --crash-report`).
    This copy writes a minidump of the game to `crashes\` next to
