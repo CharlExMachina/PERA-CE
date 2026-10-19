@@ -93,6 +93,7 @@ symbols in this file:
 #include "objects/objects.h"
 #include "units/units.h"
 #include "text/unicode.h"
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 
 #include <xtl.h>
 
@@ -770,6 +771,8 @@ boolean network_game_create_game_objects(
 	game_options_new(&options);
 	csstrncpy(options.map_name, game->map.name, sizeof(game->map.name) - 1);
 	options.difficulty = game->difficulty;
+	/* port: and the host's skulls (port/linux/game/skulls.c) */
+	options.flags = game->skull_flags & SKULL_FLAGS_MASK;
 
 	switch (game_connection())
 	{

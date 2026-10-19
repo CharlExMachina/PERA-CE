@@ -695,6 +695,7 @@ symbols in this file:
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
 #include "coop_scripts.h" /* port: port/linux/game/coop_scripts.c */
 #include "coop_enemies.h" /* port: port/linux/game/coop_enemies.c */
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 
 /* port: the control and animation impulses the host's actors give their
 units go to the clients' copies (port/linux/game/network_actors.c) */
@@ -2412,6 +2413,13 @@ boolean unit_can_use_weapon(
 		can_use_weapon = game_engine_allow_pick_up(unit_index, weapon_index);
 	}
 
+	/* port: nor a Covenant weapon a player's hands, with the Foreign skull
+	(port/linux/game/skulls.c) */
+	if (can_use_weapon)
+	{
+		can_use_weapon = skulls_weapon_usable(unit_index, weapon_index);
+	}
+
 	return can_use_weapon;
 }
 
@@ -2780,6 +2788,8 @@ void unit_died(
 		{
 			player_died(unit->unit.player_index);
 			unit->unit.player_index = NONE;
+			/* port: the Iron skull's revert of co-op (port/linux/game/skulls.c) */
+			skulls_player_died();
 		}
 
 		if (unit->unit.actor_index != NONE)
@@ -2828,6 +2838,9 @@ void unit_died(
 	}
 
 	unit->unit.speech.queued.priority = 0;
+	/* port: half their ammunition, with the Famine skull
+	(port/linux/game/skulls.c) */
+	skulls_unit_dropping_weapons(unit_index);
 	unit_drop_inventory_weapons(unit_index);
 	fresh_unit = unit_get(unit_index);
 	if (fresh_unit->unit.equipment_object_index != NONE)
@@ -5761,7 +5774,8 @@ boolean unit_update(
 				}
 			}
 
-			if (cheat.infinite_ammo && unit->unit.player_index!=NONE)
+			/* port: and the Bandanna skull's (port/linux/game/skulls.c) */
+			if ((cheat.infinite_ammo || skulls_infinite_ammunition()) && unit->unit.player_index!=NONE)
 			{
 				short grenade_index;
 
@@ -7901,7 +7915,8 @@ static void unit_throw_grenade_move_to_hand(
 
 	if ((
 		unit->unit.player_index==NONE ||
-		!cheat.infinite_ammo && !game_engine_infinite_grenades(unit->unit.player_index)) &&
+		/* port: and the Bandanna skull's (port/linux/game/skulls.c) */
+		!cheat.infinite_ammo && !skulls_infinite_ammunition() && !game_engine_infinite_grenades(unit->unit.player_index)) &&
 		(unit->unit.actor_index==NONE ||
 		!actor_has_unlimited_grenades(unit->unit.actor_index)))
 	{

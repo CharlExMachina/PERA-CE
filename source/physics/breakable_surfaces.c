@@ -27,6 +27,7 @@ BREAKABLE_SURFACES.C
 #include "structures/structure_bsp_definitions.h"
 #include "tag_files/tag_groups.h"
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 
 /* ---------- structures */
 
@@ -286,7 +287,8 @@ void breakable_surface_damage_area_of_effect(
 			{
 				struct structure_breakable_surface *breakable_surface = TAG_BLOCK_GET_ELEMENT(&structure_bsp->breakable_surfaces, breakable_surface_index, struct structure_breakable_surface);
 				real radius = breakable_surface->bounding_radius;
-				radius += cutoff_radius;
+				/* port: twice as far, with the Boom skull (port/linux/game/skulls.c) */
+				radius += cutoff_radius * skulls_explosion_scale();
 
 				if (point_in_sphere(&breakable_surface->centroid, &damage_data->epicenter, radius))
 				{

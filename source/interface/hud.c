@@ -114,6 +114,7 @@ symbols in this file:
 #include "text/text_group.h"
 #include "units/unit_definitions.h"
 #include "units/units.h"
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 
 /* ---------- constants */
 
@@ -1430,6 +1431,10 @@ void hud_draw_screen(
 		{
 			motion_sensor_tick();
 		}
+
+		/* port: each life's part of the HUD the Malfunction skull hides
+		(port/linux/game/skulls.c) */
+		skulls_hud_update(render.local_player_index, player->unit_index);
 
 		if (hud_scripted_globals->show_hud)
 		{

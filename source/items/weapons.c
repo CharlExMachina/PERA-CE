@@ -237,6 +237,8 @@ symbols in this file:
 #include "effects/contrail_definitions.h"
 #endif
 
+#include "skulls.h" /* port: port/linux/game/skulls.c */
+
 /* port/linux/game/pal_tags.c's */
 short pal_tags_first_person_frames(long graph_index, short animation_index, short frames);
 
@@ -1543,7 +1545,8 @@ static void weapon_magazine_finish_reload(
 	if (rounds_loaded>magazine_definition->rounds_loaded_maximum)
 		rounds_loaded = magazine_definition->rounds_loaded_maximum;
 
-	if (!cheat.infinite_ammo && TEST_FLAG(weapon->item.flags, 1))
+	/* port: nor with the Bandanna skull (port/linux/game/skulls.c) */
+	if (!cheat.infinite_ammo && !skulls_infinite_ammunition() && TEST_FLAG(weapon->item.flags, 1))
 		magazine->rounds_total = magazine->rounds_total-rounds_loaded+magazine->rounds_loaded;
 
 	magazine->rounds_loaded = rounds_loaded;
@@ -2633,7 +2636,10 @@ static void weapon_trigger_fire(
 				!(TEST_FLAG(weapon_definition->weapon.flags, _weapon_cannot_fire_at_maximum_age_bit) && weapon->weapon.age>=1.0f) &&
 				(magazine->rounds_loaded>=trigger_definition->minimum_rounds_loaded_per_shot || !TEST_FLAG(trigger->flags, _weapon_trigger_released_since_last_shot_bit)))
 			{
-				if (!cheat.bottomless_clip && (magazine->rounds_loaded-= trigger_definition->rounds_per_shot)<=0)
+				/* port: twice them from a player's weapon, with the Recession
+				skull (port/linux/game/skulls.c) */
+				if (!cheat.bottomless_clip && (magazine->rounds_loaded-= skulls_rounds_per_shot(
+					TEST_FLAG(weapon->item.flags, _item_belongs_to_player_bit), trigger_definition->rounds_per_shot))<=0)
 				{
 					magazine->rounds_loaded= 0;
 				}
@@ -2790,9 +2796,12 @@ static void weapon_trigger_fire(
 			weapon->weapon.heat= 1.0f;
 		}
 
-		if (TEST_FLAG(weapon->item.flags, _item_belongs_to_player_bit) && !cheat.infinite_ammo)
+		/* port: none with the Bandanna skull, twice it with the Recession
+		skull (port/linux/game/skulls.c) */
+		if (TEST_FLAG(weapon->item.flags, _item_belongs_to_player_bit) && !cheat.infinite_ammo &&
+			!skulls_infinite_ammunition())
 		{
-			weapon->weapon.age+= trigger_definition->age_generated_per_round;
+			weapon->weapon.age+= skulls_age_per_shot(trigger_definition->age_generated_per_round);
 			if (weapon->weapon.age>1.0f)
 			{
 				weapon->weapon.age= 1.0f;

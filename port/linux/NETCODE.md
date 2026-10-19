@@ -203,7 +203,11 @@ screen shows) and says which version it is by the map version of the game
 record, its hash's first 32 bits (the header checksum before), which a
 client finds its file by (below, "Map sharing"); version 30 sends a
 multiplayer game's spectators as kind 90, where builds before the text
-chat sent them as kind 87, the chat's line to the host.
+chat sent them as kind 87, the chat's line to the host; version 31 sends
+with the game's settings its skulls (Server Setup's SKULLS,
+`port/linux/game/skulls.c`), which every machine plays by: a build without
+them would spend its players' ammunition, draw their HUD and check the
+reach of explosions otherwise.
 
 `port/linux/network_format.txt` records the wire format of the current
 version (`tools/network_format.py`): `test_linux_port.py` fails when the

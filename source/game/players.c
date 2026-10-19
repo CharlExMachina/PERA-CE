@@ -279,6 +279,7 @@ symbols in this file:
 #include "units/units.h"
 #include "units/vehicle_definitions.h"
 #include "units/vehicles.h"
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 
 /* network_game_globals.c's */
 boolean network_game_distributed_client(void);
@@ -4845,7 +4846,9 @@ void players_update_before_game(
 							players_respawn_network_coop(TRUE);
 						}
 					}
-					else if (!players_globals->all_dead)
+					/* port: (with the Iron skull, the revert a death began
+					brings them back: port/linux/game/skulls.c) */
+					else if (!players_globals->all_dead && !skulls_iron_holds_respawn())
 						main_respawn(players_globals->respawn_failed);
 				}
 			}

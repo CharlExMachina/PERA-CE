@@ -31,7 +31,7 @@
 		<child widget="main_menu/multiplayer_type_select/server_settings/button_bar" y="414"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/server_settings/button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items">
-		
+		<child widget="main_menu/multiplayer_type_select/server_settings/button_skulls" x="250" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/server_settings/button_ok" x="380" y="1"/>
 		<child widget="common_button_cancel" x="510" y="1"/>
 	</widget>
@@ -223,6 +223,11 @@
 		<string text="Players from the Server Browser must type it to\njoin (an invite link needs none). Enter sets it."/>
 		<string text="Sending players who join without the game's\nCustom Edition map the map, and how fast."/>
 	</strings>
+	<widget name="main_menu/multiplayer_type_select/server_settings/button_skulls" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" text="SKULLS" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" open="main_menu/multiplayer_type_select/server_settings/skulls/skulls_screen"/>
+		<on event="start" open="main_menu/multiplayer_type_select/server_settings/skulls/skulls_screen"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
 	<widget name="main_menu/multiplayer_type_select/server_settings/coop_options/coop_options_screen" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/gradient">
 		<child widget="main_menu/multiplayer_type_select/server_settings/coop_options/header_coop_options"/>
 		<child widget="main_menu/multiplayer_type_select/server_settings/coop_options/coop_options_menu"/>
@@ -581,4 +586,130 @@
 		<string text="The most you send of maps, so that the game\nkeeps the rest of your upload."/>
 		<string text="The most you send of maps, so that the game\nkeeps the rest of your upload."/>
 	</strings>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/skulls_screen" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/gradient">
+		<on event="b" back="true"/>
+		<on event="back" back="true"/>
+		<child widget="main_menu/new_select/sel_list_desc_bkd"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/skulls/skulls_list"/>
+		<child widget="main_menu/skulls/header_skulls"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/skulls_list" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child up_down_tabs_children" description="main_menu/mods/mod_details">
+		<data input="port skulls update"/>
+		<on event="created" run="port skulls init network"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_1" x="20" y="73"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_2" x="20" y="103"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_3" x="20" y="133"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_4" x="20" y="163"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_5" x="20" y="193"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_6" x="20" y="223"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_7" x="20" y="253"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_8" x="20" y="283"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_9" x="20" y="313"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_10" x="20" y="343"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_11" x="20" y="373"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/skulls/button_bar" y="414"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_1" width="390" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/sel_list_item_bkd_top" color="#FF2896FF">
+		<on event="a" run="port skulls toggle"/>
+		<on event="start" run="port skulls toggle"/>
+		<on event="left right" run="port skulls toggle"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/mods/mod_name" x="14"/>
+		<child widget="main_menu/mods/mod_state" x="318"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_2" width="390" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/sel_list_item_bkd" color="#FF2896FF">
+		<on event="a" run="port skulls toggle"/>
+		<on event="start" run="port skulls toggle"/>
+		<on event="left right" run="port skulls toggle"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/mods/mod_name" x="14"/>
+		<child widget="main_menu/mods/mod_state" x="318"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_3" width="390" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/sel_list_item_bkd" color="#FF2896FF">
+		<on event="a" run="port skulls toggle"/>
+		<on event="start" run="port skulls toggle"/>
+		<on event="left right" run="port skulls toggle"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/mods/mod_name" x="14"/>
+		<child widget="main_menu/mods/mod_state" x="318"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_4" width="390" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/sel_list_item_bkd" color="#FF2896FF">
+		<on event="a" run="port skulls toggle"/>
+		<on event="start" run="port skulls toggle"/>
+		<on event="left right" run="port skulls toggle"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/mods/mod_name" x="14"/>
+		<child widget="main_menu/mods/mod_state" x="318"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_5" width="390" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/sel_list_item_bkd" color="#FF2896FF">
+		<on event="a" run="port skulls toggle"/>
+		<on event="start" run="port skulls toggle"/>
+		<on event="left right" run="port skulls toggle"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/mods/mod_name" x="14"/>
+		<child widget="main_menu/mods/mod_state" x="318"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_6" width="390" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/sel_list_item_bkd" color="#FF2896FF">
+		<on event="a" run="port skulls toggle"/>
+		<on event="start" run="port skulls toggle"/>
+		<on event="left right" run="port skulls toggle"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/mods/mod_name" x="14"/>
+		<child widget="main_menu/mods/mod_state" x="318"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_7" width="390" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/sel_list_item_bkd" color="#FF2896FF">
+		<on event="a" run="port skulls toggle"/>
+		<on event="start" run="port skulls toggle"/>
+		<on event="left right" run="port skulls toggle"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/mods/mod_name" x="14"/>
+		<child widget="main_menu/mods/mod_state" x="318"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_8" width="390" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/sel_list_item_bkd" color="#FF2896FF">
+		<on event="a" run="port skulls toggle"/>
+		<on event="start" run="port skulls toggle"/>
+		<on event="left right" run="port skulls toggle"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/mods/mod_name" x="14"/>
+		<child widget="main_menu/mods/mod_state" x="318"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_9" width="390" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/sel_list_item_bkd" color="#FF2896FF">
+		<on event="a" run="port skulls toggle"/>
+		<on event="start" run="port skulls toggle"/>
+		<on event="left right" run="port skulls toggle"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/mods/mod_name" x="14"/>
+		<child widget="main_menu/mods/mod_state" x="318"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_10" width="390" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/sel_list_item_bkd" color="#FF2896FF">
+		<on event="a" run="port skulls toggle"/>
+		<on event="start" run="port skulls toggle"/>
+		<on event="left right" run="port skulls toggle"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/mods/mod_name" x="14"/>
+		<child widget="main_menu/mods/mod_state" x="318"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/op_skull_11" width="390" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/sel_list_item_bkd" color="#FF2896FF">
+		<on event="a" run="port skulls toggle"/>
+		<on event="start" run="port skulls toggle"/>
+		<on event="left right" run="port skulls toggle"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/mods/mod_name" x="14"/>
+		<child widget="main_menu/mods/mod_state" x="318"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items">
+		<child widget="main_menu/multiplayer_type_select/server_settings/skulls/button_clear" y="1"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/skulls/button_ok" x="380" y="1"/>
+		<child widget="common_button_cancel" x="510" y="1"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/button_clear" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" text="ALL OFF" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port skulls clear"/>
+		<on event="start" run="port skulls clear"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/skulls/button_ok" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" string_list="strings/common_button_captions" string_index="1" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port skulls save" back="true"/>
+		<on event="start" run="port skulls save" back="true"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
 </menus>

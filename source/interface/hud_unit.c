@@ -87,6 +87,7 @@ symbols in this file:
 #include "units/unit_definitions.h"
 #include "units/units.h"
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 
 /* ---------- constants */
 
@@ -916,10 +917,13 @@ void hud_render_unit_interface(
 						NONE);
 				}
 
+				/* port: (nor what the Malfunction skull hides:
+				port/linux/game/skulls.c) */
 				if (game_engine_has_shield(player_index) &&
 					!TEST_FLAG(
 						unit_hud_globals->script_flags,
-						_hud_panel_shield_dont_show_bit))
+						_hud_panel_shield_dont_show_bit) &&
+					skulls_hud_shown(render.local_player_index, _skull_hud_shield))
 				{
 					short draw_flags =
 						hud_unit->object.shield_vitality < 0.25f ||
@@ -1036,9 +1040,11 @@ void hud_render_unit_interface(
 					}
 				}
 
+				/* port: (nor what the Malfunction skull hides) */
 				if (!TEST_FLAG(
 					unit_hud_globals->script_flags,
-					_hud_panel_health_dont_show_bit))
+					_hud_panel_health_dont_show_bit) &&
+					skulls_hud_shown(render.local_player_index, _skull_hud_health))
 				{
 					short draw_flags =
 						TEST_FLAG(
@@ -1127,11 +1133,14 @@ void hud_render_unit_interface(
 					hud_state->last_body_vitality = hud_unit->object.body_vitality;
 				}
 
+				/* port: (nor with the Fog skull, nor what the Malfunction
+				skull hides) */
 				if (unit_count == 0 &&
 					!TEST_FLAG(
 						unit_hud_globals->script_flags,
 						_hud_panel_motion_sensor_dont_show_bit) &&
-					game_engine_hud_draw_motion_sensor(player_index))
+					game_engine_hud_draw_motion_sensor(player_index) &&
+					skulls_hud_shown(render.local_player_index, _skull_hud_motion_sensor))
 				{
 					struct hud_absolute_placement_definition absolute_placement;
 					short draw_flags = 0;

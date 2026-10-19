@@ -122,6 +122,7 @@ symbols in this file:
 #include "lruv_cache.h"
 #include "memory_pool.h"
 #include "cluster_partitions.h"
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 /* port: object_bounds_cache.c's */
 void object_bounds_cache_invalidate(void);
 
@@ -207,7 +208,9 @@ static game_state_after_load_proc after_load_procs[] =
 	game_state_set_revert_time,
 	player_control_fix_for_loaded_game_state,
 	director_initialize_for_saved_game,
-	scripted_hud_messages_clear
+	scripted_hud_messages_clear,
+	/* port: a new life for the Malfunction skull (port/linux/game/skulls.c) */
+	skulls_game_state_loaded
 };
 
 /* ---------- public code */
@@ -990,6 +993,8 @@ void game_state_try_and_load_from_persistent_storage(
 	void)
 {
 	struct game_state_header header;
+	/* port: the skulls the level started with (port/linux/game/skulls.c) */
+	unsigned long skulls = game_skulls_get();
 
 	if (game_state_read_header_from_persistent_storage(
 			&header,
@@ -1008,6 +1013,9 @@ void game_state_try_and_load_from_persistent_storage(
 			game_state_globals.base_address,
 			GAME_STATE_SIZE);
 		game_difficulty_level_set(main_get_difficulty());
+		/* port: and its skulls, the ones chosen, unless it goes on with the
+		saved game's (main.c's main_saved_game_skulls) */
+		game_skulls_set(main_saved_game_skulls(skulls, game_skulls_get()));
 		game_state_call_after_load_procs();
 		game_state_save();
 	}

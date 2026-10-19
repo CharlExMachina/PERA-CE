@@ -79,6 +79,7 @@ symbols in this file:
 
 #include <math.h>
 #include <string.h>
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 
 /* ---------- constants */
 
@@ -971,8 +972,10 @@ static void crosshairs_draw(
 		stack_buffer,
 		0x62,
 		sizeof(stack_buffer));
+	/* port: (nor what the Malfunction skull hides: port/linux/game/skulls.c) */
 	if (TEST_FLAG(weapon_hud_globals->script_flags, _hud_crosshair_show_bit) &&
-		hud_index != NONE)
+		hud_index != NONE &&
+		skulls_hud_shown(player->local_player_index, _skull_hud_crosshair))
 	{
 		long unit_index = player->unit_index;
 		struct crosshair_hud_state *crosshair = get_crosshair_state(player->local_player_index);
@@ -2064,14 +2067,19 @@ void hud_render_weapon_interface(
 				weapon_index,
 				hud_index,
 				&weapon_state);
-			render_weapon_hud(
-				hud_index,
-				player->local_player_index,
-				definition,
-				&weapon_state,
-				NULL,
-				NULL,
-				NULL);
+			/* port: (its ammunition, unless the Malfunction skull hides it:
+			port/linux/game/skulls.c) */
+			if (skulls_hud_shown(player->local_player_index, _skull_hud_ammunition))
+			{
+				render_weapon_hud(
+					hud_index,
+					player->local_player_index,
+					definition,
+					&weapon_state,
+					NULL,
+					NULL,
+					NULL);
+			}
 			play_weapon_hud_sounds(
 				player->local_player_index,
 				hud_index,

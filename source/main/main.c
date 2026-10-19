@@ -403,6 +403,7 @@ symbols in this file:
 #include "tag_files/files.h"
 #include "custom_edition_cache.h" /* port: custom_edition_level_name */
 #include "view_fov.h" /* port: display.fov, before the projection and culling */
+#include "skulls.h" /* port: port/linux/game/skulls.c, the Iron skull */
 
 #if defined(HALO_WINDOWS) || defined(HALO_ANDROID) || defined(__linux__)
 #define HALO_NATIVE_BUILD_INFO 1
@@ -706,6 +707,12 @@ static void main_game_render(
 /* ---------- globals */
 
 short global_difficulty_level = 1;
+/* port: the skulls (port/linux/game/skulls.c) a campaign level is played
+with, as its difficulty is (the SKULLS screen's: main_set_skulls), and
+whether a saved game it goes on with keeps its own instead (Continue's and
+Load Game's: main_keep_saved_game_skulls) */
+static unsigned long global_skull_flags = 0;
+static boolean global_skulls_of_saved_game = FALSE;
 short player_spawn_count = 1;
 boolean global_frame_rate_throttle = TRUE;
 short global_screenshot_size = 1;
@@ -1556,6 +1563,8 @@ static void main_change_map_name(
 				NUMBEROF(options.map_name) - 1);
 			options.map_name[NUMBEROF(options.map_name) - 1] = 0;
 			options.difficulty = global_difficulty_level;
+			/* port: and its skulls (port/linux/game/skulls.c) */
+			options.flags = global_skull_flags;
 			game_dispose_from_old_map();
 			game_precache_new_map(options.map_name, TRUE);
 			game_unload();
@@ -1590,6 +1599,37 @@ void main_set_difficulty(
 	if (difficulty >= _game_difficulty_level_easy && difficulty < NUMBER_OF_GAME_DIFFICULTY_LEVELS)
 		global_difficulty_level = difficulty;
 	return;
+}
+
+/* port: the skulls of the campaign levels played next (skulls.h's flags) */
+void main_set_skulls(
+	unsigned long skulls)
+{
+	global_skull_flags = skulls;
+	global_skulls_of_saved_game = FALSE;
+}
+
+/* port: the campaign goes on with its saved game's skulls (none, if it
+has no saved game) */
+void main_keep_saved_game_skulls(
+	void)
+{
+	global_skull_flags = 0;
+	global_skulls_of_saved_game = TRUE;
+}
+
+/* port: game_state.c: the skulls a level that has just loaded its saved
+game plays with, given those it started with: the saved game's, kept for
+the levels after, when it goes on with them (a campaign's: a network game's
+are its host's) */
+unsigned long main_saved_game_skulls(
+	unsigned long started_with,
+	unsigned long saved)
+{
+	if (!global_skulls_of_saved_game || main_globals.connection != _game_connection_local)
+		return started_with;
+	global_skull_flags = saved;
+	return saved;
 }
 
 static long sort_desired_local_player_controllers(
@@ -2180,9 +2220,17 @@ static void main_lost_map_private(
 		they were at the last checkpoint, without a revert. A mission the
 		scripts failed (game_lost, with players still alive: d40's timer,
 		a50's Keyes) does revert, or its failure cutscene would never end. */
+		/* port: the Iron skull (port/linux/game/skulls.c): alone, the level
+		is played again from its start; in network co-op, any player's death
+		reverts everyone, as a mission failed does */
 		if (game_connection() != _game_connection_network_server)
-			game_state_revert();
-		else if (players_are_all_dead() || !main_coop_host_revert())
+		{
+			if (skulls_iron_restarts_level())
+				main_reset_map();
+			else
+				game_state_revert();
+		}
+		else if ((players_are_all_dead() && !skulls_iron_reverts()) || !main_coop_host_revert())
 			players_respawn_at_checkpoint();
 	}
 	return;
@@ -2830,6 +2878,8 @@ static void main_setup_connection(
 			NUMBEROF(options.map_name) - 1);
 		options.map_name[NUMBEROF(options.map_name) - 1] = 0;
 		options.difficulty = global_difficulty_level;
+		/* port: and its skulls (port/linux/game/skulls.c) */
+		options.flags = global_skull_flags;
 		game_precache_new_map(options.map_name, TRUE);
 		game_dispose_from_old_map();
 		main_new_map(&options);

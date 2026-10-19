@@ -4342,6 +4342,18 @@ void network_game_server_port_set_cooperative_player_collisions(
 		network_event("network_game_server_port_set_cooperative_player_collisions() failed to send updated game settings to clients");
 }
 
+void network_game_server_port_set_skulls(
+	word skull_flags)
+{
+	struct network_game_server *server = global_network_game_server_get();
+
+	if (!server)
+		return;
+	server->game.skull_flags = skull_flags;
+	if (server->state == _network_game_server_state_pregame && !network_game_server_send_game_data_pregame(server))
+		network_event("network_game_server_port_set_skulls() failed to send updated game settings to clients");
+}
+
 /* port: a gametype's PC options: the menus' (player_ui_set_game_variant_options)
 when it is the menus' gametype, else its defaults */
 static void network_game_server_variant_options(

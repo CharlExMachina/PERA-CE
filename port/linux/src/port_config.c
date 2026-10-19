@@ -319,6 +319,13 @@ static const struct config_setting config_settings[] =
 		"as CUSTOM SINGLEPLAYER and CUSTOM MULTIPLAYER. Their tags are checked\n"
 		"as the game's own maps' are before they run; false refuses them\n"
 		"(docs/custom_edition_caches.md)." },
+	{ "game.skulls", _config_string, "\"\"", "HALO_SKULLS", _environment_value, _platform_all,
+		"The skulls the campaign's SKULLS screen (after New Game's difficulty)\n"
+		"last had on, which it shows on again: their names separated by\n"
+		"spaces, of iron, mythic, foreign, famine, bandanna, fog, malfunction,\n"
+		"recession, black_eye, eye_patch, pinata and boom. A level is played\n"
+		"with those its screen started it with; Continue and Load Game keep the\n"
+		"saved game's." },
 	{ "display.viewmodel_shield", _config_boolean, "false", "HALO_VIEWMODEL_SHIELD", _environment_value, _platform_all,
 		"The energy shield's flare on the first-person arms too, as on the body\n"
 		"(the stock game draws it on the body only)." },
@@ -471,6 +478,11 @@ static const struct config_setting config_settings[] =
 		"Online co-op's static multiplier of its enemies: each squad of enemies\n"
 		"a level places is this many times as large (2 to 32). MULTIPLIER in\n"
 		"co-op's Server Setup > Co-op Options writes its choice here." },
+	{ "network.skulls", _config_string, "\"\"", "HALO_NET_SKULLS", _environment_value, _platform_all,
+		"Hosting: the skulls a network game (multiplayer or co-op) is played\n"
+		"with, every player's, as game.skulls names them. Server Setup's\n"
+		"SKULLS writes its choice here; once the game starts they cannot be\n"
+		"changed." },
 	{ "network.brokers_file", _config_string, "\"brokers.txt\"",
 		"HALO_NET_BROKERS_FILE", _environment_value, _platform_all,
 		"The file of the public MQTT brokers through which the machines of an\n"

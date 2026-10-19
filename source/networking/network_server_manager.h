@@ -81,6 +81,10 @@ void network_game_server_port_set_cooperative_friendly_fire(
 PLAYER COLLISIONS), kept for the levels after */
 void network_game_server_port_set_cooperative_player_collisions(
 	boolean player_collisions);
+/* port: the game's skulls (port/linux/game/skulls.c: Server Setup's
+SKULLS), kept for the games after */
+void network_game_server_port_set_skulls(
+	word skull_flags);
 boolean network_game_server_ban_player(
 	char const *text);
 /* port: the host's kick command: as the ban command, but nothing kept (no
