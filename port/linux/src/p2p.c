@@ -243,6 +243,8 @@ struct retired_session
 {
 	unsigned char secret[P2P_SHA256_SIZE];
 	unsigned long virtual_address;
+	/* the machine whose it was */
+	unsigned char identifier[P2P_IDENTIFIER_SIZE];
 };
 
 /* a TCP stand-in for one port of a peer: takes the game's connections */
@@ -783,7 +785,24 @@ static int is_virtual_address(unsigned long address)
 	return (network_long(address) & 0xFFC00000) == 0x64400000;
 }
 
-/* an address in 100.64.0.0/10 from the identifier, not one another peer has */
+/* whether address was another machine's than the identifier's, recently: the
+game may still have traffic for that machine, which a new peer at the
+address would take (and whose traffic would seem to come from it) */
+static int address_retired_by_another(unsigned long address, const unsigned char *peer_identifier)
+{
+	int index;
+
+	for (index = 0; index < MAXIMUM_RETIRED_SESSIONS; index++)
+	{
+		if (p2p.retired[index].virtual_address == address &&
+			memcmp(p2p.retired[index].identifier, peer_identifier, P2P_IDENTIFIER_SIZE))
+			return 1;
+	}
+	return 0;
+}
+
+/* an address in 100.64.0.0/10 from the identifier, not one another peer has
+or had lately (the same machine reached again has its own back) */
 static unsigned long virtual_address_for(const unsigned char *peer_identifier)
 {
 	unsigned char digest[P2P_SHA256_SIZE];
@@ -796,7 +815,8 @@ static unsigned long virtual_address_for(const unsigned char *peer_identifier)
 		unsigned long address = 0x64400000 | (value & 0x3FFFFF);
 
 		/* no .0 or .255, which look like network and broadcast addresses */
-		if ((address & 255) != 0 && (address & 255) != 255 && !find_peer_by_address(network_long(address)))
+		if ((address & 255) != 0 && (address & 255) != 255 && !find_peer_by_address(network_long(address)) &&
+			!address_retired_by_another(network_long(address), peer_identifier))
 			return network_long(address);
 		value++;
 	}
@@ -940,6 +960,7 @@ static void drop_peer(struct peer *peer, const char *reason)
 	again */
 	memcpy(retired->secret, peer->secret, P2P_SHA256_SIZE);
 	retired->virtual_address = peer->virtual_address;
+	memcpy(retired->identifier, peer->identifier, P2P_IDENTIFIER_SIZE);
 	memset(peer, 0, sizeof(*peer));
 	/* still joining: a new request, with a nonce of its own (the host
 	makes no second session from one request, which anyone who saw it could
@@ -2441,6 +2462,11 @@ static int parse_invite(const char *text, unsigned char *host_hash, unsigned cha
 	return 1;
 }
 
+/* the host of the public game this machine joined from the server browser
+(p2p_join_listing), till another invite is joined: its identifier */
+static unsigned char listed_host[P2P_IDENTIFIER_SIZE];
+static int listed_host_known;
+
 /* under p2p_lock: parse_invite's result */
 static int join_invite(const char *text)
 {
@@ -2453,6 +2479,8 @@ static int join_invite(const char *text)
 			"cannot join");
 	if (parsed <= 0)
 		return parsed;
+	/* (any invite's game is no listed one, unless p2p_join_listing says) */
+	listed_host_known = 0;
 	p2p_identifier_from_hash(hash, host);
 	if (!memcmp(host, identifier, P2P_IDENTIFIER_SIZE))
 		return 1;
@@ -2483,6 +2511,37 @@ int p2p_join_invite(const char *text)
 	if (result > 0 && !p2p.running)
 		platform_log("Internet play is off (network.online in config.toml): the invite is ignored");
 	return result > 0;
+}
+
+int p2p_join_listing(const struct p2p_listing *listing)
+{
+	unsigned char hash[P2P_KEY_HASH_SIZE], token[P2P_TOKEN_SIZE];
+
+	if (!p2p_join_invite(listing->invite))
+		return 0;
+	/* (its host as the invite names it, as the tunnel knows its peers) */
+	pthread_mutex_lock(&p2p_lock);
+	if (parse_invite(listing->invite, hash, token) > 0)
+	{
+		p2p_identifier_from_hash(hash, listed_host);
+		listed_host_known = 1;
+	}
+	pthread_mutex_unlock(&p2p_lock);
+	return 1;
+}
+
+int p2p_joined_listed_host(void)
+{
+	struct peer *peer;
+	int reached;
+
+	if (!p2p.running)
+		return 0;
+	pthread_mutex_lock(&p2p_lock);
+	peer = listed_host_known ? find_peer(listed_host) : NULL;
+	reached = peer && peer->connected;
+	pthread_mutex_unlock(&p2p_lock);
+	return reached;
 }
 
 void p2p_invite_received(const char *text)

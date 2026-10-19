@@ -599,14 +599,14 @@ void scenario_tags_unload(
 		hud_hires_tags_unloaded();
 	}
 	sound_cache_close();
-	/* port: the sounds of tag files go, after the sound cache that held them
-	(port/linux/game/loose_sounds.c) */
-	{
-		extern void loose_sounds_tags_unloaded(void);
-
-		loose_sounds_tags_unloaded();
-	}
 	texture_cache_close();
+	/* port: the mods' tags go, after the sound and texture caches that held
+	their sounds and bitmaps (port/linux/game/mods.c) */
+	{
+		extern void mods_tags_unloaded(void);
+
+		mods_tags_unloaded();
+	}
 	/* port: the menus' tags go, and the map's own table comes back
 	(port/linux/game/menu_tags.c): after the texture cache, which writes to
 	the bitmaps it has loaded as it closes, theirs among them */
@@ -1046,13 +1046,14 @@ void cache_files_show_multiplayer_unavailable(
 
 /* port: the version of the map a network game is on, which the host sends
 in its game record (network_game_map's version, which the Xbox's left 0):
-a Custom Edition map's header checksum, which differs between versions of
-it. 0, which a client checks nothing for, for the game's own maps, whose
-builds of other regions play together. */
+a Custom Edition map's hash's first 32 bits (port/linux/game/map_share.h),
+which differ between versions of it, a client playing its file of that
+version whatever its name. 0, which a client checks nothing for, for the
+game's own maps, whose builds of other regions play together. */
 unsigned long cache_files_map_version(
 	char const *map_name)
 {
-	return custom_edition_level_name(map_name) ? custom_edition_map_checksum(map_name) : 0;
+	return custom_edition_level_name(map_name) ? custom_edition_map_version(map_name) : 0;
 }
 
 /* port: whether this machine has the map a network game is on (a client
@@ -1206,11 +1207,11 @@ long scenario_tags_load(
 
 				menu_tags_loaded(cache_file_globals.header.name);
 			}
-			/* (and the sounds of tag files, as below) */
+			/* (and the mods' tags, as below) */
 			{
-				extern void loose_sounds_tags_loaded(void);
+				extern void mods_tags_loaded(char const *map_name);
 
-				loose_sounds_tags_loaded();
+				mods_tags_loaded(stripped_scenario_name);
 			}
 			result = cache_file_globals.tag_header->scenario_tag_index;
 		}
@@ -1314,12 +1315,14 @@ long scenario_tags_load(
 
 				hud_hires_tags_loaded();
 			}
-			/* port: the sounds of tag files played over the map's
-			(audio.loose_sounds: port/linux/game/loose_sounds.c) */
+			/* port: the mods' sounds, bitmaps, text and models played over
+			the map's, last, over the menus' tags too, and with the high-res
+			HUD standing for the map's bitmaps, not a mod's (the main menu's
+			Mods: port/linux/game/mods.c) */
 			{
-				extern void loose_sounds_tags_loaded(void);
+				extern void mods_tags_loaded(char const *map_name);
 
-				loose_sounds_tags_loaded();
+				mods_tags_loaded(stripped_scenario_name);
 			}
 			result = cache_file_globals.tag_header->scenario_tag_index;
 		}
