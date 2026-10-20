@@ -1202,7 +1202,7 @@ while it plays.
 | Fog | No motion tracker. |
 | Malfunction | For each life (a spawn, a respawn or a checkpoint loaded), one part of the HUD is not drawn: the crosshair, the shields, the health, the motion tracker or the ammunition. |
 | Recession | Each shot of a player's weapon spends twice its rounds, or twice its battery. |
-| Black Eye | The players' shields do not recharge. Each melee hit on a living enemy gives back a third of the shield. |
+| Black Eye | The players' shields do not recharge. Each melee hit on a living enemy fills the shield again. |
 | Eye Patch | No aim assist: no autoaim, no slowdown of the view over a target and no magnetism of the shots. |
 | Piñata | An enemy that a player hits with a melee attack drops a live plasma grenade. |
 | Boom | Explosions reach twice as far and push twice as hard. |

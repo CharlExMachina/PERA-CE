@@ -78,8 +78,8 @@ void damage_port_shield_restore(long object_index, real fraction);
 /* ---------- constants */
 
 /* Black Eye: the part of a full shield each melee blow on an enemy gives
-back */
-#define BLACK_EYE_SHIELD_PER_BLOW (1.0f / 3.0f)
+back: all of it */
+#define BLACK_EYE_SHIELD_PER_BLOW 1.0f
 /* Piñata: how the grenade leaves the unit struck, in world units a tick:
 up, and out to a side */
 #define PINATA_GRENADE_UP_SPEED 0.08f
@@ -120,8 +120,7 @@ static struct skull_definition const skull_definitions[NUMBER_OF_SKULLS] =
 	{ "RECESSION", "recession",
 		"Every shot spends twice the ammunition, or twice the battery." },
 	{ "BLACK EYE", "black_eye",
-		"Your shields never recharge by themselves. Each melee blow you land on an enemy gives back a third "
-		"of them." },
+		"Your shields never recharge by themselves. Each melee blow you land on an enemy fills them again." },
 	{ "EYE PATCH", "eye_patch",
 		"No aim assist: no autoaim, no slowing over a target and no bending of shots towards it." },
 	{ "PINATA", "pinata",
