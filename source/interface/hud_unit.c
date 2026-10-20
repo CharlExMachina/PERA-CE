@@ -87,6 +87,7 @@ symbols in this file:
 #include "units/unit_definitions.h"
 #include "units/units.h"
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
+#include "spectator.h" /* port: port/linux/game/spectator.c */
 #include "skulls.h" /* port: port/linux/game/skulls.c */
 
 /* ---------- constants */
@@ -515,10 +516,11 @@ static void hud_update_unit_local_player(
 
 	csmemset(stack_buffer, 0x62, sizeof(stack_buffer));
 
-	if (local_player_get_player_index(local_player_index) != NONE)
+	/* port: the view's player's (a spectator's, the player it watches in
+	first person: port/linux/game/spectator.c) */
+	if (local_player_get_view_player_index(local_player_index) != NONE)
 	{
-		long unit_index = player_get(
-			local_player_get_player_index(local_player_index))->unit_index;
+		long unit_index = local_player_get_view_unit_index(local_player_index);
 
 		if (unit_index != NONE)
 		{
@@ -621,15 +623,9 @@ void hud_render_damage_indicators(
 	if (local_player_index == NONE)
 		return;
 
-	if (local_player_get_player_index(local_player_index) == NONE)
-	{
-		unit_index = NONE;
-	}
-	else
-	{
-		unit_index = player_get(
-			local_player_get_player_index(local_player_index))->unit_index;
-	}
+	/* port: the view's player's (a spectator's, the player it watches in
+	first person: port/linux/game/spectator.c) */
+	unit_index = local_player_get_view_unit_index(local_player_index);
 
 	if (unit_try_and_get(unit_index))
 	{

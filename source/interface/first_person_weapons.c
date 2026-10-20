@@ -125,6 +125,7 @@ symbols in this file:
 #include "sound/sound_manager.h"
 #include "units/units.h"
 #include "view_fov.h" /* port: port/linux/game/view_fov.c */
+#include "spectator.h" /* port: port/linux/game/spectator.c */
 #include "shaders/shader_definitions.h" /* port: (the shield's flare on the arms) */
 #include "shaders/shaders.h"
 /* port: port/linux/game/shield_color.c */
@@ -481,10 +482,11 @@ void first_person_weapon_draw(
 	{
 		struct first_person_weapon *first_person_weapon= first_person_weapon_get(render.local_player_index);
 
-		if (local_player_get_player_index(render.local_player_index)!=NONE)
+		/* port: the view's player's (a spectator's, the player it watches in
+		first person: port/linux/game/spectator.c), here and below */
+		if (local_player_get_view_player_index(render.local_player_index)!=NONE)
 		{
-			long unit_index= player_get(
-				local_player_get_player_index(render.local_player_index))->unit_index;
+			long unit_index= local_player_get_view_unit_index(render.local_player_index);
 
 			if (unit_index!=NONE &&
 				first_person_weapon->visible &&
@@ -655,7 +657,7 @@ void first_person_weapon_render_update(
 			first_person_weapon->weapon_index!=NONE)
 		{
 			boolean visible= director_get_perspective(render.local_player_index)==_director_perspective_first_person &&
-				player_control_get_zoom_level(render.local_player_index)==NONE;
+				local_player_get_view_zoom_level(render.local_player_index)==NONE;
 
 			first_person_weapon_set_visibility(render.local_player_index, visible);
 			if (first_person_weapon->visible)
@@ -834,7 +836,8 @@ void first_person_weapons_update(
 
 	for (local_player_index=0; local_player_index<MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
 	{
-		long player_index= local_player_get_player_index(local_player_index);
+		/* port: the view's player's */
+		long player_index= local_player_get_view_player_index(local_player_index);
 
 		if (player_index!=NONE)
 		{
@@ -2057,7 +2060,7 @@ static void first_person_weapon_update(
 		}
 
 		if (player_control_get_autoaim_level(local_player_index)!=0.0f ||
-			player_control_get_zoom_level(local_player_index)!=NONE ||
+			local_player_get_view_zoom_level(local_player_index)!=NONE || /* port: the view's */
 			first_person_weapon->firing_push_back!=0.0f ||
 			first_person_weapon->position.i!=0.0f ||
 			first_person_weapon->position.j!=0.0f ||
@@ -2378,7 +2381,8 @@ static short first_person_weapon_index_from_weapon_index(
 
 	for (local_player_index=0; local_player_index<MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
 	{
-		long player_index= local_player_get_player_index(local_player_index);
+		/* port: the view's player's */
+		long player_index= local_player_get_view_player_index(local_player_index);
 
 		if (player_index!=NONE)
 		{
@@ -2407,7 +2411,8 @@ static short first_person_weapon_index_from_unit_index(
 
 	for (local_player_index=0; local_player_index<MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
 	{
-		long player_index= local_player_get_player_index(local_player_index);
+		/* port: the view's player's */
+		long player_index= local_player_get_view_player_index(local_player_index);
 
 		if (player_index!=NONE && player_get(player_index)->unit_index==unit_index)
 		{

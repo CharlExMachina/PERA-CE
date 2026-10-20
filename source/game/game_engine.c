@@ -595,6 +595,7 @@ struct network_game *network_game_server_get_game(struct network_game_server *se
 #include "units/bipeds.h"
 #include "units/units.h"
 #include "custom_edition_cache.h" /* port: port/linux/game/custom_edition_cache.c */
+#include "spectator.h" /* port: port/linux/game/spectator.c */
 
 /* network_game_globals.c's */
 boolean network_game_distributed_client(void);
@@ -5356,7 +5357,9 @@ boolean game_engine_draw_object_in_motion_sensor(
 		game_variant_options_get()->radar_players == _radar_players_friends &&
 		game_engine_motion_sensor_local_player != NONE)
 	{
-		long player_index = local_player_get_player_index(game_engine_motion_sensor_local_player);
+		/* (the view's player's: a spectator's, the player it watches in first
+		person) */
+		long player_index = local_player_get_view_player_index(game_engine_motion_sensor_local_player);
 		struct player_datum *viewer = player_index != NONE ? player_try_and_get(player_index) : NULL;
 
 		draw_object = viewer && object_get(unit_index)->object.owner_team_index == viewer->team_index;
@@ -5846,7 +5849,9 @@ void game_engine_render_nav_points(
 		global_variant.universal_variant.goal_radar == _radar_nav_point &&
 		local_player_index != NONE)
 	{
-		long player_index = local_player_get_player_index(local_player_index);
+		/* port: the view's player's (a spectator's, the player it watches in
+		first person: port/linux/game/spectator.c) */
+		long player_index = local_player_get_view_player_index(local_player_index);
 
 		if (player_index != NONE)
 		{

@@ -110,6 +110,7 @@ symbols in this file:
 #include "coop_spectate.h" /* port: port/linux/game/coop_spectate.c */
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
+#include "spectator.h" /* port: port/linux/game/spectator.c */
 #include "text/font_group.h"
 #include "text/text_group.h"
 #include "units/unit_definitions.h"
@@ -962,7 +963,9 @@ static void hud_draw_friendly_indicator(
 static void hud_draw_players(
 	void)
 {
-	long player_index = local_player_get_player_index(render.local_player_index);
+	/* port: the view's player's teammates (a spectator's, the player it
+	watches in first person: port/linux/game/spectator.c) */
+	long player_index = local_player_get_view_player_index(render.local_player_index);
 	long team_index = player_get(player_index)->team_index;
 
 	if (player_index != NONE)
@@ -1074,8 +1077,8 @@ static boolean hud_player_name_in_sight(
 	long unit_index,
 	real_point3d const *head_position)
 {
-	long player_index = local_player_get_player_index(render.local_player_index);
-	long ignore_index = player_index == NONE ? NONE : player_get(player_index)->unit_index;
+	/* port: the view's player's */
+	long ignore_index = local_player_get_view_unit_index(render.local_player_index);
 	struct collision_result result;
 	real_vector3d vector;
 	boolean in_sight = TRUE;
@@ -1227,7 +1230,8 @@ static void hud_draw_player_names(
 	void)
 {
 	short setting = hud_player_names_setting();
-	long player_index = local_player_get_player_index(render.local_player_index);
+	/* port: the view's player's */
+	long player_index = local_player_get_view_player_index(render.local_player_index);
 	struct data_iterator iterator;
 	struct player_datum *player;
 	boolean indicators;
@@ -1408,7 +1412,9 @@ void hud_draw_screen(
 	rasterizer_hud_begin();
 	if (player_index != NONE)
 	{
-		struct player_datum *player = player_get(player_index);
+		/* port: the view's player (a spectator's, the player it watches in
+		first person, whose HUD it sees: port/linux/game/spectator.c) */
+		struct player_datum *player = local_player_get_view_player(render.local_player_index);
 
 		if ((!game_engine_running() || game_engine_display_team_indicators()) &&
 			!cinematic_in_progress())

@@ -141,6 +141,7 @@ symbols in this file:
 #include "sound/sound_definitions.h"
 #include "units/bipeds.h"
 #include "units/units.h"
+#include "spectator.h" /* port: port/linux/game/spectator.c */
 
 /* ---------- constants */
 
@@ -978,9 +979,11 @@ boolean projectile_update(
 
 				for (local_player_index = 0; local_player_index < MAXIMUM_LOCAL_PLAYERS; local_player_index++)
 				{
-					if (local_player_get_player_index(local_player_index) != NONE)
+					/* port: the view's player's (a spectator's, the player it
+					watches in first person: port/linux/game/spectator.c) */
+					if (local_player_get_view_player_index(local_player_index) != NONE)
 					{
-						long unit_index = player_get(local_player_get_player_index(local_player_index))->unit_index;
+						long unit_index = local_player_get_view_unit_index(local_player_index);
 
 						if (unit_index != NONE && unit_index != ignore_object_index)
 						{

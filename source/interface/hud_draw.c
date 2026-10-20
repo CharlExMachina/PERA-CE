@@ -107,6 +107,7 @@ symbols in this file:
 #include "cache_file_formats.h" /* port: port/linux/game/cache_file_formats.c */
 #include "custom_edition_cache.h"
 #include "view_fov.h" /* port: port/linux/game/view_fov.c */
+#include "spectator.h" /* port: port/linux/game/spectator.c */
 
 /* ---------- constants */
 
@@ -650,7 +651,9 @@ static void hud_draw_multitexture_overlay(
 	geometry_offset.j = 0.0f;
 	cos_theta = (real)cos(theta);
 
-	player = player_get(local_player_get_player_index(local_player_index));
+	/* port: the view's player (a spectator's, the player it watches in first
+	person: port/linux/game/spectator.c), here and below */
+	player = local_player_get_view_player(local_player_index);
 	hud_draw_multitexture_overlay_get_current_weapon_definition(
 		player,
 		&weapon_state);
@@ -803,9 +806,7 @@ static void hud_draw_multitexture_overlay(
 		{
 		case _hud_multitexture_overlay_effector_source_player_pitch:
 			{
-				long unit_index = local_player_get_player_index(local_player_index) == NONE ?
-					NONE :
-					player_get(local_player_get_player_index(local_player_index))->unit_index;
+				long unit_index = local_player_get_view_unit_index(local_player_index);
 				real_vector3d direction;
 				real_euler_angles2d angles;
 
@@ -837,7 +838,7 @@ static void hud_draw_multitexture_overlay(
 			break;
 
 		case _hud_multitexture_overlay_effector_source_zoom_level:
-			source_value = (real)player_control_get_zoom_level(local_player_index);
+			source_value = (real)local_player_get_view_zoom_level(local_player_index);
 			break;
 		}
 

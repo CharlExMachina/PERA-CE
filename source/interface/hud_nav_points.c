@@ -124,6 +124,7 @@ symbols in this file:
 #include "scenario/scenario_definitions.h"
 #include "units/units.h"
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
+#include "spectator.h" /* port: port/linux/game/spectator.c */
 
 /* ---------- constants */
 
@@ -650,9 +651,9 @@ short hud_get_nav_point_render_type(
 	match_assert("c:\\halo\\SOURCE\\interface\\hud_nav_points.c", 510, global_current_collision_user_depth < MAXIMUM_COLLISION_USER_STACK_DEPTH);
 	global_current_collision_users[global_current_collision_user_depth++] = 20;
 
-	player_unit_index = local_player_get_player_index(local_player_index)==NONE ?
-		NONE :
-		player_get(local_player_get_player_index(local_player_index))->unit_index;
+	/* port: the view's player's (a spectator's, the player it watches in first
+	person: port/linux/game/spectator.c), here and below */
+	player_unit_index = local_player_get_view_unit_index(local_player_index);
 
 	vector.i = position->x-head->x;
 	vector.j = position->y-head->y;
@@ -698,7 +699,7 @@ void custom_render_nav_point(
 	{
 		real_point3d cam_pos;
 
-		unit_get_camera_position(local_player_get_player_index(local_player_index) == NONE ? NONE : player_get(local_player_get_player_index(local_player_index))->unit_index, &cam_pos);
+		unit_get_camera_position(local_player_get_view_unit_index(local_player_index), &cam_pos);
 		distance = distance3d(&cam_pos, position_pointer);
 	}
 
@@ -811,9 +812,7 @@ void hud_render_nav_points(
 	short local_player_index)
 {
 	if (local_player_index!=NONE &&
-		(local_player_get_player_index(local_player_index)==NONE ?
-			NONE :
-			player_get(local_player_get_player_index(local_player_index))->unit_index)!=NONE &&
+		local_player_get_view_unit_index(local_player_index)!=NONE &&
 		hud_globals->waypoint.arrow_bitmap.index!=NONE)
 	{
 		struct hud_nav_point_player_datum *datum = get_nav_point_datum(local_player_index);
@@ -894,9 +893,7 @@ static void hud_update_nav_point_local_player(
 	csmemset(stack_buffer, 0x62, sizeof(stack_buffer));
 
 	datum = get_nav_point_datum(local_player_index);
-	unit_index = local_player_get_player_index(local_player_index)==NONE ?
-		NONE :
-		player_get(local_player_get_player_index(local_player_index))->unit_index;
+	unit_index = local_player_get_view_unit_index(local_player_index);
 
 	for (nav_point_index = 0; nav_point_index<MAXIMUM_NUMBER_OF_NAV_POINTS; nav_point_index++)
 	{

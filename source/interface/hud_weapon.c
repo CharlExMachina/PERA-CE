@@ -76,6 +76,7 @@ symbols in this file:
 #include "tag_files/tag_groups.h"
 #include "units/unit_definitions.h"
 #include "units/units.h"
+#include "spectator.h" /* port: port/linux/game/spectator.c */
 
 #include <math.h>
 #include <string.h>
@@ -706,7 +707,9 @@ static void hud_update_weapon_local_player(
 		stack_buffer,
 		0x62,
 		sizeof(stack_buffer));
-	player = player_get(local_player_get_player_index(local_player_index));
+	/* port: the view's player (a spectator's, the player it watches in first
+	person: port/linux/game/spectator.c) */
+	player = local_player_get_view_player(local_player_index);
 	unit_index = player->unit_index;
 	unit = unit_try_and_get(unit_index);
 	if (!unit)
@@ -781,8 +784,9 @@ static void hud_update_weapon_local_player(
 					break;
 
 				case _crosshair_state_zoom:
-					result = player_control_get_zoom_level(player->local_player_index) != NONE ?
-						player_control_get_zoom_level(player->local_player_index) + 2 :
+					/* port: the view's zoom */
+					result = local_player_get_view_zoom_level(player->local_player_index) != NONE ?
+						local_player_get_view_zoom_level(player->local_player_index) + 2 :
 						1;
 					break;
 
@@ -1929,9 +1933,9 @@ void hud_update_weapon(
 		local_player_index != NONE;
 		local_player_index = local_player_get_next(local_player_index))
 	{
-		long unit_index = local_player_get_player_index(local_player_index) == NONE ?
-			NONE :
-			player_get(local_player_get_player_index(local_player_index))->unit_index;
+		/* port: the view's player's (a spectator's, the player it watches in
+		first person: port/linux/game/spectator.c) */
+		long unit_index = local_player_get_view_unit_index(local_player_index);
 
 		if (unit_index != NONE)
 		{

@@ -318,6 +318,13 @@ director_perspective director_get_perspective(
 	{
 		camera->perspective = 2;
 	}
+	/* port: a multiplayer spectator watching a player in first person sees
+	as they do (port/linux/game/spectator.c) */
+	else if (camera->camera_proc == (director_camera_update_proc)spectator_camera_update &&
+		spectator_perspective(local_player_index) != NONE)
+	{
+		camera->perspective = spectator_perspective(local_player_index);
+	}
 	else
 	{
 		camera->perspective = 3;

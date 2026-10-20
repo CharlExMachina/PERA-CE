@@ -112,6 +112,7 @@ symbols in this file:
 #include "saved games/game_state.h"
 #include "rasterizer/rasterizer_console_vars.h"
 #include "rasterizer/rasterizer_model_types.h"
+#include "spectator.h" /* port: port/linux/game/spectator.c */
 
 /* ---------- constants */
 
@@ -405,9 +406,9 @@ void render_object_shadows(
 static boolean object_is_first_person_camera(
 	long object_index)
 {
-	long unit_index = (local_player_get_player_index(render.local_player_index) == NONE)
-		? NONE
-		: player_get(local_player_get_player_index(render.local_player_index))->unit_index;
+	/* port: the view's player's (a spectator's, the player it watches in first
+	person: port/linux/game/spectator.c) */
+	long unit_index = local_player_get_view_unit_index(render.local_player_index);
 
 	return (unit_index == object_index &&
 		director_get_perspective(render.local_player_index) ==

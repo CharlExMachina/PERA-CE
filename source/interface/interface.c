@@ -449,7 +449,9 @@ static long interface_get_weapon_hud_index(
 
 	if (player_index != NONE)
 	{
-		struct player_datum *player = player_get(player_index);
+		/* port: the view's player (a spectator's, the player it watches in
+		first person: port/linux/game/spectator.c) */
+		struct player_datum *player = local_player_get_view_player(render.local_player_index);
 		director_perspective perspective = director_get_perspective(render.local_player_index);
 
 		if (hud_scripted_globals &&
@@ -586,7 +588,8 @@ void interface_draw_screen(
 				&hud_definition->screen_effects,
 				0,
 				struct hud_screen_effect_definition);
-			boolean zoomed = player_control_get_zoom_level(render.local_player_index) != NONE;
+			/* port: the view's zoom */
+			boolean zoomed = local_player_get_view_zoom_level(render.local_player_index) != NONE;
 			struct rasterizer_cinematic_screen_effect_parameters parameters;
 
 			csmemset(&parameters, 0, sizeof(parameters));

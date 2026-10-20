@@ -69,6 +69,7 @@ static long distributed_living_unit(struct player_datum *player) { return player
 static void *object_try_and_get_and_verify_type(long index, unsigned long mask) { return unit_try_and_get(index); }
 static boolean distributed_damage_is_recoil(struct damage_data const *damage, long index) { return FALSE; }
 static void damage_replay_player_effect(long index, struct damage_data *damage, real amount) { }
+static boolean spectator_first_person_watched(long index) { return FALSE; }
 static boolean network_objects_client_has(long index) { return TRUE; }
 static boolean static_target(long index) { return FALSE; }
 static void distributed_damage_from_data(struct damage_data const *damage, struct damage_data *result) { *result = *damage; }
