@@ -707,28 +707,19 @@ STRING_OVERRIDES.update({
 # CUSTOM MULTIPLAYER maps (_map_kind)
 MAP_KIND_CHOOSER = "main_menu/new_select/list_item_0_map_kind"
 
-# the campaign's SKULLS screen, after the difficulty (_skulls)
+# the campaign's SKULLS screen, opened by the difficulty's SKULLS button
+# (_skulls), whose choice the difficulty's items and OK play the level with
+# (menu_functions.c's difficulty_start)
 SKULLS = "main_menu/skulls"
 SKULL_ROWS = 11
 DIFFICULTY = "main_menu/difficulty_select"
-# (the difficulty's items and OK choose it, then open the SKULLS screen,
-# whose START GAME plays the level: menu_functions.c's difficulty_choose)
-DIFFICULTY_ITEM_HANDLERS = [
-    '<on event="left_mouse" run="mouse emit accept event"/>',
-    f'<on event="a" run="difficulty item select" open="{SKULLS}/skulls_screen"/>',
-    f'<on event="start" run="difficulty item select" open="{SKULLS}/skulls_screen"/>',
-]
 
 # changes to the PC version's widgets (by our names): attributes set, all
 # their handlers replaced, children added, game data inputs added
 WIDGET_PATCHES = {
-    **{f"{DIFFICULTY}/{level}_difficulty_item": {"handlers": DIFFICULTY_ITEM_HANDLERS}
-       for level in ("kindergarten", "normal", "hard", "impossible")},
-    f"{DIFFICULTY}/difficulty_select_button_ok": {"handlers": [
-        f'<on event="a" run="set difficulty" open="{SKULLS}/skulls_screen"/>',
-        f'<on event="start" run="set difficulty" open="{SKULLS}/skulls_screen"/>',
-        '<on event="left_mouse" run="mouse emit accept event"/>',
-    ]},
+    # (the difficulty's bar: SKULLS, OK and BACK, as Server Setup's)
+    f"{DIFFICULTY}/difficulty_select_button_bar": {"insert_before": {f"{DIFFICULTY}/difficulty_select_button_ok": [
+        f'<child widget="{SKULLS}/button_skulls" x="250" y="1"/>']}},
     # The host returns here after a round with no menu history. Back must
     # reopen the main menu when it closes the last screen, as the lobby does.
     f"{MT}/connected/connected_map_select_wrapper": {"set": {
@@ -1617,7 +1608,10 @@ def multiplayer_files() -> dict:
                                           "(tools/port_settings.py) -->", head[2]] + _mods() + ["</menus>", ""],
         SKULLS.replace("/", ".") + ".xml": [head[0], "<!-- The port's SKULLS screen, in the PC version's style "
                                             "(tools/port_settings.py) -->", head[2]] +
-        _header(f"{SKULLS}/header_skulls", f"{SKULLS}/header_skulls") + _skulls(SKULLS) + ["</menus>", ""],
+        _header(f"{SKULLS}/header_skulls", f"{SKULLS}/header_skulls") + _skulls(SKULLS) +
+        _text_button(f"{SKULLS}/button_skulls", "SKULLS", [f'<on event="a" open="{SKULLS}/skulls_screen"/>',
+                                                           f'<on event="start" open="{SKULLS}/skulls_screen"/>']) +
+        ["</menus>", ""],
     }
 
 
@@ -1787,8 +1781,8 @@ def _mods() -> list:
 
 
 # ---------- the skulls (port/linux/game/skulls.c): the campaign's SKULLS
-# screen, after New Game's difficulty, and Server Setup's, the host's for a
-# network game
+# screen, opened by New Game's difficulty's SKULLS, and Server Setup's, the
+# host's for a network game
 
 
 def _skulls(base: str, network: bool = False) -> list:
@@ -1796,9 +1790,9 @@ def _skulls(base: str, network: bool = False) -> list:
     details' texts, which menu_functions.c measures and wraps): on the left
     a row for each skull, its name and ON or OFF (A, or left and right, turns
     it on or off; SKULL_ROWS of them, scrolling over the rest); on the right,
-    in the lobby's frame, the skull chosen and what it does. The campaign's
-    START GAME plays the level (game.skulls keeps the choice); Server
-    Setup's OK keeps them for the game (network.skulls); ALL OFF turns every
+    in the lobby's frame, the skull chosen, on or off, and what it does. OK
+    keeps them for the game started after (the campaign's: game.skulls;
+    Server Setup's: network.skulls), CANCEL forgets them; ALL OFF turns every
     one off"""
     lines = _widget(f"{base}/skulls_screen", [("width", 640), ("height", 480),
                                               ("flags", "pass_unhandled_to_focused_child"),
@@ -1829,13 +1823,9 @@ def _skulls(base: str, network: bool = False) -> list:
                       ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
                      [f'<child widget="{base}/button_clear" y="1"/>',
                       f'<child widget="{base}/button_ok" x="380" y="1"/>',
-                      f'<child widget="{"common_button_cancel" if network else "common_button_back"}" x="510" y="1"/>'])
+                      '<child widget="common_button_cancel" x="510" y="1"/>'])
     lines += _text_button(f"{base}/button_clear", "ALL OFF", ['<on event="a" run="port skulls clear"/>',
                                                              '<on event="start" run="port skulls clear"/>'])
-    if network:
-        lines += _button(f"{base}/button_ok", 1, ['<on event="a" run="port skulls save" back="true"/>',
-                                                  '<on event="start" run="port skulls save" back="true"/>'])
-    else:
-        lines += _text_button(f"{base}/button_ok", "START GAME", ['<on event="a" run="port skulls start"/>',
-                                                                 '<on event="start" run="port skulls start"/>'])
+    lines += _button(f"{base}/button_ok", 1, ['<on event="a" run="port skulls save" back="true"/>',
+                                              '<on event="start" run="port skulls save" back="true"/>'])
     return lines

@@ -52,12 +52,11 @@ one of them is on */
 unsigned long skulls_active(void);
 boolean skull_active(short skull);
 
-/* a skull's name (SKULLS screen's, upper case), its config.toml key, what
-it does, and whether it is a silver skull (else a gold one) */
+/* a skull's name (SKULLS screen's, upper case), its config.toml key and
+what it does */
 char const *skull_name(short skull);
 char const *skull_key(short skull);
 char const *skull_description(short skull);
-boolean skull_silver(short skull);
 /* config.toml's list of skulls (their keys, separated by spaces) as skull
 flags, and back */
 unsigned long skulls_parse(char const *text);

@@ -383,7 +383,7 @@ the setting for one start of the game. It has priority over the file.
 | `game.console_log` | `"important"` | `HALO_CONSOLE_LOG` | What the console shows on the screen. `"important"`: bans, players that the host drops for cheating, the reasons that the game refuses a command, and the asserts that stop the game. `"all"`: all the lines. `"none"`: only the asserts that stop the game. The output of a command always shows. `debug.txt` gets all the lines. |
 | `game.language` | `""` | `HALO_LANGUAGE` | The language of the menus: `ja`, `de`, `fr`, `es` or `it`. Empty: English. |
 | `game.enhanced_animations` | `true` | `HALO_ENHANCED_ANIMATIONS` | `true`: the player bipeds' grenade throws keep their legs moving, blended by speed and direction (crouched throws stay crouched, throws in the air use the jump's legs), Warthog and Scorpion riders stay seated to throw and let go of the grips to throw and reload, and a player turns with the aim while throwing, as while meleeing. `false`: the original animations, which freeze the legs during a throw and stand a rider up. Only in config.toml, not in the menus. |
-| `game.skulls` | `""` | `HALO_SKULLS` | The skulls that the campaign's SKULLS screen last had on, which it shows on again: their names, separated by spaces (`iron mythic boom`). Refer to "Skulls". |
+| `game.skulls` | `""` | `HALO_SKULLS` | The skulls that the campaign's SKULLS screen (New Game's difficulty's SKULLS) last kept, which New Game plays with and the screen shows on again: their names, separated by spaces (`iron mythic boom`). Refer to "Skulls". |
 | `paths.data` | `""` | `HALO_DATA_ROOT` | The data root. Refer to "Start the game". |
 | `paths.saves` | `""` | `HALO_SAVE_ROOT` | The save root. Refer to "Files and folders". |
 | `network.address` | `""` | `HALO_NET_ADDRESS` | The IPv4 address of this machine for system link. Refer to "Play on one computer". |
@@ -1181,12 +1181,13 @@ Skulls are twelve of Halo: Combat Evolved Anniversary's changes to how the
 game plays. They are chosen before a game starts and cannot be changed
 while it plays.
 
-- The campaign: New Game's difficulty opens the SKULLS screen, which turns
-  each skull on or off; its START GAME plays the level (with split screen
-  co-op, for both players). `game.skulls` keeps the choice for the next
-  time. A level that follows plays with the same skulls, and a checkpoint or
-  a saved game keeps them: Continue and Load Game play with the saved game's
-  skulls.
+- The campaign: New Game's difficulty has a SKULLS button, beside OK and
+  BACK, which opens the SKULLS screen: it turns each skull on or off, and its
+  OK keeps them. Choosing the difficulty then plays the level with them (with
+  split screen co-op, for both players). `game.skulls` keeps the choice for
+  the next time. A level that follows plays with the same skulls, and a
+  checkpoint or a saved game keeps them: Continue and Load Game play with
+  the saved game's skulls.
 - A network game: the host chooses on Server Setup's SKULLS, before START
   GAME (`network.skulls`). All the machines play by the host's skulls, and
   the lobby shows how many are on.

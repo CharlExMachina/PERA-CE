@@ -320,12 +320,11 @@ static const struct config_setting config_settings[] =
 		"as the game's own maps' are before they run; false refuses them\n"
 		"(docs/custom_edition_caches.md)." },
 	{ "game.skulls", _config_string, "\"\"", "HALO_SKULLS", _environment_value, _platform_all,
-		"The skulls the campaign's SKULLS screen (after New Game's difficulty)\n"
-		"last had on, which it shows on again: their names separated by\n"
+		"The skulls the campaign's SKULLS screen (New Game's difficulty's\n"
+		"SKULLS) last kept, which it shows on again: their names separated by\n"
 		"spaces, of iron, mythic, foreign, famine, bandanna, fog, malfunction,\n"
-		"recession, black_eye, eye_patch, pinata and boom. A level is played\n"
-		"with those its screen started it with; Continue and Load Game keep the\n"
-		"saved game's." },
+		"recession, black_eye, eye_patch, pinata and boom. New Game plays a\n"
+		"level with them; Continue and Load Game keep the saved game's." },
 	{ "display.viewmodel_shield", _config_boolean, "false", "HALO_VIEWMODEL_SHIELD", _environment_value, _platform_all,
 		"The energy shield's flare on the first-person arms too, as on the body\n"
 		"(the stock game draws it on the body only)." },

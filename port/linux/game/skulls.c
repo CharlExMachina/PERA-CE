@@ -5,8 +5,9 @@ The skulls: twelve of Halo: Combat Evolved Anniversary's changes to how the
 game plays, each on or off for a whole game.
 
 - They are chosen before a game starts, and cannot be changed in it: a
-  campaign level's on the SKULLS screen after its difficulty (main.c's
-  main_set_skulls; config.toml's game.skulls keeps the screen's choice), a
+  campaign level's on the SKULLS screen of its difficulty's SKULLS
+  (config.toml's game.skulls keeps the screen's choice, which the
+  difficulty gives main.c's main_set_skulls), a
   network game's by its host on Server Setup's SKULLS (network.skulls),
   which every machine takes from the host's game settings (network_game's
   skull_flags).
@@ -90,7 +91,6 @@ struct skull_definition
 {
 	char const *name;
 	char const *key;
-	boolean silver;
 	char const *description;
 };
 
@@ -98,35 +98,35 @@ struct skull_definition
 
 static struct skull_definition const skull_definitions[NUMBER_OF_SKULLS] =
 {
-	{ "IRON", "iron", FALSE,
+	{ "IRON", "iron",
 		"Alone, dying starts the level over from its beginning. In co-op, any player's death sends every "
 		"player back to the last checkpoint." },
-	{ "MYTHIC", "mythic", FALSE,
+	{ "MYTHIC", "mythic",
 		"Enemies have twice the health and twice the shields: every fight takes twice the ammunition." },
-	{ "FOREIGN", "foreign", FALSE,
+	{ "FOREIGN", "foreign",
 		"You can neither pick up nor fire the Covenant's weapons: the plasma pistol and rifle, the needler "
 		"and the fuel rod gun." },
-	{ "FAMINE", "famine", FALSE,
+	{ "FAMINE", "famine",
 		"Weapons dropped by the fallen, enemies and marines alike, hold half their ammunition. Weapons "
 		"found on racks and in crates hold all of theirs." },
-	{ "BANDANNA", "bandanna", FALSE,
+	{ "BANDANNA", "bandanna",
 		"Your reserve ammunition, batteries and grenades never run out. Magazines still need reloading, "
 		"and plasma weapons still overheat." },
-	{ "FOG", "fog", FALSE,
+	{ "FOG", "fog",
 		"No motion tracker: what is coming, you see coming." },
-	{ "MALFUNCTION", "malfunction", FALSE,
+	{ "MALFUNCTION", "malfunction",
 		"Each time you spawn, or a checkpoint is loaded, one part of your HUD is gone: the crosshair, the "
 		"shields, the health, the motion tracker or the ammunition." },
-	{ "RECESSION", "recession", FALSE,
+	{ "RECESSION", "recession",
 		"Every shot spends twice the ammunition, or twice the battery." },
-	{ "BLACK EYE", "black_eye", FALSE,
+	{ "BLACK EYE", "black_eye",
 		"Your shields never recharge by themselves. Each melee blow you land on an enemy gives back a third "
 		"of them." },
-	{ "EYE PATCH", "eye_patch", FALSE,
+	{ "EYE PATCH", "eye_patch",
 		"No aim assist: no autoaim, no slowing over a target and no bending of shots towards it." },
-	{ "PINATA", "pinata", FALSE,
+	{ "PINATA", "pinata",
 		"An enemy you strike with a melee blow drops a live plasma grenade at its feet. Stand clear." },
-	{ "BOOM", "boom", TRUE,
+	{ "BOOM", "boom",
 		"Explosions reach twice as far and throw twice as hard: grenades, rockets, fuel rods, vehicles "
 		"and plasma coils." },
 };
@@ -275,11 +275,6 @@ char const *skull_key(short skull)
 char const *skull_description(short skull)
 {
 	return VALID_INDEX(skull, NUMBER_OF_SKULLS) ? skull_definitions[skull].description : "";
-}
-
-boolean skull_silver(short skull)
-{
-	return VALID_INDEX(skull, NUMBER_OF_SKULLS) && skull_definitions[skull].silver;
 }
 
 unsigned long skulls_parse(char const *text)
