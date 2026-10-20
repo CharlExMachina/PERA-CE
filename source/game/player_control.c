@@ -212,6 +212,7 @@ symbols in this file:
 #include "real_math.h"
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
 #include "spectator.h" /* port: port/linux/game/spectator.c */
+#include "photo_mode.h" /* port: port/linux/game/photo_mode.c */
 
 /* ---------- constants */
 
@@ -446,10 +447,12 @@ void player_control_dispose_from_old_map(
 static boolean player_control_camera_control_is_active(
 	void)
 {
+	/* port: and photo mode's, whose camera turns while the game is paused
+	(port/linux/game/photo_mode.c) */
 	return (boolean)(!TEST_FLAG(
 		player_control_globals->flags,
 		_player_control_camera_control_disabled_bit) &&
-		!game_time_get_paused());
+		(!game_time_get_paused() || photo_mode_active()));
 }
 
 boolean scripted_player_control_set_camera_control(
@@ -651,6 +654,21 @@ static void handle_one_player_input(
 			"c:\\halo\\SOURCE\\game\\player_control.c",
 			0x2CF,
 			player->desired_angles.yaw);
+	}
+
+	/* port: photo mode's controls move its camera, pose the player and
+	choose its filter; the player keeps still (port/linux/game/photo_mode.c) */
+	if (photo_mode_active())
+	{
+		photo_mode_handle_input(
+			local_player_index,
+			&input.facing_delta,
+			&input.throttle,
+			input.unit_control_flags,
+			TEST_FLAG(input.player_control_flags, _player_control_rotate_weapons_bit),
+			TEST_FLAG(input.player_control_flags, _player_control_rotate_grenades_bit),
+			TEST_FLAG(input.player_control_flags, _player_control_input_zoom_bit));
+		csmemset(&input, 0, sizeof(input));
 	}
 
 	if (director_inhibited_input(local_player_index) ||
@@ -1429,8 +1447,10 @@ static void get_local_player_input_blob(
 				{
 					struct biped_datum *biped = biped_try_and_get(player->unit_index);
 
+					/* port: (and photo mode's crouch, which lowers its camera
+					however fast it flies: port/linux/game/photo_mode.c) */
 					if (biped &&
-						(controls_enable_crouch ||
+						(controls_enable_crouch || photo_mode_active() ||
 						TEST_FLAG(biped->biped.flags, _biped_airborne_bit) ||
 						magnitude_squared2d(&input->throttle) < 0.98f * 0.98f))
 					{

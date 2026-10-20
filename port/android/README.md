@@ -99,6 +99,7 @@ To install the data from a computer:
 | Mods (`docs/mods.md`) | `mods`: `adb push <mod folder> /sdcard/Android/data/com.halo.decomp/files/mods/`; the main menu's Mods orders them and turns them off |
 | Log | `debug.txt` |
 | Settings | `config.toml` |
+| Photo mode's photos (refer to "Photo mode" in [port/linux/README.md](../linux/README.md)) | `photos`: `adb pull /sdcard/Android/data/com.halo.decomp/files/photos` |
 
 To make a copy of the saved games, enter
 `adb pull /sdcard/Android/data/com.halo.decomp/files/save/u` (the profiles).

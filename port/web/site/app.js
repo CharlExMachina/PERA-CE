@@ -55,6 +55,19 @@ function download(name, blob) {
   setTimeout(() => URL.revokeObjectURL(link.href), 10000);
 }
 
+// a file of the browser's storage (a path in it, by folders) downloaded
+async function downloadStorageFile(path) {
+  try {
+    const parts = path.split('/');
+    let directory = await navigator.storage.getDirectory();
+    for (const part of parts.slice(0, -1)) directory = await directory.getDirectoryHandle(part);
+    const file = await (await directory.getFileHandle(parts[parts.length - 1])).getFile();
+    download(parts[parts.length - 1], file);
+  } catch (error) {
+    logLine(`could not offer ${path}: ${error}`);
+  }
+}
+
 async function readStorageText(name) {
   try {
     const root = await navigator.storage.getDirectory();
@@ -700,6 +713,9 @@ async function play() {
         if (kind === 3) showFatal(text);
         // (the game quits, as the player asked: the page starts again)
         if (kind === 4) location.reload();
+        // (a photo of photo mode's, saved in the browser's storage: the
+        // player's to keep)
+        if (kind === 5) downloadStorageFile(text);
       },
       // a question the game waits on (sdl_platform.c's platform_ask: the
       // mods that cannot be played together), answered with a button's index

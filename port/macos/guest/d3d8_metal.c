@@ -3533,6 +3533,40 @@ void halo_screen_anti_alias(short x0, short y0, short x1, short y1)
 	host_metal_fxaa(target->target.texture, corners);
 }
 
+/* ---------- photo mode
+
+Its filter over a window's 3D view, after the anti-aliasing (as d3d8_gl.c's),
+with its parameters from port/linux/game/photo_mode.c; and its photo, the
+back buffer read as it is presented. */
+
+int photo_mode_filter(float *parameters);
+int photo_mode_capture_wanted(void);
+void photo_mode_capture(const unsigned char *pixels, long width, long height, long pitch, int bgra);
+
+void halo_screen_photo_filter(short x0, short y0, short x1, short y1)
+{
+	struct render_target_entry *target;
+	int32_t corners[4];
+	/* (photo_mode.h's PHOTO_MODE_FILTER_UNIFORMS: its parameters, then the
+	corners) */
+	float uniforms[20];
+
+	if (!device.metal_ready || !photo_mode_filter(uniforms))
+		return;
+	target = render_target_get(&device.back_buffer);
+	if (!target)
+		return;
+	corners[0] = (int32_t)scaled_pixel(x0, target->target.scale[0]);
+	corners[1] = (int32_t)scaled_pixel(y0, target->target.scale[1]);
+	corners[2] = (int32_t)scaled_pixel(x1, target->target.scale[0]);
+	corners[3] = (int32_t)scaled_pixel(y1, target->target.scale[1]);
+	uniforms[16] = (float)corners[0];
+	uniforms[17] = (float)corners[1];
+	uniforms[18] = (float)corners[2];
+	uniforms[19] = (float)corners[3];
+	host_metal_color_filter(target->target.texture, corners, uniforms);
+}
+
 /* ---------- presentation */
 
 /* debug.screenshot_every's BMP, read back from the GPU */
@@ -3580,6 +3614,29 @@ static void write_screenshot(struct render_target_entry *target)
 		fwrite(pixels, 1, image_size, file);
 		fclose(file);
 	}
+	free(pixels);
+}
+
+/* the photo: the back buffer's pixels (blue, green, red), its rows from the
+top */
+static void write_photo(struct render_target_entry *target)
+{
+	unsigned long width = target->target.gl_width, height = target->target.gl_height;
+	unsigned char *pixels = width && height ? malloc(width * height * 4) : NULL;
+	struct halo_metal_region region;
+
+	if (!pixels)
+	{
+		photo_mode_capture(NULL, 0, 0, 0, 0);
+		return;
+	}
+	level_region(&region, 0, width, height);
+	region.bytes_per_row = (uint32_t)(width * 4);
+	region.bytes_per_image = (uint32_t)(width * height * 4);
+	if (!host_metal_texture_read(target->target.texture, &region, pixels))
+		photo_mode_capture(NULL, 0, 0, 0, 1);
+	else
+		photo_mode_capture(pixels, (long)width, (long)height, (long)width * 4, 1);
 	free(pixels);
 }
 
@@ -3663,6 +3720,8 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 				write_screenshot(back_buffer);
 			if (platform_screenshot_take_request())
 				write_key_screenshot(back_buffer);
+			if (photo_mode_capture_wanted())
+				write_photo(back_buffer);
 			platform_video_drawable_size(&window_width, &window_height);
 			/* letterboxed to the back buffer's shape */
 			width = window_width;

@@ -81,8 +81,9 @@ adds to */
 #define MULTIPLAYER_COLLECTION "ui\\shell\\multiplayer"
 /* the campaign's full screen pause screen, which pause_campaign_patch adds to */
 #define CAMPAIGN_PAUSE_SCREEN "ui\\shell\\solo_game\\pause_game\\pause_game"
-/* the tags pause_patch adds: two buttons and their texts */
-#define PAUSE_PATCH_TAGS 4
+/* the tags pause_patch and pause_campaign_patch add: up to two buttons and
+their texts each (SETTINGS, and END GAME or PHOTO MODE) */
+#define PAUSE_PATCH_TAGS 8
 /* what a frame of ui.map's is drawn as in a game map, which has not got it */
 #define BLANK_PNG "ce/port/blank__0.png"
 #define UI_WIDGET_DEFINITION_TAG 'DeLa'
@@ -364,6 +365,7 @@ static char const *const port_function_names[] =
 	"port setup options init", "port setup options save",
 	"port map list back",
 	"port pause end game",
+	"port photo mode",
 	"port coop begin", "port coop player 2 list initialize", "port coop player 2",
 	"port lobby open", "port lobby add player", "port lobby join", "port lobby leave",
 	"port lobby player list initialize", "port lobby player choose",
@@ -1536,7 +1538,9 @@ static long pause_quit_button(struct ui_widget_definition const *list, long quit
 
 /* a button like the model (its look), its own text, each of the model's
 events (its A and Start) running the function and opening the widget (if
-not NONE) */
+not NONE; or, PAUSE_BUTTON_CLOSES, closing the menus) */
+#define PAUSE_BUTTON_CLOSES (NONE - 1)
+
 static void *pause_button(struct cache_file_tag_instance *instances, struct ui_widget_definition const *model,
 	char const *name, char const *text, long function, long widget_tag)
 {
@@ -1561,6 +1565,12 @@ static void *pause_button(struct cache_file_tag_instance *instances, struct ui_w
 		handlers[handler].flags = FLAG(_event_handler_run_function_bit);
 		handlers[handler].function = (short)function;
 		handlers[handler].script[0] = 0;
+		if (widget_tag == PAUSE_BUTTON_CLOSES)
+		{
+			/* (once the function has run, if it did not fail) */
+			handlers[handler].flags |= FLAG(_event_handler_close_all_widgets_bit);
+			widget_tag = NONE;
+		}
 		reference_set(&handlers[handler].widget_tag, UI_WIDGET_DEFINITION_TAG, widget_tag);
 		if (widget_tag != NONE)
 		{
@@ -1572,37 +1582,58 @@ static void *pause_button(struct cache_file_tag_instance *instances, struct ui_w
 	return button;
 }
 
-/* the list's buttons: SETTINGS (and the host's END GAME) put before LEAVE
-GAME (quit); returns how many were added, and how much taller the list
-grew for them (growth) */
+/* the list's buttons: SETTINGS (and the host's END GAME, or the campaign's
+PHOTO MODE before it) put before LEAVE GAME (quit); returns how many were
+added, and how much taller the list grew for them (growth) */
 static long pause_list_patch(struct cache_file_tag_instance *instances, struct ui_widget_definition *list, long quit,
-	boolean host, short *growth)
+	boolean host, boolean photo, short *growth)
 {
 	struct ui_widget_child_reference *children = list->child_widgets.address;
-	long count = list->child_widgets.count, added = host ? 2 : 1, child;
-	struct ui_widget_child_reference *grown = allocate((count + added) * sizeof(struct ui_widget_child_reference));
+	long count = list->child_widgets.count, added = 0, child;
+	struct ui_widget_child_reference *grown = allocate((count + 3) * sizeof(struct ui_widget_child_reference));
 	struct ui_widget_definition const *model = tag_get(UI_WIDGET_DEFINITION_TAG, children[quit].widget_tag.index);
 	long settings_widget = widget_named(PAUSE_SETTINGS_SCREEN);
 	short spacing = count >= 2 ? (short)(children[count - 1].vertical_offset - children[count - 2].vertical_offset) :
 		PAUSE_BUTTON_SPACING;
-	void *buttons[2];
-	long tags[2];
+	void *buttons[3];
+	char const *names[3];
+	char const *texts[3];
+	long functions[3];
+	long widgets[3];
+	long tags[3];
 
 	if (!grown || settings_widget == NONE || spacing <= 0)
 		return 0;
-	tags[0] = next_tag();
-	buttons[0] = pause_button(instances, model, "pause/settings_button", "SETTINGS",
-		function_index("profile set edit begin", "pause", 0), build.widget_tags[settings_widget]);
-	tags[1] = host ? next_tag() : NONE;
-	buttons[1] = host ? pause_button(instances, model, "pause/end_game_button", "END GAME",
-		function_index("port pause end game", "pause", 0), NONE) : NULL;
-	if (!buttons[0] || (host && !buttons[1]))
-		return 0;
+	if (photo)
+	{
+		names[added] = "pause/photo_mode_button";
+		texts[added] = "PHOTO MODE";
+		functions[added] = function_index("port photo mode", "pause", 0);
+		widgets[added] = PAUSE_BUTTON_CLOSES;
+		added++;
+	}
+	names[added] = "pause/settings_button";
+	texts[added] = "SETTINGS";
+	functions[added] = function_index("profile set edit begin", "pause", 0);
+	widgets[added] = build.widget_tags[settings_widget];
+	added++;
+	if (host)
+	{
+		names[added] = "pause/end_game_button";
+		texts[added] = "END GAME";
+		functions[added] = function_index("port pause end game", "pause", 0);
+		widgets[added] = NONE;
+		added++;
+	}
 	for (child = 0; child < added; child++)
 	{
-		instance_set(instances, UI_WIDGET_DEFINITION_TAG, tags[child],
-			child ? "pause/end_game_button" : "pause/settings_button", "", buttons[child]);
+		tags[child] = next_tag();
+		buttons[child] = pause_button(instances, model, names[child], texts[child], functions[child], widgets[child]);
+		if (!buttons[child])
+			return 0;
 	}
+	for (child = 0; child < added; child++)
+		instance_set(instances, UI_WIDGET_DEFINITION_TAG, tags[child], names[child], "", buttons[child]);
 	if (quit)
 		memcpy(grown, children, quit * sizeof(*grown));
 	for (child = 0; child < added; child++)
@@ -1721,7 +1752,7 @@ static void pause_patch(struct cache_file_tag_instance *instances)
 			quit = pause_quit_button(list, quit_function);
 			if (quit == NONE || patched_list != NONE)
 				continue;
-			added = pause_list_patch(instances, list, quit, host, &grow);
+			added = pause_list_patch(instances, list, quit, host, FALSE, &grow);
 			if (!added)
 				return;
 			buttons = list->child_widgets.count;
@@ -1762,7 +1793,8 @@ static void pause_patch(struct cache_file_tag_instance *instances)
 /* ---------- the single-player campaign's pause menu
 
 Its list gets the same SETTINGS (pause_list_patch) before REVERT TO SAVED, a
-copy of it. The rows use the PC version's pause menu's pitch, so a
+copy of it, and played alone PHOTO MODE before that (port/linux/game/
+photo_mode.c), which closes the menus. The rows use the PC version's pause menu's pitch, so a
 highlight sits clear of the next label. The prompts (B and A) stay that same
 gap under the last row, and the box beside the mission objectives grows with
 them. Settings there has only the items
@@ -1786,12 +1818,14 @@ static char const *const pause_settings_hidden_items[] =
 	"main_menu/settings_select/player_setup/player_profile_edit/about_item",
 };
 
-/* the PC version's pause menu's row pitch (30 apart). The third pause box
-frame is the stock 159 grown by the 36 that five rows at this pitch add
-(tools/port_settings.py) */
+/* the PC version's pause menu's row pitch (30 apart). The pause box's frames
+from the third are the stock 159 grown by the 36 that five rows at this
+pitch add, and by 30 more for a sixth (PHOTO MODE); the objectives' box
+beside it has a frame of each height (tools/port_settings.py's
+PAUSE_BOX_EXTRA_HEIGHTS) */
 #define PAUSE_CAMPAIGN_ROW_PITCH 30
 #define PAUSE_CAMPAIGN_BOX_FRAME 2
-#define PAUSE_CAMPAIGN_BOX_HEIGHT 195
+static short const pause_campaign_box_heights[] = { 195, 225 };
 
 /* the port box piece for one of the map's pause box pieces, else NULL */
 static char const *pause_campaign_box_bitmap(long tag_index)
@@ -1882,8 +1916,14 @@ static void pause_campaign_grow_box(struct ui_widget_definition *widget, short s
 			long bitmap = find(piece_bitmap, build.menus->bitmap_count, bitmap_name);
 			short height = (short)(child_widget->bounds.y1 - child_widget->bounds.y0);
 			short frame = strstr(piece_bitmap, "objectives_") ? 0 : PAUSE_CAMPAIGN_BOX_FRAME;
+			short drawn;
 
-			if (bitmap != NONE && (short)(height + shift) == PAUSE_CAMPAIGN_BOX_HEIGHT)
+			for (drawn = 0; drawn < (short)NUMBEROF(pause_campaign_box_heights) &&
+				(short)(height + shift) != pause_campaign_box_heights[drawn]; drawn++)
+			{
+			}
+			frame = (short)(frame + drawn);
+			if (bitmap != NONE && drawn < (short)NUMBEROF(pause_campaign_box_heights))
 			{
 				struct bitmap_group *group = bitmap_group_get(build.bitmap_tags[bitmap]);
 				struct bitmap_group_sequence *sequence = group ? group->sequences.address : NULL;
@@ -1893,7 +1933,7 @@ static void pause_campaign_grow_box(struct ui_widget_definition *widget, short s
 					sequence->first_bitmap_index = frame;
 					sequence->bitmap_count = 1;
 					reference_set(&child_widget->background_bitmap, BITMAP_GROUP_TAG, build.bitmap_tags[bitmap]);
-					child_widget->bounds.y1 = (short)(child_widget->bounds.y0 + PAUSE_CAMPAIGN_BOX_HEIGHT);
+					child_widget->bounds.y1 = (short)(child_widget->bounds.y0 + pause_campaign_box_heights[drawn]);
 				}
 			}
 			else
@@ -2038,7 +2078,7 @@ static void pause_campaign_patch(struct cache_file_tag_instance *instances)
 		span = (short)(rows[list->child_widgets.count - 1].vertical_offset - rows[0].vertical_offset);
 		top = rows[0].vertical_offset;
 		bottom = list->bounds.y1;
-		if (pause_list_patch(instances, list, revert, FALSE, &grow))
+		if (pause_list_patch(instances, list, revert, FALSE, build.campaign, &grow))
 		{
 			struct ui_widget_child_reference *placed = list->child_widgets.address;
 			struct ui_widget_definition const *button =
@@ -2072,7 +2112,7 @@ static void pause_campaign_patch(struct cache_file_tag_instance *instances)
 				pause_campaign_grow_box(definition, need);
 			}
 			pause_settings_patch();
-			platform_log("menus: the pause menu has SETTINGS");
+			platform_log("menus: the pause menu has %sSETTINGS", build.campaign ? "PHOTO MODE and " : "");
 		}
 		return;
 	}

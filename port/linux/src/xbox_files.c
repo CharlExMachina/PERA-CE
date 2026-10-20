@@ -14,6 +14,12 @@ Every other drive letter X:\ is the subdirectory X/ of the save root (z:\ holds 
 u:\ user data, t:\ title data): paths.saves, else
 $XDG_DATA_HOME/halo-linux or ~/.local/share/halo-linux. Path components are
 matched case-insensitively, like the Xbox's FATX volumes.
+
+Photo mode's photos (port/linux/game/photo_mode.c) go in the photos root:
+paths.photos, else the user's Pictures folder's OpenCE folder on the
+desktop, else the data root's photos folder (on Android, the app's own
+folder; in a browser, its private storage, where the page offers each photo
+as a download).
 */
 
 #include "platform.h"
@@ -27,6 +33,13 @@ matched case-insensitively, like the Xbox's FATX volumes.
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#if !defined(_WIN32) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_MACOS)
+/* (Linux's Pictures folder: the user's folders, XDG_PICTURES_DIR, which SDL
+finds as the desktop does) */
+#include <SDL3/SDL_filesystem.h>
+#define PHOTOS_PICTURES_FOLDER 1
+#endif
 
 /* ---------- paths */
 
@@ -180,6 +193,43 @@ const char *platform_save_root(void)
 		trim_separators(root);
 		make_directories(root);
 		platform_log("save root: %s", root);
+	}
+	return root;
+}
+
+const char *platform_photos_root(void)
+{
+	static char root[MAX_PATH];
+
+	if (!root[0])
+	{
+		const char *setting = config_string("paths.photos");
+#ifdef PHOTOS_PICTURES_FOLDER
+		const char *pictures = SDL_GetUserFolder(SDL_FOLDER_PICTURES);
+#endif
+#if defined(_WIN32)
+		/* (in the code page the Windows build opens its files in, as
+		%APPDATA% is: platform_save_root) */
+		const char *home = getenv("USERPROFILE");
+#elif defined(HALO_MACOS)
+		const char *home = getenv("HOME");
+#endif
+
+		if (*setting)
+			snprintf(root, sizeof(root), "%s", setting);
+#ifdef PHOTOS_PICTURES_FOLDER
+		else if (pictures && *pictures)
+			snprintf(root, sizeof(root), "%sOpenCE", pictures);
+#endif
+#if defined(_WIN32) || defined(HALO_MACOS)
+		else if (home && *home)
+			snprintf(root, sizeof(root), "%s/Pictures/OpenCE", home);
+#endif
+		else
+			snprintf(root, sizeof(root), "%s/photos", platform_data_root());
+		trim_separators(root);
+		make_directories(root);
+		platform_log("photos root: %s", root);
 	}
 	return root;
 }

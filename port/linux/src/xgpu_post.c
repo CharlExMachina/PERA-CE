@@ -18,6 +18,9 @@ much it stands out from its neighbours. SMAA is port/third_party/smaa's,
 compiled as GLSL at its HIGH preset: edges from luma, blending weights from
 its lookup textures, then the blend. Android has FXAA only (d3d8_gl.c's
 anti_aliasing_values).
+
+Photo mode's filter (port/linux/game/photo_mode.c) is a pass of the same
+kind: a colour matrix and a vignette over the 3D view (xgpu_post_color_filter).
 */
 
 #include "xgpu.h"
@@ -68,6 +71,10 @@ static struct
 	GLuint sampler;
 	/* no attributes: the triangle comes from gl_VertexID */
 	GLuint vertex_array;
+	/* photo mode's filter's program, and its uniforms; it could not be made */
+	GLuint filter_program;
+	GLint filter_metrics, filter_rows, filter_vignette, filter_rectangle;
+	BOOL filter_failed;
 } post;
 
 /* ---------- programs */
@@ -233,6 +240,31 @@ static const char *const smaa_mains[] =
 	"}\n",
 };
 #endif
+
+/* photo mode's filter: each colour by the matrix's rows (weights and an
+offset), darkened toward the rectangle's corners by the vignette's strength */
+static const char filter_source[] =
+	"uniform sampler2D color_texture;\n"
+	"/* 1 / width, 1 / height, width, height */\n"
+	"uniform vec4 metrics;\n"
+	"uniform vec4 rows[3];\n"
+	"/* the vignette's strength; the 3D view's rectangle in pixels */\n"
+	"uniform vec4 vignette;\n"
+	"uniform vec4 rectangle;\n"
+	"out vec4 result;\n"
+	"\n"
+	"void main()\n"
+	"{\n"
+	"\tvec3 color = textureLod(color_texture, gl_FragCoord.xy * metrics.xy, 0.0).rgb;\n"
+	"\tvec3 graded = vec3(dot(rows[0].xyz, color) + rows[0].w, dot(rows[1].xyz, color) + rows[1].w,\n"
+	"\t\tdot(rows[2].xyz, color) + rows[2].w);\n"
+	"\tvec2 size = max(rectangle.zw - rectangle.xy, vec2(1.0));\n"
+	"\tvec2 aspect = vec2(size.x / size.y, 1.0);\n"
+	"\tvec2 centre = (gl_FragCoord.xy - rectangle.xy) / size * 2.0 - 1.0;\n"
+	"\tfloat distance = length(centre * aspect) / length(aspect);\n"
+	"\tgraded *= 1.0 - vignette.x * smoothstep(0.4, 1.0, distance);\n"
+	"\tresult = vec4(clamp(graded, 0.0, 1.0), 1.0);\n"
+	"}\n";
 
 /* a program, its samplers given their texture units; 0 if it does not
 build */
@@ -519,6 +551,82 @@ BOOL xgpu_post_anti_alias(BOOL smaa, GLuint framebuffer, unsigned long width, un
 		texture_bind(1, post.weights);
 		pass_draw(_post_program_smaa_blend, framebuffer, corners, TRUE);
 	}
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	return TRUE;
+}
+
+/* photo mode's filter's program, made the first time it is drawn (photo
+mode is chosen in a game, not as a setting is); FALSE if it does not build */
+static BOOL filter_prepare(void)
+{
+	struct xgpu_text text = { 0 };
+	GLuint fragment_shader;
+
+	if (post.filter_program || post.filter_failed)
+		return post.filter_program != 0;
+	post.filter_failed = TRUE;
+	if (!xgpu_post_prepare(FALSE))
+		return FALSE;
+	shader_header(&text);
+	xgpu_text_append(&text, "%s", filter_source);
+	fragment_shader = xgpu_compile_shader(GL_FRAGMENT_SHADER, text.buffer, "photo filter");
+	free(text.buffer);
+	if (!fragment_shader)
+		return FALSE;
+	post.filter_program = xgpu_link_program(post.vertex_shader, fragment_shader, "photo filter");
+	glDeleteShader(fragment_shader);
+	if (!post.filter_program)
+		return FALSE;
+	glUseProgram(post.filter_program);
+	glUniform1i(glGetUniformLocation(post.filter_program, "color_texture"), 0);
+	post.filter_metrics = glGetUniformLocation(post.filter_program, "metrics");
+	post.filter_rows = glGetUniformLocation(post.filter_program, "rows");
+	post.filter_vignette = glGetUniformLocation(post.filter_program, "vignette");
+	post.filter_rectangle = glGetUniformLocation(post.filter_program, "rectangle");
+	post.filter_failed = FALSE;
+	return TRUE;
+}
+
+BOOL xgpu_post_color_filter(GLuint framebuffer, unsigned long width, unsigned long height, const GLint corners[4],
+	const float *uniforms)
+{
+	float metrics[4];
+
+	if (!filter_prepare())
+		return FALSE;
+	textures_fit(FALSE, width, height);
+
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_BLEND);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_POLYGON_OFFSET_FILL);
+#ifndef HALO_GLES
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+#endif
+	glBindVertexArray(post.vertex_array);
+
+	/* the target's pixels, read while the target is drawn into */
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, post.color_framebuffer);
+	glBlitFramebuffer(corners[0], corners[1], corners[2], corners[3], corners[0], corners[1], corners[2], corners[3],
+		GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+	metrics[0] = 1.0f / (float)width;
+	metrics[1] = 1.0f / (float)height;
+	metrics[2] = (float)width;
+	metrics[3] = (float)height;
+	texture_bind(0, post.color);
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+	glViewport(corners[0], corners[1], corners[2] - corners[0], corners[3] - corners[1]);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
+	glUseProgram(post.filter_program);
+	glUniform4fv(post.filter_metrics, 1, metrics);
+	glUniform4fv(post.filter_rows, 3, uniforms);
+	glUniform4fv(post.filter_vignette, 1, uniforms + 12);
+	glUniform4fv(post.filter_rectangle, 1, uniforms + 16);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	return TRUE;
 }

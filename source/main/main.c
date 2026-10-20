@@ -404,6 +404,7 @@ symbols in this file:
 #include "custom_edition_cache.h" /* port: custom_edition_level_name */
 #include "view_fov.h" /* port: display.fov, before the projection and culling */
 #include "skulls.h" /* port: port/linux/game/skulls.c, the Iron skull */
+#include "photo_mode.h" /* port: port/linux/game/photo_mode.c */
 
 #if defined(HALO_WINDOWS) || defined(HALO_ANDROID) || defined(__linux__)
 #define HALO_NATIVE_BUILD_INFO 1
@@ -3615,6 +3616,10 @@ static boolean main_loop_iteration(
 			profile_scope_enter(main_ui_update_section)
 			process_ui_widgets();
 			bink_playback_update();
+			/* port: photo mode begun once the pause menu has closed, ended
+			when it opens again, and the game kept paused meanwhile
+			(port/linux/game/photo_mode.c) */
+			photo_mode_update();
 			profile_scope_exit(main_ui_update_section)
 
 			/* port: not the Xbox debug keyboard's End and Escape, which stop

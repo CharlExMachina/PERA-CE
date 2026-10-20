@@ -59,6 +59,9 @@ Support/OpenCE`:
 | Mods | `mods` |
 | Screenshots | `screenshots` |
 
+Photo mode's photos (refer to "Photo mode" in
+[port/linux/README.md](../linux/README.md)) go in `~/Pictures/OpenCE`.
+
 Started from a folder that holds `maps/` (or `assets/maps/`, as the root of
 the repository), the game plays those maps instead, as the Linux build does.
 `paths.data` and `paths.saves` in `config.toml` choose other folders.

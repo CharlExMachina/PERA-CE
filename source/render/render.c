@@ -421,6 +421,12 @@ static void render_window(
 				rasterizer_camera->viewport_bounds.y0,
 				rasterizer_camera->viewport_bounds.x1,
 				rasterizer_camera->viewport_bounds.y1);
+			/* port: and photo mode's filter (port/linux/game/photo_mode.c) */
+			halo_screen_photo_filter(
+				rasterizer_camera->viewport_bounds.x0,
+				rasterizer_camera->viewport_bounds.y0,
+				rasterizer_camera->viewport_bounds.x1,
+				rasterizer_camera->viewport_bounds.y1);
 		}
 		interface_draw_screen();
 		rasterizer_screen_flash();

@@ -103,3 +103,4 @@ host_sdl_render_fill_rect
 host_sdl_render_present
 host_sdl_save_png
 host_metal_fxaa
+host_metal_color_filter

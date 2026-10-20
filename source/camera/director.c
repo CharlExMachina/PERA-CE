@@ -123,6 +123,7 @@ symbols in this file:
 #include "dead_camera.h"
 #include "coop_spectate.h" /* port: port/linux/game/coop_spectate.c */
 #include "spectator.h" /* port: port/linux/game/spectator.c */
+#include "photo_mode.h" /* port: port/linux/game/photo_mode.c */
 #include "editor_flying_camera.h"
 #include "first_person_camera.h"
 #include "flying_camera.h"
@@ -729,6 +730,23 @@ static void director_choose_camera_game(
 		else if (director->camera_proc == (director_camera_update_proc)spectator_camera_update)
 		{
 			/* (a player again: the player's own camera) */
+			director_choose_game_perspective(local_player_index, TRUE);
+		}
+
+		/* port: photo mode has its own camera (port/linux/game/photo_mode.c) */
+		if (photo_mode_active())
+		{
+			if (director->camera_proc != (director_camera_update_proc)photo_mode_camera_update)
+			{
+				director_set_camera(
+					local_player_index,
+					(director_camera_update_proc)photo_mode_camera_update,
+					FALSE);
+			}
+			return;
+		}
+		else if (director->camera_proc == (director_camera_update_proc)photo_mode_camera_update)
+		{
 			director_choose_game_perspective(local_player_index, TRUE);
 		}
 

@@ -43,6 +43,7 @@ with their unit, and with what it rides.
 #include "render/render_cameras.h"
 #include "units/units.h"
 #include "spectator.h"
+#include "photo_mode.h"
 
 /* port/linux/src/port_config.c */
 int config_boolean(const char *name);
@@ -502,7 +503,9 @@ void render_interpolation_reset(void)
 
 void render_interpolation_frame_begin(void)
 {
-	interpolation_rendering = halo_interpolation_enabled();
+	/* (not in photo mode, whose game is paused: its camera and the pose
+	it puts the player in are drawn as they are, photo_mode.c) */
+	interpolation_rendering = halo_interpolation_enabled() && !photo_mode_active();
 	interpolation_frame++;
 	interpolation_fraction = game_time_get_tick_fraction();
 }

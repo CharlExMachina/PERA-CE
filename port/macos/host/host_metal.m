@@ -216,6 +216,23 @@ static const char builtin_source[] =
 	"	bool varies = ((distance_before < distance_after ? luma_before : luma_after) < 0.0) != (luma < edge_luma);\n"
 	"	return float4(fxaa_color(picture, s, u, position + max(varies ? pixel_offset : 0.0, subpixel) * across), 1.0);\n"
 	"#undef LUMA\n"
+	"}\n"
+	/* photo mode's filter, as port/linux/src/xgpu_post.c's filter_source:
+	each colour by the matrix's rows, darkened toward the rectangle's corners
+	by the vignette's strength */
+	"struct filter_uniforms { float4 metrics; float4 rows[3]; float4 vignette; float4 rectangle; };\n"
+	"fragment float4 filter_fragment(clear_out in [[stage_in]], texture2d<float> picture [[texture(0)]],\n"
+	"	sampler s [[sampler(0)]], constant filter_uniforms &u [[buffer(0)]])\n"
+	"{\n"
+	"	float3 color = picture.sample(s, in.position.xy * u.metrics.xy, level(0.0)).rgb;\n"
+	"	float3 graded = float3(dot(u.rows[0].xyz, color) + u.rows[0].w, dot(u.rows[1].xyz, color) + u.rows[1].w,\n"
+	"		dot(u.rows[2].xyz, color) + u.rows[2].w);\n"
+	"	float2 size = max(u.rectangle.zw - u.rectangle.xy, float2(1.0));\n"
+	"	float2 aspect = float2(size.x / size.y, 1.0);\n"
+	"	float2 centre = (in.position.xy - u.rectangle.xy) / size * 2.0 - 1.0;\n"
+	"	float distance = length(centre * aspect) / length(aspect);\n"
+	"	graded *= 1.0 - u.vignette.x * smoothstep(0.4, 1.0, distance);\n"
+	"	return float4(clamp(graded, 0.0, 1.0), 1.0);\n"
 	"}\n";
 
 /* ---------- frames */
@@ -1187,6 +1204,96 @@ void host_metal_fxaa(uint32_t texture, const int32_t *corners)
 	[render endEncoding];
 	/* (the pass the draws go to begins again at the next draw, loading
 	what its targets now hold) */
+	pass_begun = YES;
+}
+
+/* photo mode's filter: as FXAA's pass, the rectangle copied first and drawn
+back through the filter, colour only */
+static id<MTLRenderPipelineState> filter_pipeline;
+
+void host_metal_color_filter(uint32_t texture, const int32_t *corners, const float *parameters)
+{
+	id<MTLTexture> target = object_get(texture);
+	MTLRenderPassDescriptor *descriptor;
+	id<MTLRenderCommandEncoder> render;
+	MTLViewport viewport;
+	MTLScissorRect scissor;
+	float uniforms[24];
+	long x0 = corners[0], y0 = corners[1], x1 = corners[2], y1 = corners[3];
+
+	if (!target || target.sampleCount > 1)
+		return;
+	x0 = x0 < 0 ? 0 : x0;
+	y0 = y0 < 0 ? 0 : y0;
+	x1 = x1 > (long)target.width ? (long)target.width : x1;
+	y1 = y1 > (long)target.height ? (long)target.height : y1;
+	if (x1 <= x0 || y1 <= y0)
+		return;
+	if (!filter_pipeline)
+	{
+		MTLRenderPipelineDescriptor *pipeline = [[MTLRenderPipelineDescriptor alloc] init];
+		NSError *error = nil;
+
+		pipeline.vertexFunction = clear_vertex;
+		pipeline.fragmentFunction = [builtin_library newFunctionWithName:@"filter_fragment"];
+		pipeline.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+		pipeline.colorAttachments[0].writeMask = MTLColorWriteMaskRed | MTLColorWriteMaskGreen | MTLColorWriteMaskBlue;
+		filter_pipeline = [device newRenderPipelineStateWithDescriptor:pipeline error:&error];
+		if (!filter_pipeline)
+		{
+			host_logf(HOST_LOG_ERROR, "Metal: photo mode's filter's pipeline: %s", error.localizedDescription.UTF8String);
+			return;
+		}
+	}
+	/* (FXAA's copy, which the two passes share: each copies what it reads
+	first) */
+	if (!fxaa_copy || fxaa_copy.width != target.width || fxaa_copy.height != target.height)
+	{
+		MTLTextureDescriptor *copy = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+			width:target.width height:target.height mipmapped:NO];
+
+		copy.usage = MTLTextureUsageShaderRead;
+		copy.storageMode = MTLStorageModePrivate;
+		fxaa_copy = [device newTextureWithDescriptor:copy];
+	}
+	[blit_encoder_get() copyFromTexture:target sourceSlice:0 sourceLevel:0
+		sourceOrigin:MTLOriginMake((NSUInteger)x0, (NSUInteger)y0, 0)
+		sourceSize:MTLSizeMake((NSUInteger)(x1 - x0), (NSUInteger)(y1 - y0), 1) toTexture:fxaa_copy
+		destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake((NSUInteger)x0, (NSUInteger)y0, 0)];
+	encoders_end();
+	descriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+	descriptor.colorAttachments[0].texture = target;
+	descriptor.colorAttachments[0].loadAction = MTLLoadActionLoad;
+	descriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+	render = [command_buffer renderCommandEncoderWithDescriptor:descriptor];
+	viewport.originX = 0;
+	viewport.originY = 0;
+	viewport.width = target.width;
+	viewport.height = target.height;
+	viewport.znear = 0.0;
+	viewport.zfar = 1.0;
+	scissor.x = (NSUInteger)x0;
+	scissor.y = (NSUInteger)y0;
+	scissor.width = (NSUInteger)(x1 - x0);
+	scissor.height = (NSUInteger)(y1 - y0);
+	uniforms[0] = 1.0f / (float)target.width;
+	uniforms[1] = 1.0f / (float)target.height;
+	uniforms[2] = (float)target.width;
+	uniforms[3] = (float)target.height;
+	memcpy(uniforms + 4, parameters, 20 * sizeof(float));
+	{
+		float depth = 0.0f;
+
+		[render setVertexBytes:&depth length:sizeof(depth) atIndex:0];
+	}
+	[render setViewport:viewport];
+	[render setScissorRect:scissor];
+	[render setRenderPipelineState:filter_pipeline];
+	[render setFragmentTexture:fxaa_copy atIndex:0];
+	[render setFragmentSamplerState:present_sampler atIndex:0];
+	[render setFragmentBytes:uniforms length:sizeof(uniforms) atIndex:0];
+	[render drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+	[render endEncoding];
 	pass_begun = YES;
 }
 

@@ -280,6 +280,13 @@ target's framebuffer, width by height, GL_RGBA8; FALSE if its programs do
 not build */
 BOOL xgpu_post_anti_alias(BOOL smaa, GLuint framebuffer, unsigned long width, unsigned long height,
 	const GLint corners[4]);
+
+/* photo mode's filter on the corners of a render target's framebuffer, as
+above: uniforms are the colour matrix's three rows, the vignette's strength
+and three unused, and the corners as floats (port/linux/game/photo_mode.h's
+PHOTO_MODE_FILTER_UNIFORMS); FALSE if its program does not build */
+BOOL xgpu_post_color_filter(GLuint framebuffer, unsigned long width, unsigned long height, const GLint corners[4],
+	const float *uniforms);
 #endif
 
 #endif

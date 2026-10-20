@@ -88,6 +88,7 @@ their handlers open opens.
 #include "../src/p2p.h"
 #include "text_filter.h"
 #include "skulls.h"
+#include "photo_mode.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -4737,6 +4738,18 @@ static boolean pause_end_game(void)
 	return TRUE;
 }
 
+/* "port photo mode" (a single-player campaign's pause menu's PHOTO MODE:
+menu_tags.c's pause_campaign_patch): photo mode begins once its button has
+closed the menus (port/linux/game/photo_mode.c), for the campaign's one
+player */
+static boolean pause_photo_mode(void)
+{
+	if (!photo_mode_request(local_player_get_next(NONE)))
+		return campaign_fail();
+	ui_play_audio_feedback_sound(SOUND_FORWARD);
+	return TRUE;
+}
+
 /* ---- the lobby: the game's players (up to the port's 128), its map and
 gametype, the countdown */
 
@@ -6259,6 +6272,10 @@ boolean pc_menu_event_function_invoke(
 		else if (!strcmp(name, "port pause end game"))
 		{
 			return pause_end_game();
+		}
+		else if (!strcmp(name, "port photo mode"))
+		{
+			return pause_photo_mode();
 		}
 		else if (!strcmp(name, "player profile save changes"))
 		{
