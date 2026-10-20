@@ -865,8 +865,9 @@ def title_backdrop(width: float) -> str:
 PAUSE_BOX_BUTTONS = [3, 4]
 # the campaign pause box, tall enough for five rows at the PC version's pause
 # menu's pitch (30) with the prompts still under the last row: the stock box
-# is 159, and those rows need 36 more
-PAUSE_BOX_EXTRA_HEIGHTS = [195]
+# is 159, and those rows need 36 more; and for six (PHOTO MODE, played
+# alone), 30 more again (menu_tags.c's pause_campaign_box_heights)
+PAUSE_BOX_EXTRA_HEIGHTS = [195, 225]
 
 
 def pause_box_height(buttons: int) -> int:

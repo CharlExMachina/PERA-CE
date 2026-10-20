@@ -771,6 +771,29 @@ void test_input_press(unsigned long buttons)
 	test_input_pressed = buttons;
 }
 
+/* the automated test of photo mode (port/linux/game/photo_mode.c's,
+debug.test_input "photo"): a whole controller held for the reads to come,
+its digital buttons (XINPUT_GAMEPAD_*), its analog buttons (a bit for each
+by its index: A, B, X, Y, black, white, the left trigger and the right) and
+its sticks */
+static struct
+{
+	unsigned long digital;
+	unsigned long analog;
+	long sticks[4];
+} test_input_pad_held;
+
+void test_input_pad(unsigned long digital, unsigned long analog, long left_x, long left_y, long right_x,
+	long right_y)
+{
+	test_input_pad_held.digital = digital;
+	test_input_pad_held.analog = analog;
+	test_input_pad_held.sticks[0] = left_x;
+	test_input_pad_held.sticks[1] = left_y;
+	test_input_pad_held.sticks[2] = right_x;
+	test_input_pad_held.sticks[3] = right_y;
+}
+
 static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 {
 	static const WORD digital[] =
@@ -802,6 +825,20 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 		pad->sThumbLX = -32000;
 	if (test_input_pressed & (1UL << HALO_CHAT_PAD_STICK_RIGHT))
 		pad->sThumbLX = 32000;
+	if (test_input_pad_held.digital || test_input_pad_held.analog || test_input_pad_held.sticks[0] ||
+		test_input_pad_held.sticks[1] || test_input_pad_held.sticks[2] || test_input_pad_held.sticks[3])
+	{
+		pad->wButtons |= (WORD)test_input_pad_held.digital;
+		for (index = 0; index < 8; index++)
+		{
+			if (test_input_pad_held.analog & (1UL << index))
+				pad->bAnalogButtons[index] = 255;
+		}
+		pad->sThumbLX = (SHORT)test_input_pad_held.sticks[0];
+		pad->sThumbLY = (SHORT)test_input_pad_held.sticks[1];
+		pad->sThumbRX = (SHORT)test_input_pad_held.sticks[2];
+		pad->sThumbRY = (SHORT)test_input_pad_held.sticks[3];
+	}
 	if (network_chat_keyboard_open())
 		return;
 

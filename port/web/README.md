@@ -80,7 +80,9 @@ The game keeps `config.toml`, the saved games and profiles (`save/`) and
 `debug.txt` in the browser's storage beside `maps/`. **Settings and data**
 exports the saved games, the profiles and `config.toml` as a zip (not the
 game's copies of the maps), downloads the log, and deletes the game
-data. The game's own Settings screens have the settings that apply in a
+data. Photo mode's photos (refer to "Photo mode" in
+[port/linux/README.md](../linux/README.md)) are kept in the storage's
+`photos/`, and the page downloads each one as it is taken. The game's own Settings screens have the settings that apply in a
 browser.
 
 ### Playing together

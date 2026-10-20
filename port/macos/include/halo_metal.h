@@ -395,6 +395,12 @@ y0 to x1, y1, from row 0) of a target, in place, in the frame's order: only
 its colour, not its alpha (which the game keeps values of its own in) */
 void host_metal_fxaa(uint32_t texture, const int32_t *corners);
 
+/* photo mode's filter (port/linux/src/xgpu_post.c's) over the rectangle of
+a target, as above: uniforms are the colour matrix's three rows (weights and
+an offset), the vignette's strength and three unused, and the rectangle's
+corners as floats (port/linux/game/photo_mode.h's PHOTO_MODE_FILTER_UNIFORMS) */
+void host_metal_color_filter(uint32_t texture, const int32_t *corners, const float *uniforms);
+
 /* ---------- frames */
 
 /* ends the frame: the texture drawn over the rectangle (x, y, width, height)

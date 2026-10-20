@@ -164,6 +164,10 @@ the save root is `$XDG_DATA_HOME/halo-linux` (usually
 The game makes the folders when it needs them. Names of files and folders
 are not case-sensitive, as on the Xbox.
 
+Photo mode's photos go in `paths.photos`, or if that setting is empty in
+the `OpenCE` folder of your Pictures folder (`~/Pictures/OpenCE`, or the
+folder that `XDG_PICTURES_DIR` names). Refer to "Photo mode".
+
 These files are in the data root:
 
 | File | Contents |
@@ -306,6 +310,8 @@ one without keeps its size, its rows closer. It opens the same settings,
 while the game stays paused, with only Controls, Gamepads, Mouse, Audio and
 Video Setup; Gamepads' OK saves the profile at once. In co-op the settings
 have Network Setup too, with its in-game pages as in a multiplayer game.
+Played alone, the campaign's pause menu also has PHOTO MODE, after RESUME
+GAME; the box is drawn taller for the sixth row. Refer to "Photo mode".
 
 The menus are XML files in `port/assets/menus` (`tools/ce_menus.py` writes
 them from the PC version's tags), which the game contains. To change them,
@@ -386,6 +392,7 @@ the setting for one start of the game. It has priority over the file.
 | `game.skulls` | `""` | `HALO_SKULLS` | The skulls that the campaign's SKULLS screen (New Game's difficulty's SKULLS) last kept, which New Game plays with and the screen shows on again: their names, separated by spaces (`iron mythic boom`). Refer to "Skulls". |
 | `paths.data` | `""` | `HALO_DATA_ROOT` | The data root. Refer to "Start the game". |
 | `paths.saves` | `""` | `HALO_SAVE_ROOT` | The save root. Refer to "Files and folders". |
+| `paths.photos` | `""` | `HALO_PHOTOS_ROOT` | Where photo mode's photos go. Empty: the `OpenCE` folder of the Pictures folder. Refer to "Photo mode". |
 | `network.address` | `""` | `HALO_NET_ADDRESS` | The IPv4 address of this machine for system link. Refer to "Play on one computer". |
 | `network.broadcast` | `""` | `HALO_NET_BROADCAST` | IPv4 addresses, with commas between them, that get the broadcasts of the game. Empty: 255.255.255.255. |
 | `network.online` | `true` | `HALO_NET_ONLINE` | `true`: internet play. `false`: system link on the local network only. |
@@ -430,7 +437,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.gpu_stats`, `debug.gpu_trace_frame`, `debug.gpu_trace_constants`, `debug.gpu_dump_shaders`, `debug.texture_dump_directory`, `debug.texture_log`, `debug.gl_debug`, `debug.texture_no_cache` | off | `HALO_GPU_STATS`, `HALO_GPU_TRACE`, `HALO_GPU_TRACE_CONSTANTS`, `HALO_GPU_DUMP_SHADERS`, `HALO_TEXTURE_DUMP`, `HALO_TEXTURE_LOG`, `HALO_GL_DEBUG`, `HALO_TEXTURE_NO_CACHE` | Tools to find problems in the graphics: counts for each frame, all the GL state of one frame, the GLSL code, the textures. |
 | `debug.menu_open` | `""` | `HALO_MENU_OPEN` | Start on this screen of the menus (`main_menu/settings_select/...`, as `port/assets/menus` names it), a player profile being edited, to look at it. |
 | `debug.gpu_skip_vertex_shaders`, `debug.gpu_debug_expression`, `debug.gpu_debug_flat`, `debug.gpu_debug_texture0` | off | `HALO_GPU_SKIP_VS`, `HALO_GPU_DEBUG_EXPR`, `HALO_GPU_DEBUG_FLAT`, `HALO_GPU_DEBUG_T0` | Tools to find problems in the graphics: skip the draws of a vertex shader, or replace the output of all pixel shaders with a GLSL expression (for example `t0.rgb`). |
-| `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_chat`, `debug.network_test_name`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_CHAT`, `HALO_NETWORK_TEST_NAME`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link (`game/network_test.c`). Refer to `NETCODE.md`. |
+| `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_chat`, `debug.network_test_name`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_CHAT`, `HALO_NETWORK_TEST_NAME`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link (`game/network_test.c`). Refer to `NETCODE.md`. `debug.test_input = "photo"` tests photo mode instead. Refer to "Photo mode". |
 | `debug.touch_targets` | `false` | `HALO_TOUCH_TARGETS` | Outlines the tap targets of the menus (item green, value blue, list slot yellow, legend button red, the band beside the slots of a list orange, keys of the on-screen keyboard white), marks where the last finger went down and the last tap landed for 3 seconds, and logs each tap with the target that it hit (for a value, also where it splits into previous and next): to judge the accuracy of touch. |
 | `debug.network_latency`, `debug.network_loss`, `debug.network_corrupt`, `debug.network_corrupt_stream`, `debug.network_corrupt_after` | `0` | `HALO_NETWORK_LATENCY`, `HALO_NETWORK_LOSS`, `HALO_NETWORK_CORRUPT`, `HALO_NETWORK_CORRUPT_STREAM`, `HALO_NETWORK_CORRUPT_AFTER` | The game holds all the data that it receives for this number of milliseconds, ignores this percentage of the datagrams, and damages this percentage of the datagrams it receives, and this percentage of its reads of streams, at random (bytes changed, cut short, stretched or replaced), from this many seconds after the start. Use the first two to test the netcode as on the internet, and the others to test that nothing another machine sends can crash the game (a damaged stream is closed, so a little goes a long way; a host's messages to its own client are damaged too, so start damaging once the game has started). |
 | `debug.voice_test` | `false` | `HALO_VOICE_TEST` | Automatic tests of voice chat: a tone replaces the microphone, and each voice that the game hears is written to the log once each second. |
@@ -1224,6 +1231,57 @@ The skulls are in the game's options (`port/linux/game/skulls.c`), which
 the saved game keeps; the host of a network game sends them in the game's
 settings (network version 31).
 
+## Photo mode
+
+In a single-player campaign, the pause menu's PHOTO MODE stops the game and
+gives you a camera of your own. Your Master Chief stays where he was and can
+hold a pose, the view can have a filter, and FIRE saves the view as a PNG
+photo at the full resolution that the game draws the window at (on a
+high-density display, its pixels, not its points). START goes back to the
+pause menu, and RESUME GAME goes on with the game exactly as it was.
+
+Photo mode uses your own controls:
+
+| Control | In photo mode |
+| --- | --- |
+| Move, look | The orbit camera circles the player (move: nearer and further, and round); the free camera flies. |
+| Jump, crouch | The camera up and down. |
+| Fire | Take a photo. |
+| Action, throw grenade | The next pose, the pose before. |
+| Switch weapon, switch grenade | The next filter, the filter before. |
+| Melee | The orbit camera or the free camera. |
+| Zoom | The field of view: 70, 90, 110, 30 and 50 degrees. |
+| Flashlight | Show or hide the names of the controls. |
+| Start | Back to the pause menu. |
+
+The camera stays within about 36 m of the player, and does not go through
+the ground or walls. The HUD, the first-person weapon and the console are
+not drawn; the controls' names and the message about the last photo are
+drawn over the view but are not in the photos.
+
+The poses are frames of the player's own animations for the weapon that he
+holds: as paused, standing, ready, crouching, walking, strafing, creeping,
+jumping, landing, firing, melee, reloading, throwing a grenade and taking a
+hit (only those that his animations have; in a vehicle, only as paused).
+The filters are none, black and white, noir, sepia, vintage, vivid, warm,
+cool and night vision: a color matrix and a vignette over the 3D view.
+
+The photos are named for the level and the time (`OpenCE a30 2026-10-19
+20.27.25.png`). They go in `paths.photos`, or if it is empty:
+
+| Build | Folder |
+| --- | --- |
+| Linux | `OpenCE` in the Pictures folder (`XDG_PICTURES_DIR`, usually `~/Pictures`) |
+| Windows | `%USERPROFILE%\Pictures\OpenCE` |
+| macOS | `~/Pictures/OpenCE` |
+| Android | `photos` in the app's folder (`Android/data/<the app>/files`) |
+| Web | `photos` in the browser's storage for the page; the page also downloads each photo |
+
+Photo mode is not in network games, co-op or split screen: the game cannot
+stop there. `debug.test_input = "photo"` plays photo mode with controller 1
+(walking out of the a30 lifeboat first), and saves pictures of what it sees
+in the photos folder.
+
 ## Streamer mode
 
 Streamer mode (Settings > Network Setup > Streamer Mode, `streamer.enabled`)
@@ -1459,6 +1517,7 @@ Other changes:
 | `cutscene/cinematics.c` | A scenario's titles (some Custom Edition maps show their name for the whole game) are not drawn over a menu, as the letterbox is not: the screen's overlays are drawn after the players' menus. |
 | `tag_files/tag_groups.h` | `TAG_BLOCK_GET_ELEMENT` returns an element in the block without a call, and calls `tag_block_get_element_with_size` for anything else. |
 | `input/input_xbox.c`, `physics/collision_usage.c` | The clock is read only for a button held, and for collision tests only when their times are shown: a read of the clock is slow in a browser. |
+| `main/main.c`, `camera/director.c`, `game/player_control.c`, `interface/interface.c`, `render/render.c` | Photo mode (`game/photo_mode.c`): it starts after the pause menu closes and keeps the game paused, its camera is one of the director's, the player's controls go to it while the camera turns with the game paused, the HUD and a paused cinematic's letterbox are not drawn, and its filter is drawn over the 3D view after the anti-aliasing. |
 | `main/main.c`, `interface/hud.c`, `interface/hud_unit.c`, `interface/hud_draw.c`, `game/game_engine.c` | The text chat of network games (`game/network_chat.c`): its keys are read each frame, and the debug keys are not while a line is typed; each view's HUD draws its lines, above the motion sensor, whose place the HUD notes (the left of the last picture drawn); the scoreboard's menu has Mute voice and chat, and the host's Mute for everyone. |
 
 The x86 inline assembly of the game is replaced by C. Thus the compiler

@@ -65,6 +65,10 @@ void halo_vertex_shader_lighting(unsigned long handle);
 /* display.anti_aliasing's pass over a window's 3D view, before the HUD and
 menus (source/render/render.c): the window's bounds on the screen */
 void halo_screen_anti_alias(short x0, short y0, short x1, short y1);
+/* photo mode's filter over a window's 3D view, after the anti-aliasing
+(source/render/render.c, port/linux/game/photo_mode.c): the window's bounds
+on the screen */
+void halo_screen_photo_filter(short x0, short y0, short x1, short y1);
 /* the mouse in the menus (source/interface/ui_widget.c) */
 #include "halo_ui_pointer.h"
 

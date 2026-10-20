@@ -106,6 +106,7 @@ symbols in this file:
 #include "units/units.h"
 #include "map_share.h" /* port: port/linux/game/map_share.c */
 #include "spectator.h" /* port: port/linux/game/spectator.c */
+#include "photo_mode.h" /* port: port/linux/game/photo_mode.c */
 
 /* ---------- constants */
 
@@ -380,13 +381,23 @@ union argb_color *interface_get_rgb_color(
 void interface_draw_fullscreen_overlays(
 	void)
 {
-	cinematic_render();
+	/* port: not the letterbox of a cinematic photo mode paused as it ended,
+	which the paused clock would never take away (port/linux/game/
+	photo_mode.c) */
+	if (!photo_mode_active())
+		cinematic_render();
 	interface_splitscreen_render();
 	hud_render_timer();
 	/* port: a map's download (port/linux/game/map_share.c) */
 	map_share_render();
-	terminal_draw();
-	main_framerate_render();
+	/* port: what photo mode shows over its view, and in a photo nothing,
+	not the console or the frame rate either (port/linux/game/photo_mode.c) */
+	photo_mode_draw();
+	if (!photo_mode_capturing())
+	{
+		terminal_draw();
+		main_framerate_render();
+	}
 	render_debug_profile();
 
 	return;
@@ -721,6 +732,9 @@ void interface_draw_screen(
 		rasterizer_screen_effect(NULL);
 	}
 
+	/* port: photo mode's view has no HUD (port/linux/game/photo_mode.c) */
+	if (photo_mode_active())
+		return;
 	hud_draw_screen();
 	/* port: what a multiplayer spectator is shown, under the scores
 	(port/linux/game/spectator.c) */
