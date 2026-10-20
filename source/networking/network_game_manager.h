@@ -69,7 +69,9 @@ struct network_game
 	struct network_machine machines[HALO_PORT_MAXIMUM_NETWORK_MACHINES];
 	short player_count;
 	struct network_player players[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
-	short __unknown426;
+	/* port: the game's skulls (port/linux/game/skulls.c, skulls.h's flags:
+	Server Setup's SKULLS), in a short the Xbox's game left unused */
+	word skull_flags;
 	unsigned long random_seed;
 	long number_of_games_played;
 	/* port: the gametype's PC options (game_engine.h) */

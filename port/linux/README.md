@@ -383,6 +383,7 @@ the setting for one start of the game. It has priority over the file.
 | `game.console_log` | `"important"` | `HALO_CONSOLE_LOG` | What the console shows on the screen. `"important"`: bans, players that the host drops for cheating, the reasons that the game refuses a command, and the asserts that stop the game. `"all"`: all the lines. `"none"`: only the asserts that stop the game. The output of a command always shows. `debug.txt` gets all the lines. |
 | `game.language` | `""` | `HALO_LANGUAGE` | The language of the menus: `ja`, `de`, `fr`, `es` or `it`. Empty: English. |
 | `game.enhanced_animations` | `true` | `HALO_ENHANCED_ANIMATIONS` | `true`: the player bipeds' grenade throws keep their legs moving, blended by speed and direction (crouched throws stay crouched, throws in the air use the jump's legs), Warthog and Scorpion riders stay seated to throw and let go of the grips to throw and reload, and a player turns with the aim while throwing, as while meleeing. `false`: the original animations, which freeze the legs during a throw and stand a rider up. Only in config.toml, not in the menus. |
+| `game.skulls` | `""` | `HALO_SKULLS` | The skulls that the campaign's SKULLS screen last had on, which it shows on again: their names, separated by spaces (`iron mythic boom`). Refer to "Skulls". |
 | `paths.data` | `""` | `HALO_DATA_ROOT` | The data root. Refer to "Start the game". |
 | `paths.saves` | `""` | `HALO_SAVE_ROOT` | The save root. Refer to "Files and folders". |
 | `network.address` | `""` | `HALO_NET_ADDRESS` | The IPv4 address of this machine for system link. Refer to "Play on one computer". |
@@ -398,6 +399,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.coop_enemies_mode` | `"per_player"` | `HALO_NET_COOP_ENEMIES_MODE` | Online co-op's extra enemies: `"none"`; `"per_player"`, each squad of enemies that a level places grows by `network.coop_enemies` for each player past the first; or `"multiplier"`, each squad is `network.coop_enemies_multiplier` times as large, for any number of players. The extra enemies stand around the squad's places, and those that a dropship has no seats for drop out of it after its passengers. EXTRA ENEMIES in co-op's Server Setup > Co-op Options writes its choice here. |
 | `network.coop_enemies` | `50` | `HALO_NET_COOP_ENEMIES` | The extra enemies per player, a percentage from `25` to `200`: for each player past the first, each squad of enemies gets this much of itself more (`100`: as many again, so four players meet four times the squad), up to 8 times the squad however many players there are. PER PLAYER in co-op's Server Setup > Co-op Options writes its choice here. |
 | `network.coop_enemies_multiplier` | `2` | `HALO_NET_COOP_ENEMIES_MULTIPLIER` | The static multiplier of the enemies, `2` to `32`: each squad of enemies is this many times as large. MULTIPLIER in co-op's Server Setup > Co-op Options writes its choice here. |
+| `network.skulls` | `""` | `HALO_NET_SKULLS` | When you host: the skulls of a network game (multiplayer or co-op), for all the players, as `game.skulls` names them. Server Setup's SKULLS writes its choice here. Refer to "Skulls". |
 | `network.voice_lobby` | `true` | `HALO_NET_VOICE_LOBBY` | When you host: `true`, all players hear all players in the lobby, before and after a game. |
 | `network.voice_mode` | `"team_global_enemy_proximity"` | `HALO_NET_VOICE_MODE` | When you host: who hears whom during a game. `"off"`; `"team_proximity"` (teammates who are near); `"team_enemy_proximity"` (all players who are near); `"team_global"` (all teammates); `"team_global_enemy_proximity"` (all teammates, and enemies who are near). Refer to "Voice chat". |
 | `network.voice_kbps` | `24` | `HALO_NET_VOICE_KBPS` | When you host: the voice quality in the lobby and in a game, in kilobits per second, `8` to `64`. |
@@ -1173,6 +1175,41 @@ checks every file before it plays it, and leaves out (with a line in
 replaces. A mod changes nothing that the machines of a
 network game agree on. Refer to [docs/mods.md](../../docs/mods.md).
 
+## Skulls
+
+Skulls are twelve of Halo: Combat Evolved Anniversary's changes to how the
+game plays. They are chosen before a game starts and cannot be changed
+while it plays.
+
+- The campaign: New Game's difficulty opens the SKULLS screen, which turns
+  each skull on or off; its START GAME plays the level (with split screen
+  co-op, for both players). `game.skulls` keeps the choice for the next
+  time. A level that follows plays with the same skulls, and a checkpoint or
+  a saved game keeps them: Continue and Load Game play with the saved game's
+  skulls.
+- A network game: the host chooses on Server Setup's SKULLS, before START
+  GAME (`network.skulls`). All the machines play by the host's skulls, and
+  the lobby shows how many are on.
+
+| Skull | |
+| --- | --- |
+| Iron | Alone, a death (or a mission failed) plays the level again from its start. In co-op, the death of any player reverts all the players to the last checkpoint. |
+| Mythic | The players' enemies have twice their health and shields. The Sentinels have no shields that the game can give them, so they have twice their health only. |
+| Foreign | The players cannot pick up or use the Covenant's weapons (the weapons whose tags' names are the Covenant's: plasma, needler, fuel rod, energy sword). |
+| Famine | The weapons that a unit drops when it dies have half of its ammunition. The weapons that a map puts on racks and in crates have all of theirs. |
+| Bandanna | The players' reserve ammunition, batteries and grenades are never spent, and they always have a grenade of each kind. Magazines still empty and need reloading, and weapons still overheat. |
+| Fog | No motion tracker. |
+| Malfunction | For each life (a spawn, a respawn or a checkpoint loaded), one part of the HUD is not drawn: the crosshair, the shields, the health, the motion tracker or the ammunition. |
+| Recession | Each shot of a player's weapon spends twice its rounds, or twice its battery. |
+| Black Eye | The players' shields do not recharge. Each melee hit on a living enemy gives back a third of the shield. |
+| Eye Patch | No aim assist: no autoaim, no slowdown of the view over a target and no magnetism of the shots. |
+| Piñata | An enemy that a player hits with a melee attack drops a live plasma grenade. |
+| Boom | Explosions reach twice as far and push twice as hard. |
+
+The skulls are in the game's options (`port/linux/game/skulls.c`), which
+the saved game keeps; the host of a network game sends them in the game's
+settings (network version 31).
+
 ## Streamer mode
 
 Streamer mode (Settings > Network Setup > Streamer Mode, `streamer.enabled`)
@@ -1381,6 +1418,7 @@ Other changes:
 | `cseries/errors.c` | `debug.txt` stays open between lines. |
 | `networking/`, `game/`, `interface/`, `bungie_net/network/` and the pools of objects, effects and sounds | The system link limits and the memory for them. |
 | `game/`, `objects/`, `units/`, `networking/` | The distributed netcode. Refer to `NETCODE.md`. |
+| `game/`, `objects/`, `units/`, `items/`, `interface/`, `main/`, `saved games/`, `physics/`, `networking/` | The skulls. Refer to "Skulls". |
 | `cache/cache_files.c` | When a map's tags load and unload, the port finds the bitmaps that the high-res HUD replaces (`game/hud_hires_tags.c`), adds the tags of the menus to the menus' map (`game/menu_tags.c`), and plays the mods' tags (`game/mods.c`). |
 | `cache/xbox_sound_cache.c`, `cache/xbox_texture_cache.c` | The samples of a mod's sound are copied from memory, and the pixels of a mod's bitmap read from its file and laid out for the hardware, at once (`game/mod_sounds.c`, `game/mod_bitmaps.c`); a mod's linear bitmap need not have rows of whole steps of the pitch. |
 | `hs/hs.c` | The console's `mods_reload`, `mods_enable` and `mods_list`, which a client may run too. |

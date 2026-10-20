@@ -707,9 +707,28 @@ STRING_OVERRIDES.update({
 # CUSTOM MULTIPLAYER maps (_map_kind)
 MAP_KIND_CHOOSER = "main_menu/new_select/list_item_0_map_kind"
 
+# the campaign's SKULLS screen, after the difficulty (_skulls)
+SKULLS = "main_menu/skulls"
+SKULL_ROWS = 11
+DIFFICULTY = "main_menu/difficulty_select"
+# (the difficulty's items and OK choose it, then open the SKULLS screen,
+# whose START GAME plays the level: menu_functions.c's difficulty_choose)
+DIFFICULTY_ITEM_HANDLERS = [
+    '<on event="left_mouse" run="mouse emit accept event"/>',
+    f'<on event="a" run="difficulty item select" open="{SKULLS}/skulls_screen"/>',
+    f'<on event="start" run="difficulty item select" open="{SKULLS}/skulls_screen"/>',
+]
+
 # changes to the PC version's widgets (by our names): attributes set, all
 # their handlers replaced, children added, game data inputs added
 WIDGET_PATCHES = {
+    **{f"{DIFFICULTY}/{level}_difficulty_item": {"handlers": DIFFICULTY_ITEM_HANDLERS}
+       for level in ("kindergarten", "normal", "hard", "impossible")},
+    f"{DIFFICULTY}/difficulty_select_button_ok": {"handlers": [
+        f'<on event="a" run="set difficulty" open="{SKULLS}/skulls_screen"/>',
+        f'<on event="start" run="set difficulty" open="{SKULLS}/skulls_screen"/>',
+        '<on event="left_mouse" run="mouse emit accept event"/>',
+    ]},
     # The host returns here after a round with no menu history. Back must
     # reopen the main menu when it closes the last screen, as the lobby does.
     f"{MT}/connected/connected_map_select_wrapper": {"set": {
@@ -827,6 +846,7 @@ TITLES = {
     f"{MT}/lobby/header_lobby": "GAME LOBBY",
     f"{MT}/coop/header_player_2": "PLAYER 2 PROFILE",
     f"{MT}/lobby/header_add_player": "ADD PLAYER",
+    f"{SKULLS}/header_skulls": "SKULLS",
 }
 
 
@@ -1137,17 +1157,22 @@ def _server_settings() -> list:
         # (MAP SHARING's)
         MAP_SHARE_SETUP[2],
     ])
+    # (SKULLS, the host's for every player: its screen, _skulls)
+    extra += _text_button(f"{base}/button_skulls", "SKULLS", [
+        f'<on event="a" open="{base}/skulls/skulls_screen"/>',
+        f'<on event="start" open="{base}/skulls/skulls_screen"/>'])
     lines = _screen(base, spec, rows, ["server settings update"],
                     ['<on event="created" run="server settings init"/>'], extra)
     # (co-op's options' screens, and map sharing's)
     for key, title, _, screen_rows in [*COOP_SETUP_SCREENS, MAP_SHARE_SETUP]:
         lines += _setup_option_screen(f"{base}/{key}", key, screen_rows)
-    # (no Defaults: the bar is START and CANCEL; B cancels the name's edit
-    # first)
-    lines = [line.replace(f'<child widget="{base}/button_defaults" y="1"/>', "") for line in lines]
+    # (no Defaults: the bar is SKULLS, START and CANCEL; B cancels the name's
+    # edit first)
+    lines = [line.replace(f'<child widget="{base}/button_defaults" y="1"/>',
+                          f'<child widget="{base}/button_skulls" x="250" y="1"/>') for line in lines]
     lines = [line.replace('<on event="b" back="true"/>', SCREEN_BACK[0])
              .replace('<on event="back" back="true"/>', SCREEN_BACK[1]) for line in lines]
-    return lines
+    return lines + _skulls(f"{base}/skulls", network=True)
 
 
 MAXIMUM_PLAYERS = [2, 4, 8, 12, 16, 24, 32, 48, 64, 96, 128]
@@ -1577,7 +1602,7 @@ def _map_kind() -> list:
 
 def multiplayer_files() -> dict:
     """the port's multiplayer widgets: the browser's additions, the server
-    settings, the lobby"""
+    settings, the lobby; and the Mods and campaign's SKULLS screens"""
     head = ['<?xml version="1.0" encoding="UTF-8"?>',
             "<!-- The port's multiplayer screens, in the PC version's style (tools/port_settings.py) -->", "<menus>"]
     return {
@@ -1590,6 +1615,9 @@ def multiplayer_files() -> dict:
         TEAMPLAY_EDIT.replace("/", ".") + ".port.xml": head + _teamplay_options_extras() + ["</menus>", ""],
         MODS.replace("/", ".") + ".xml": [head[0], "<!-- The port's Mods screen, in the PC version's style "
                                           "(tools/port_settings.py) -->", head[2]] + _mods() + ["</menus>", ""],
+        SKULLS.replace("/", ".") + ".xml": [head[0], "<!-- The port's SKULLS screen, in the PC version's style "
+                                            "(tools/port_settings.py) -->", head[2]] +
+        _header(f"{SKULLS}/header_skulls", f"{SKULLS}/header_skulls") + _skulls(SKULLS) + ["</menus>", ""],
     }
 
 
@@ -1755,4 +1783,59 @@ def _mods() -> list:
                                                               '<on event="start" run="port mods move down"/>'])
     lines += _button(f"{base}/button_ok", 1, ['<on event="a" run="port mods save" back="true"/>',
                                               '<on event="start" run="port mods save" back="true"/>'])
+    return lines
+
+
+# ---------- the skulls (port/linux/game/skulls.c): the campaign's SKULLS
+# screen, after New Game's difficulty, and Server Setup's, the host's for a
+# network game
+
+
+def _skulls(base: str, network: bool = False) -> list:
+    """a SKULLS screen, laid out as the Mods screen is (its rows' and
+    details' texts, which menu_functions.c measures and wraps): on the left
+    a row for each skull, its name and ON or OFF (A, or left and right, turns
+    it on or off; SKULL_ROWS of them, scrolling over the rest); on the right,
+    in the lobby's frame, the skull chosen and what it does. The campaign's
+    START GAME plays the level (game.skulls keeps the choice); Server
+    Setup's OK keeps them for the game (network.skulls); ALL OFF turns every
+    one off"""
+    lines = _widget(f"{base}/skulls_screen", [("width", 640), ("height", 480),
+                                              ("flags", "pass_unhandled_to_focused_child"),
+                                              ("bitmap", "bitmaps/gradient")],
+                    ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
+                     '<child widget="main_menu/new_select/sel_list_desc_bkd"/>',
+                     f'<child widget="{base}/skulls_list"/>',
+                     f'<child widget="{SKULLS}/header_skulls"/>'])
+    rows = [f'<child widget="{base}/op_skull_{index + 1}" x="20" y="{73 + 30 * index}"/>' for index in range(SKULL_ROWS)]
+    lines += _widget(f"{base}/skulls_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                             ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
+                                             ("description", f"{MODS}/mod_details")],
+                     ['<data input="port skulls update"/>',
+                      f'<on event="created" run="port skulls init{" network" if network else ""}"/>', *rows,
+                      f'<child widget="{base}/button_bar" y="414"/>'])
+    for index in range(SKULL_ROWS):
+        lines += _widget(f"{base}/op_skull_{index + 1}",
+                         [("width", 390), ("height", 28), ("flags", "pass_unhandled_to_focused_child"),
+                          ("bitmap", "bitmaps/sel_list_item_bkd_top" if index == 0 else "bitmaps/sel_list_item_bkd"),
+                          ("color", "#FF2896FF")],
+                         ['<on event="a" run="port skulls toggle"/>', '<on event="start" run="port skulls toggle"/>',
+                          '<on event="left right" run="port skulls toggle"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          f'<child widget="{MODS}/mod_name" x="14"/>',
+                          f'<child widget="{MODS}/mod_state" x="318"/>'])
+    lines += _widget(f"{base}/button_bar",
+                     [("type", "column_list"), ("width", 640), ("height", 28),
+                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     [f'<child widget="{base}/button_clear" y="1"/>',
+                      f'<child widget="{base}/button_ok" x="380" y="1"/>',
+                      f'<child widget="{"common_button_cancel" if network else "common_button_back"}" x="510" y="1"/>'])
+    lines += _text_button(f"{base}/button_clear", "ALL OFF", ['<on event="a" run="port skulls clear"/>',
+                                                             '<on event="start" run="port skulls clear"/>'])
+    if network:
+        lines += _button(f"{base}/button_ok", 1, ['<on event="a" run="port skulls save" back="true"/>',
+                                                  '<on event="start" run="port skulls save" back="true"/>'])
+    else:
+        lines += _text_button(f"{base}/button_ok", "START GAME", ['<on event="a" run="port skulls start"/>',
+                                                                 '<on event="start" run="port skulls start"/>'])
     return lines

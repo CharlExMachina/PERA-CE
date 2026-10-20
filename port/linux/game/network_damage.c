@@ -56,6 +56,7 @@ being hit looks and feels like on the clients).
 #include "scenario/scenario.h"
 #include "units/units.h"
 #include "network_distributed.h"
+#include "skulls.h"
 
 #include <math.h>
 
@@ -1839,7 +1840,7 @@ static boolean distributed_report_valid(
 	definition = damage_effect_definition_get(report->damage.definition_index);
 	reach = target->object.bounding_sphere_radius + REPORT_IMPACT_TOLERANCE;
 	if (area)
-		reach += definition->cutoff_radius;
+		reach += definition->cutoff_radius * skulls_explosion_scale();
 	if (!(distributed_distance_squared(&report->damage.origin, &report->target_position) <= reach * reach))
 		return FALSE;
 	/* what only a grenade of theirs deals, from one the host saw them throw
@@ -1927,7 +1928,9 @@ static boolean distributed_report_valid(
 			damage->epicenter.y;
 		damage->direction.k = report->target_position.z + target->object.bounding_sphere_center.z - origin.z -
 			damage->epicenter.z;
-		distance = normalize3d(&damage->direction);
+		/* (the radii twice as far with the Boom skull, as damage.c has them:
+		skulls.c) */
+		distance = normalize3d(&damage->direction) / skulls_explosion_scale();
 		if (!TEST_FLAG(definition->flags, _damage_effect_dont_scale_damage_by_distance_bit))
 		{
 			real radius_delta = definition->cutoff_radius - definition->falloff_radius;

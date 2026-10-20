@@ -390,6 +390,9 @@ static char const *const port_function_names[] =
 	/* (the main menu's Mods: menu_functions.c) */
 	"port mods init", "port mods close", "port mods toggle", "port mods move up", "port mods move down",
 	"port mods save",
+	/* (the SKULLS screens, the campaign's and Server Setup's: menu_functions.c) */
+	"port skulls init", "port skulls init network", "port skulls toggle", "port skulls clear",
+	"port skulls start", "port skulls save",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -413,6 +416,8 @@ static char const *const port_game_data_input_names[] =
 	"port gamepad layout preview",
 	/* (the main menu's Mods) */
 	"port mods update",
+	/* (the SKULLS screens) */
+	"port skulls update",
 };
 
 static struct

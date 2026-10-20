@@ -605,6 +605,21 @@ boolean game_is_cooperative(
 	return player_spawn_count > 1;
 }
 
+/* port: the game's skulls (port/linux/game/skulls.c), in its options'
+flags, which the Xbox's game left unused: the game state's, so a checkpoint
+and a saved game keep them */
+unsigned long game_skulls_get(
+	void)
+{
+	return game_globals && game_globals->map_loaded ? game_globals->options.flags : 0;
+}
+
+void game_skulls_set(
+	unsigned long skulls)
+{
+	game_globals->options.flags = skulls;
+}
+
 boolean game_load(
 	struct game_options *options)
 {

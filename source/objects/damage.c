@@ -138,6 +138,7 @@ symbols in this file:
 #include "units/bipeds.h"
 #include "units/units.h"
 #include "units/vehicles.h"
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 
 /* network_game_globals.c's */
 boolean network_game_distributed_client(void);
@@ -454,7 +455,12 @@ real object_get_maximum_body_vitality(
 	real result = object->object.maximum_body_vitality;
 
 	if (!ignore_difficulty)
+	{
 		result *= game_difficulty_get_team_value(1, object->object.owner_team_index);
+		/* port: twice the enemies', with the Mythic skull
+		(port/linux/game/skulls.c) */
+		result *= skulls_enemy_vitality_scale(object->object.owner_team_index);
+	}
 
 	return result;
 }
@@ -467,7 +473,12 @@ real object_get_maximum_shield_vitality(
 	real result = object->object.maximum_shield_vitality;
 
 	if (!ignore_difficulty)
+	{
 		result *= game_difficulty_get_team_value(2, object->object.owner_team_index);
+		/* port: twice the enemies', with the Mythic skull
+		(port/linux/game/skulls.c) */
+		result *= skulls_enemy_vitality_scale(object->object.owner_team_index);
+	}
 
 	return result;
 }
@@ -1053,6 +1064,14 @@ static void object_damage_aftermath(
 			damage_effect->damage.instantaneous_acceleration *
 			object_definition->object.acceleration_scale *
 			0.033333335f;
+		/* port: an explosion's twice as hard, with the Boom skull
+		(port/linux/game/skulls.c) */
+		if (TEST_FLAG(damage->flags, _damage_area_of_effect_bit) &&
+			damage_effect->cutoff_radius > 0.f &&
+			damage_effect->damage.category != _damage_category_melee)
+		{
+			acceleration_scale *= skulls_explosion_scale();
+		}
 		scale_vector3d(&direction, acceleration_scale, &acceleration);
 
 		switch (object->object.type)
@@ -1138,6 +1157,17 @@ static void object_damage_aftermath(
 				player_index,
 				TRUE);
 		}
+	}
+
+	/* port: a melee blow, for the Black Eye and Piñata skulls
+	(port/linux/game/skulls.c) */
+	if (damage_effect->damage.category == _damage_category_melee)
+	{
+		skulls_melee_struck(
+			object_index,
+			damage->owner_object_index,
+			damage->owner_team_index,
+			TEST_FLAG(being_damaged_flags, _object_being_damaged_body_depleted_bit));
 	}
 
 	if (TEST_FLAG(_object_mask_unit, object->object.type))
@@ -1942,7 +1972,8 @@ void area_of_effect_cause_damage(
 		0,
 		&damage->location,
 		&damage->origin,
-		definition->cutoff_radius,
+		/* port: twice as far, with the Boom skull (port/linux/game/skulls.c) */
+		definition->cutoff_radius * skulls_explosion_scale(),
 		object_indices,
 		NUMBEROF(object_indices));
 	if (object_count > 0)
@@ -2077,7 +2108,9 @@ void object_damage_update(
 				hud_tick_shield(player_index, 0.00074074074f);
 			}
 		}
-		else if (object->object.shield_vitality < 1.f)
+		/* port: not a player's, with the Black Eye skull
+		(port/linux/game/skulls.c) */
+		else if (object->object.shield_vitality < 1.f && skulls_shield_recharges(object_index))
 		{
 			if (object->object.shield_stun_ticks == 0)
 			{
@@ -2562,6 +2595,9 @@ static void area_of_effect_cause_damage_to_object(
 			&object->object.bounding_sphere_center,
 			&damage->direction);
 		distance = normalize3d(&damage->direction);
+		/* port: (the radii twice as far, with the Boom skull:
+		port/linux/game/skulls.c) */
+		distance /= skulls_explosion_scale();
 		radius_delta = damage_effect->cutoff_radius - damage_effect->falloff_radius;
 		if (radius_delta > 0.f)
 		{
@@ -2768,6 +2804,32 @@ void damage_replay_static(
 	distributed_damage_authorized = TRUE;
 	object_cause_damage(damage, object_index, node_index, region_index, material_index, NULL);
 	distributed_damage_authorized = FALSE;
+}
+
+/* port: a fraction of a full shield given back to an object (the Black
+Eye skull's, for a melee blow: port/linux/game/skulls.c), as its recharge
+gives it back */
+void damage_port_shield_restore(
+	long object_index,
+	real fraction)
+{
+	struct object_datum *object = object_get(object_index);
+	struct object_definition *object_definition = object_definition_get(object->definition_index);
+	struct collision_model *collision_model = object_definition->object.collision_model.index != NONE ?
+		collision_model_definition_get(object_definition->object.collision_model.index) : NULL;
+
+	if (!collision_model || object->object.maximum_shield_vitality <= 0.f ||
+		TEST_FLAG(object->object.damage_flags, _object_dead_bit) || object->object.shield_vitality >= 1.f)
+	{
+		return;
+	}
+	if (TEST_FLAG(object->object.damage_flags, _object_shield_depleted_bit))
+	{
+		damage_effect_new_on_object(collision_model->resistance.shield_recharging_effect.index, object_index);
+		SET_FLAG(object->object.damage_flags, _object_shield_depleted_bit, FALSE);
+		object_permutation_shield_regions(object_index, TRUE);
+	}
+	object->object.shield_vitality = MIN(object->object.shield_vitality + fraction, 1.f);
 }
 
 /* the host's: what damage_set_network_state takes */

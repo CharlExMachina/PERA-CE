@@ -142,6 +142,17 @@ void main_set_map_name(
 void main_set_difficulty(
 	short difficulty);
 
+/* port: the campaign's skulls (port/linux/game/skulls.c): those of the
+levels played next; or (Continue, Load Game) its saved game's; and
+(game_state.c) those of a level that loaded its saved game as it started */
+void main_set_skulls(
+	unsigned long skulls);
+void main_keep_saved_game_skulls(
+	void);
+unsigned long main_saved_game_skulls(
+	unsigned long started_with,
+	unsigned long saved);
+
 void main_save_map_safe(
 	void);
 

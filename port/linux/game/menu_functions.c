@@ -86,6 +86,7 @@ their handlers open opens.
 /* (internet play's server browser: the platform layer's) */
 #include "../src/p2p.h"
 #include "text_filter.h"
+#include "skulls.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -918,6 +919,8 @@ static boolean campaign_continue(short controller)
 
 	if (!campaign_profile(controller, &profile) || !ui_widget_port_saved_game(&map_name, &level, &difficulty))
 		return campaign_fail();
+	/* (with the saved game's skulls: skulls.c) */
+	main_keep_saved_game_skulls();
 	campaign_start(map_name, difficulty, controller);
 	return TRUE;
 }
@@ -1229,6 +1232,8 @@ static boolean level_choose(short controller)
 
 		if (!map_name || !campaign_profile(controller, &profile))
 			return campaign_fail();
+		/* (no SKULLS screen before it: none) */
+		main_set_skulls(0);
 		campaign_start(map_name, main_get_difficulty(), controller);
 		return FALSE;
 	}
@@ -1251,19 +1256,16 @@ static boolean level_choose(short controller)
 	return TRUE;
 }
 
-/* the difficulty menu: "difficulty item select" starts the game at the
-item's; "set difficulty" (its OK button) at the one its description shows */
-static boolean difficulty_start(short difficulty, short controller)
+/* the difficulty menu: "difficulty item select" chooses the item's;
+"set difficulty" (its OK button) the one its description shows. Either then
+opens the SKULLS screen, whose START GAME plays the level (skulls_start) */
+static boolean difficulty_choose(short difficulty, short controller)
 {
 	struct player_profile profile;
-	char const *map_name = main_get_map_name();
 
 	if (!campaign_profile(controller, &profile))
 		return campaign_fail();
-	/* (a campaign level, or a Custom Edition campaign map) */
-	if (!custom_edition_maps_level_campaign(map_name))
-		map_name = main_get_solo_level_name(0);
-	campaign_start(map_name, PIN(difficulty, 0, 3), controller);
+	main_set_difficulty(PIN(difficulty, 0, 3));
 	return TRUE;
 }
 
@@ -1389,6 +1391,8 @@ static boolean saved_game_continue(short controller)
 	if (!player_profile_get(saved_game->profile_index, &profile))
 		return campaign_fail();
 	player_ui_set_active_player_profile(0, saved_game->profile_index, &profile);
+	/* (with the saved game's skulls: skulls.c) */
+	main_keep_saved_game_skulls();
 	campaign_start(main_get_solo_level_name(saved_game->level), saved_game->difficulty, controller);
 	return TRUE;
 }
@@ -2650,6 +2654,198 @@ static boolean mods_save(void)
 	return TRUE;
 }
 
+/* ---------- the SKULLS screens (tools/port_settings.py's _skulls): the
+campaign's, after New Game's difficulty, whose START GAME plays the level
+with the skulls on (game.skulls keeps its choice), and Server Setup's, whose
+OK keeps them for the network game (network.skulls, which server_start
+gives the server). Laid out as the Mods screen is, with its rows' and
+details' texts (so that mods_wrap measures their lines): a row for each
+skull, its name and ON or OFF, A turning it on or off, the list moving at
+its ends over the skulls past them; in the frame, the skull chosen: its
+name, gold or silver, on or off, and what it does (skulls.c) */
+
+#define SKULL_ROWS 11
+
+static struct
+{
+	/* the skulls on (skulls.h's flags); Server Setup's screen, else the
+	campaign's; the skull on the first row, and the one chosen */
+	unsigned long skulls;
+	boolean network;
+	short first;
+	short chosen;
+	/* what the details show (they are wrapped again when it changes) */
+	char shown[128];
+} skulls_screen;
+
+static char const *skulls_setting(void)
+{
+	return skulls_screen.network ? "network.skulls" : "game.skulls";
+}
+
+/* "port skulls init" and "port skulls init network" (the list's created):
+the skulls the setting has on */
+static boolean skulls_screen_initialize(boolean network)
+{
+	skulls_screen.network = network;
+	skulls_screen.skulls = skulls_parse(config_string(skulls_setting())) & SKULL_FLAGS_MASK;
+	skulls_screen.first = 0;
+	skulls_screen.chosen = 0;
+	skulls_screen.shown[0] = 0;
+	return TRUE;
+}
+
+/* the row (op_skull_<n>) a widget is or is in, else NULL */
+static struct widget_instance *skull_row(struct widget_instance *widget)
+{
+	for (; widget; widget = widget->parent)
+	{
+		if (!strncmp(widget->name, "op_skull_", 9))
+			return widget;
+	}
+	return NULL;
+}
+
+/* the skull on a row, else NONE */
+static short skull_row_skull(struct widget_instance *row)
+{
+	short skull = row ? (short)(skulls_screen.first + atoi(row->name + 9) - 1) : NONE;
+
+	return skull >= 0 && skull < NUMBER_OF_SKULLS ? skull : NONE;
+}
+
+/* "port skulls toggle" (A on a row) */
+static boolean skulls_toggle(struct widget_instance *widget)
+{
+	short skull = skull_row_skull(skull_row(widget));
+
+	if (skull == NONE)
+		return FALSE;
+	skulls_screen.skulls ^= FLAG(skull);
+	return TRUE;
+}
+
+/* "port skulls clear" (ALL OFF) */
+static boolean skulls_clear(void)
+{
+	skulls_screen.skulls = 0;
+	return TRUE;
+}
+
+/* the skulls on, kept in the screen's setting */
+static void skulls_keep(void)
+{
+	char const *kept = config_string(skulls_setting());
+	char text[256];
+
+	skulls_print(skulls_screen.skulls, text, sizeof(text));
+	if (strcmp(text, kept ? kept : ""))
+		config_write(skulls_setting(), text);
+}
+
+/* "port skulls start" (the campaign's START GAME): the level chosen on New
+Game (or a Custom Edition campaign map), at the difficulty chosen, with the
+skulls on */
+static boolean skulls_start(short controller)
+{
+	struct player_profile profile;
+	char const *map_name = main_get_map_name();
+
+	if (!campaign_profile(controller, &profile))
+		return campaign_fail();
+	skulls_keep();
+	main_set_skulls(skulls_screen.skulls);
+	/* (a campaign level, or a Custom Edition campaign map) */
+	if (!custom_edition_maps_level_campaign(map_name))
+		map_name = main_get_solo_level_name(0);
+	campaign_start(map_name, PIN(main_get_difficulty(), 0, 3), controller);
+	return TRUE;
+}
+
+/* "port skulls save" (Server Setup's OK) */
+static boolean skulls_save(void)
+{
+	skulls_keep();
+	return TRUE;
+}
+
+/* the details of a skull, in the frame (the list's description) */
+static void skulls_details_show(struct widget_instance *details, short skull)
+{
+	char text[MOD_DETAILS_LENGTH];
+	char about[MOD_DETAILS_LENGTH];
+	wchar_t wide[MOD_DETAILS_LENGTH];
+	short line;
+	char shown[sizeof(skulls_screen.shown)];
+
+	if (!details || skull < 0 || skull >= NUMBER_OF_SKULLS)
+		return;
+	/* (wrapped again only when what they show, or its fonts, change) */
+	snprintf(shown, sizeof(shown), "%d %d %ld %d %ld %d", skull, TEST_FLAG(skulls_screen.skulls, skull) ? 1 : 0,
+		mods_screen.fonts[_mod_details_name], mods_screen.widths[_mod_details_name],
+		mods_screen.fonts[_mod_details_text], mods_screen.widths[_mod_details_text]);
+	if (!strcmp(shown, skulls_screen.shown))
+		return;
+	strcpy(skulls_screen.shown, shown);
+	visible_set(named(details, "mod_details_status", 0), FALSE);
+	text[0] = 0;
+	mods_wrap(skull_name(skull), text, sizeof(text), _mod_details_name, 2, 0);
+	mods_wide_text(text, wide, NUMBEROF(wide));
+	text_set_length(named(details, "mod_details_name", 0), wide, NUMBEROF(wide));
+	text[0] = 0;
+	snprintf(about, sizeof(about), "%s skull\n%s", skull_silver(skull) ? "Silver" : "Gold",
+		TEST_FLAG(skulls_screen.skulls, skull) ? "On" : "Off");
+	line = mods_wrap(about, text, sizeof(text), _mod_details_text, MOD_DETAILS_LINES, 0);
+	line = mods_wrap(" ", text, sizeof(text), _mod_details_text, MOD_DETAILS_LINES, line);
+	mods_wrap(skull_description(skull), text, sizeof(text), _mod_details_text, MOD_DETAILS_LINES, line);
+	mods_wide_text(text, wide, NUMBEROF(wide));
+	text_set_length(named(details, "mod_details_text", 0), wide, NUMBEROF(wide));
+}
+
+/* "port skulls update": the rows (the list moving on at its ends while
+there are more skulls past them), each skull's name and ON or OFF, and the
+details of the skull chosen */
+static void skulls_update(struct widget_instance *list)
+{
+	struct widget_instance *row;
+	struct widget_instance *focused = skull_row(list->focused_child);
+	short focused_index = focused ? (short)(atoi(focused->name + 9) - 1) : NONE;
+
+	if (focused_index == SKULL_ROWS - 1 && skulls_screen.first + SKULL_ROWS < NUMBER_OF_SKULLS &&
+		list_scrolls_at_end())
+	{
+		skulls_screen.first++;
+		focus_row(list, --focused_index);
+	}
+	else if (focused_index == 0 && skulls_screen.first > 0 && list_scrolls_at_end())
+	{
+		skulls_screen.first--;
+		focus_row(list, ++focused_index);
+	}
+	skulls_screen.first = (short)PIN(skulls_screen.first, 0, MAX(0, NUMBER_OF_SKULLS - SKULL_ROWS));
+	if (focused_index != NONE && skulls_screen.first + focused_index < NUMBER_OF_SKULLS)
+		skulls_screen.chosen = (short)(skulls_screen.first + focused_index);
+	for (row = list->child; row; row = row->next)
+	{
+		short skull;
+		wchar_t wide[ROW_TEXT_LENGTH];
+
+		if (strncmp(row->name, "op_skull_", 9))
+			continue;
+		/* (its background: the focused one's outlined frame, as the Mods
+		screen's) */
+		row->animation.current_frame_index = row == focused ? 1 : 0;
+		skull = skull_row_skull(row);
+		row->visible = skull != NONE;
+		if (skull == NONE)
+			continue;
+		mods_wide_text(skull_name(skull), wide, ROW_TEXT_LENGTH);
+		text_set(named(row, "mod_name", 0), wide);
+		text_set(named(row, "mod_state", 0), TEST_FLAG(skulls_screen.skulls, skull) ? L"ON" : L"OFF");
+	}
+	skulls_details_show(list->parameters.list.extended_description, skulls_screen.chosen);
+}
+
 /* ---------- Multiplayer (port/assets/menus' PLAN: Create Game > Internet
 or LAN; Join Game > Server Browser (blank, for now), LAN, Direct Link): the
 Xbox's networking, run by the engine's port entry points
@@ -3596,6 +3792,9 @@ static boolean server_start(void)
 	}
 	else if (!gametype_setup_apply())
 		return campaign_fail();
+	/* the skulls as Server Setup's SKULLS left them (network.skulls), for
+	every player (skulls.c) */
+	network_game_server_port_set_skulls((word)(skulls_parse(config_string("network.skulls")) & SKULL_FLAGS_MASK));
 	return global_network_game_server_get() != NULL;
 }
 
@@ -4914,12 +5113,21 @@ static void lobby_update(struct widget_instance *list)
 		short seconds = network_game_client_get_seconds_to_game_start(client);
 		char link[TEXT_FIELD_LENGTH];
 		wchar_t gametype[NUMBEROF(game->variant.human_readable_game_description) + 1];
+		/* (the host's skulls: how many are on, skulls.c) */
+		wchar_t skulls[32];
+		short skull, skull_count = 0;
 
+		for (skull = 0; skull < NUMBER_OF_SKULLS; skull++)
+			skull_count += TEST_FLAG(game->skull_flags, skull) ? 1 : 0;
+		skulls[0] = 0;
+		if (skull_count)
+			usnprintf(skulls, NUMBEROF(skulls) - 1, L"\r\n%d skull%s on", skull_count, skull_count == 1 ? L"" : L"s");
+		skulls[NUMBEROF(skulls) - 1] = 0;
 		ustrncpy(gametype, game->variant.human_readable_game_description, NUMBEROF(gametype) - 1);
 		gametype[NUMBEROF(gametype) - 1] = 0;
-		usnprintf(text, NUMBEROF(text) - 1, L"%s\r\n%s\r\n%d of %d players\r\n\r\n%s", gametype,
+		usnprintf(text, NUMBEROF(text) - 1, L"%s\r\n%s\r\n%d of %d players%s\r\n\r\n%s", gametype,
 			engine_names[PIN(game->variant.game_engine_index, 0, 5)], lobby_player_count, game->maximum_players,
-			seconds > 0 ? L"Starting in:" : game->machine_count < 2 ? L"Waiting for players" : L"");
+			skulls, seconds > 0 ? L"Starting in:" : game->machine_count < 2 ? L"Waiting for players" : L"");
 		text[NUMBEROF(text) - 1] = 0;
 		if (seconds > 0)
 		{
@@ -6256,11 +6464,35 @@ boolean pc_menu_event_function_invoke(
 		}
 		else if (!strcmp(name, "difficulty item select"))
 		{
-			return difficulty_start(sibling_index(widget), controller);
+			return difficulty_choose(sibling_index(widget), controller);
 		}
 		else if (!strcmp(name, "set difficulty"))
 		{
 			main_set_difficulty(PIN(difficulty_shown(widget), 0, 3));
+		}
+		else if (!strcmp(name, "port skulls init"))
+		{
+			return skulls_screen_initialize(FALSE);
+		}
+		else if (!strcmp(name, "port skulls init network"))
+		{
+			return skulls_screen_initialize(TRUE);
+		}
+		else if (!strcmp(name, "port skulls toggle"))
+		{
+			return skulls_toggle(widget);
+		}
+		else if (!strcmp(name, "port skulls clear"))
+		{
+			return skulls_clear();
+		}
+		else if (!strcmp(name, "port skulls start"))
+		{
+			return skulls_start(controller);
+		}
+		else if (!strcmp(name, "port skulls save"))
+		{
+			return skulls_save();
 		}
 		else if (!strcmp(name, "load game menu init"))
 		{
@@ -6335,6 +6567,8 @@ void pc_menu_game_data_function_invoke(
 		controls_update(widget);
 	else if (!strcmp(name, "port mods update"))
 		mods_update(widget);
+	else if (!strcmp(name, "port skulls update"))
+		skulls_update(widget);
 	else if (!strcmp(name, "color picker update"))
 		color_list_update(widget);
 	else if (!strcmp(name, "3wide player profile list update"))

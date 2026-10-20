@@ -163,6 +163,9 @@ boolean game_safe_to_save(
 boolean game_safe_to_speak(
 	void);
 boolean game_is_cooperative(void);
+/* port: the game's skulls (port/linux/game/skulls.c, skulls.h's flags) */
+unsigned long game_skulls_get(void);
+void game_skulls_set(unsigned long skulls);
 boolean game_load(
 	struct game_options *options);
 void game_initialize_for_new_map(

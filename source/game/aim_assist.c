@@ -65,6 +65,7 @@ symbols in this file:
 #include "units/bipeds.h"
 #include "units/unit_definitions.h"
 #include "units/units.h"
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 
 /* ---------- constants */
 
@@ -172,7 +173,8 @@ static boolean unit_get_aim_assist_parameters(
 	short zoom_level,
 	struct aim_assist_parameters *parameters)
 {
-	if (unit_index!=NONE)
+	/* port: none with the Eye Patch skull (port/linux/game/skulls.c) */
+	if (unit_index!=NONE && skulls_aim_assist())
 	{
 		struct unit_datum *unit= unit_get(unit_index);
 		long weapon_index= unit_inventory_get_weapon(unit_index, unit->unit.current_weapon_index);
