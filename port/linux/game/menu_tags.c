@@ -392,7 +392,7 @@ static char const *const port_function_names[] =
 	"port mods save",
 	/* (the SKULLS screens, the campaign's and Server Setup's: menu_functions.c) */
 	"port skulls init", "port skulls init network", "port skulls toggle", "port skulls clear",
-	"port skulls start", "port skulls save",
+	"port skulls save",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from

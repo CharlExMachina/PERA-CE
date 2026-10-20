@@ -48,7 +48,8 @@ the one last used, else the first) and the game's saved game in it:
   its difficulty. Its first row's chooser shows MULTIPLAYER's maps
   instead, one chosen played alone at once;
 - the difficulty menu: "difficulty item select" (a difficulty chosen) and
-  "set difficulty" (its OK button: the difficulty shown) start the game;
+  "set difficulty" (its OK button: the difficulty shown) start the game,
+  with the skulls its SKULLS screen has on (game.skulls);
 - Load Game's list ("load game menu init", "load game list update", "load
   game menu activated") has each profile's saved game, and "load game menu
   delete request" and "delete finish" delete one.
@@ -1256,16 +1257,28 @@ static boolean level_choose(short controller)
 	return TRUE;
 }
 
-/* the difficulty menu: "difficulty item select" chooses the item's;
-"set difficulty" (its OK button) the one its description shows. Either then
-opens the SKULLS screen, whose START GAME plays the level (skulls_start) */
-static boolean difficulty_choose(short difficulty, short controller)
+/* the skulls of the campaign level started next: those the SKULLS screen,
+which the difficulty menu's SKULLS opens, last kept (game.skulls) */
+static void campaign_skulls_set(void)
+{
+	main_set_skulls(skulls_parse(config_string("game.skulls")) & SKULL_FLAGS_MASK);
+}
+
+/* the difficulty menu: "difficulty item select" starts the game at the
+item's; "set difficulty" (its OK button) at the one its description shows.
+Either plays with the skulls chosen (campaign_skulls_set) */
+static boolean difficulty_start(short difficulty, short controller)
 {
 	struct player_profile profile;
+	char const *map_name = main_get_map_name();
 
 	if (!campaign_profile(controller, &profile))
 		return campaign_fail();
-	main_set_difficulty(PIN(difficulty, 0, 3));
+	/* (a campaign level, or a Custom Edition campaign map) */
+	if (!custom_edition_maps_level_campaign(map_name))
+		map_name = main_get_solo_level_name(0);
+	campaign_skulls_set();
+	campaign_start(map_name, PIN(difficulty, 0, 3), controller);
 	return TRUE;
 }
 
@@ -2655,14 +2668,14 @@ static boolean mods_save(void)
 }
 
 /* ---------- the SKULLS screens (tools/port_settings.py's _skulls): the
-campaign's, after New Game's difficulty, whose START GAME plays the level
-with the skulls on (game.skulls keeps its choice), and Server Setup's, whose
-OK keeps them for the network game (network.skulls, which server_start
-gives the server). Laid out as the Mods screen is, with its rows' and
-details' texts (so that mods_wrap measures their lines): a row for each
-skull, its name and ON or OFF, A turning it on or off, the list moving at
-its ends over the skulls past them; in the frame, the skull chosen: its
-name, gold or silver, on or off, and what it does (skulls.c) */
+campaign's, which New Game's difficulty's SKULLS opens, whose OK keeps the
+skulls for the level the difficulty starts (game.skulls: campaign_skulls_set),
+and Server Setup's, whose OK keeps them for the network game
+(network.skulls, which server_start gives the server). Laid out as the Mods
+screen is, with its rows' and details' texts (so that mods_wrap measures
+their lines): a row for each skull, its name and ON or OFF, A turning it on
+or off, the list moving at its ends over the skulls past them; in the frame,
+the skull chosen: its name, on or off, and what it does (skulls.c) */
 
 #define SKULL_ROWS 11
 
@@ -2687,6 +2700,15 @@ static char const *skulls_setting(void)
 the skulls the setting has on */
 static boolean skulls_screen_initialize(boolean network)
 {
+	short index;
+
+	/* (the Mods screen's texts' fonts and widths, not yet measured: until
+	they are drawn, mods_wrap counts characters) */
+	for (index = 0; index < NUMBER_OF_MOD_TEXT_BOXES; index++)
+	{
+		mods_screen.fonts[index] = NONE;
+		mods_screen.widths[index] = 0;
+	}
 	skulls_screen.network = network;
 	skulls_screen.skulls = skulls_parse(config_string(skulls_setting())) & SKULL_FLAGS_MASK;
 	skulls_screen.first = 0;
@@ -2743,26 +2765,7 @@ static void skulls_keep(void)
 		config_write(skulls_setting(), text);
 }
 
-/* "port skulls start" (the campaign's START GAME): the level chosen on New
-Game (or a Custom Edition campaign map), at the difficulty chosen, with the
-skulls on */
-static boolean skulls_start(short controller)
-{
-	struct player_profile profile;
-	char const *map_name = main_get_map_name();
-
-	if (!campaign_profile(controller, &profile))
-		return campaign_fail();
-	skulls_keep();
-	main_set_skulls(skulls_screen.skulls);
-	/* (a campaign level, or a Custom Edition campaign map) */
-	if (!custom_edition_maps_level_campaign(map_name))
-		map_name = main_get_solo_level_name(0);
-	campaign_start(map_name, PIN(main_get_difficulty(), 0, 3), controller);
-	return TRUE;
-}
-
-/* "port skulls save" (Server Setup's OK) */
+/* "port skulls save" (OK) */
 static boolean skulls_save(void)
 {
 	skulls_keep();
@@ -2773,7 +2776,6 @@ static boolean skulls_save(void)
 static void skulls_details_show(struct widget_instance *details, short skull)
 {
 	char text[MOD_DETAILS_LENGTH];
-	char about[MOD_DETAILS_LENGTH];
 	wchar_t wide[MOD_DETAILS_LENGTH];
 	short line;
 	char shown[sizeof(skulls_screen.shown)];
@@ -2793,9 +2795,8 @@ static void skulls_details_show(struct widget_instance *details, short skull)
 	mods_wide_text(text, wide, NUMBEROF(wide));
 	text_set_length(named(details, "mod_details_name", 0), wide, NUMBEROF(wide));
 	text[0] = 0;
-	snprintf(about, sizeof(about), "%s skull\n%s", skull_silver(skull) ? "Silver" : "Gold",
-		TEST_FLAG(skulls_screen.skulls, skull) ? "On" : "Off");
-	line = mods_wrap(about, text, sizeof(text), _mod_details_text, MOD_DETAILS_LINES, 0);
+	line = mods_wrap(TEST_FLAG(skulls_screen.skulls, skull) ? "On" : "Off", text, sizeof(text), _mod_details_text,
+		MOD_DETAILS_LINES, 0);
 	line = mods_wrap(" ", text, sizeof(text), _mod_details_text, MOD_DETAILS_LINES, line);
 	mods_wrap(skull_description(skull), text, sizeof(text), _mod_details_text, MOD_DETAILS_LINES, line);
 	mods_wide_text(text, wide, NUMBEROF(wide));
@@ -6464,11 +6465,14 @@ boolean pc_menu_event_function_invoke(
 		}
 		else if (!strcmp(name, "difficulty item select"))
 		{
-			return difficulty_choose(sibling_index(widget), controller);
+			return difficulty_start(sibling_index(widget), controller);
 		}
 		else if (!strcmp(name, "set difficulty"))
 		{
+			/* (and the skulls: "main menu switch to solo game" plays the
+			level after it) */
 			main_set_difficulty(PIN(difficulty_shown(widget), 0, 3));
+			campaign_skulls_set();
 		}
 		else if (!strcmp(name, "port skulls init"))
 		{
@@ -6485,10 +6489,6 @@ boolean pc_menu_event_function_invoke(
 		else if (!strcmp(name, "port skulls clear"))
 		{
 			return skulls_clear();
-		}
-		else if (!strcmp(name, "port skulls start"))
-		{
-			return skulls_start(controller);
 		}
 		else if (!strcmp(name, "port skulls save"))
 		{

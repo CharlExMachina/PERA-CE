@@ -187,12 +187,11 @@ help of the row chosen; Controls Setup's `controls ...` bind the keyboard
 and mouse's controls (Enter takes the next key or button pressed; left and
 right choose which of two; Escape cancels, Delete clears); Change Color's
 `color picker ...` (the Xbox's names) set the profile's colour. The SKULLS screens' (the campaign's, which the
-difficulty menu opens, and Server Setup's): `port skulls init` (`init
+difficulty menu's SKULLS opens, and Server Setup's): `port skulls init` (`init
 network`, Server Setup's) shows the skulls `game.skulls` (`network.skulls`)
 has on, `port skulls update` their rows, `port skulls toggle` turns the
-row's on or off, `port skulls clear` all off, `port skulls start` (START
-GAME) keeps them and plays the level, `port skulls save` (OK) keeps them
-for the network game. The others
+row's on or off, `port skulls clear` all off, `port skulls save` (OK) keeps them
+for the level the difficulty starts, or the network game. The others
 do nothing yet.
 
 ### `<data>`, `<conditional>`, `<replace>`
