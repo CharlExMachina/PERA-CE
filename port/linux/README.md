@@ -637,10 +637,20 @@ player does. The spectators stay spectators in the subsequent games of the
 host, until the host returns them or they leave. The scoreboard shows
 SPECTATOR as the score of a spectator.
 
-A spectator has two cameras:
+A spectator has three cameras:
 
 - Third person: the camera stays behind the selected player. Look to turn
   the camera around the player.
+- First person: the spectator sees what the selected player sees, from the
+  eyes of the player and in the direction that the player aims. The screen
+  shows the weapon of the player, which fires, reloads, throws grenades and
+  hits as the player does, and the HUD of the player: shields, health,
+  weapon and ammunition, grenades, motion sensor and crosshair. When the
+  player uses a zoom, the view zooms. When the player takes damage, the
+  view flashes and shakes, and the HUD shows where the damage came from.
+  In a vehicle seat that the game shows from behind (the driver of a
+  Warthog, for example), the camera is behind the vehicle, with the HUD of
+  the player.
 - Free camera: the camera flies through the map. Move and look to fly.
   Jump moves the camera up, and crouch moves it down.
 
@@ -651,13 +661,14 @@ controller, with the bindings of the player):
 | --- | --- |
 | Fire | Selects the subsequent player. |
 | Throw grenade | Selects the player before. |
-| Action | Changes between the free camera and third person. |
+| Action | Changes the camera: third person, first person, then the free camera. |
 | Melee | In a team game: all the players, only the red team, or only the blue team. With a team selected, fire and throw grenade select only the living players of that team. |
 | Switch weapon | Changes what the screen shows: all the data, only the selected player, or nothing. With nothing, the names of the controls are also hidden. |
 | Switch grenade | Changes the speed of the free camera. |
 | Flashlight | Shows or hides the names of the controls at the bottom of the screen. |
 
-The screen of a spectator shows these data:
+The screen of a spectator shows these data (in first person, only the name
+of the selected player, because the HUD of the player shows the rest):
 
 - The name of the selected player, with the shields and the health of the
   player (as bars and as numbers, where 100 is full).
@@ -680,7 +691,9 @@ spectator joined.
 
 Limits:
 
-- A spectator cannot see the view of a player in first person.
+- In first person, the crosshair does not change color when the selected
+  player aims at a target (the spectator's machine does not know the aim
+  assistance of another machine's player).
 - A machine with an older build does not know the spectators. If the host
   makes a player of such a machine a spectator, the player does not spawn
   and has no spectator cameras.

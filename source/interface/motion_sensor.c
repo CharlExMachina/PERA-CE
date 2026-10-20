@@ -108,6 +108,7 @@ symbols in this file:
 #include "units/unit_definitions.h"
 #include "units/units.h"
 #include "units/vehicles.h"
+#include "spectator.h" /* port: port/linux/game/spectator.c */
 
 /* ---------- constants */
 
@@ -351,12 +352,9 @@ static void motion_sensor_update(
 			struct motion_sensor_datum *sensor =
 				&motion_sensor_globals->players[local_player_index]
 					.sensor_data[active_sensor_index];
-			long player_index =
-				local_player_get_player_index(local_player_index);
-			long unit_index = player_index == NONE
-				? NONE
-				: player_get(
-					local_player_get_player_index(local_player_index))->unit_index;
+			/* port: the view's player's (a spectator's, the player it watches
+			in first person: port/linux/game/spectator.c), here and below */
+			long unit_index = local_player_get_view_unit_index(local_player_index);
 			short blip_index;
 
 			scan_players[player_scan_index] = local_player_index;
@@ -405,13 +403,7 @@ static void motion_sensor_update(
 				{
 					short scan_player_index =
 						scan_players[player_scan_index];
-					long player_index =
-						local_player_get_player_index(scan_player_index);
-
-					if (player_index != NONE &&
-						player_get(
-							local_player_get_player_index(scan_player_index))
-							->unit_index != NONE)
+					if (local_player_get_view_unit_index(scan_player_index) != NONE)
 					{
 						short blip_index = blip_counts[scan_player_index];
 
@@ -522,9 +514,8 @@ static void update_motion_sensor(
 	if (motion_sensor_globals->update)
 	{
 		active_sensor_index = motion_sensor_globals->active_sensor_index;
-		unit_index = local_player_get_player_index(local_player_index) == NONE
-			? NONE
-			: player_get(local_player_get_player_index(local_player_index))->unit_index;
+		/* port: the view's player's, here and below */
+		unit_index = local_player_get_view_unit_index(local_player_index);
 		sensor = &player->sensor_data[active_sensor_index];
 		if (unit_index != NONE)
 		{
@@ -593,7 +584,7 @@ static void update_motion_sensor(
 
 				sensor->custom_blip_count =
 					(byte)game_engine_player_get_custom_motion_sensor_positions(
-						local_player_get_player_index(local_player_index),
+						local_player_get_view_player_index(local_player_index),
 						custom_positions,
 						(byte *)sensor->custom_blip_goal_indices,
 						MAXIMUM_MOTION_SENSOR_BLIPS);
@@ -830,8 +821,10 @@ static char blip_type_get(
 	long object_index,
 	long local_player_index)
 {
+	/* port: the view's player's (a spectator's, the player it watches in first
+	person: port/linux/game/spectator.c), here and below */
 	long local_player_team =
-		player_get(local_player_get_player_index(local_player_index))->team_index;
+		player_get(local_player_get_view_player_index((short)local_player_index))->team_index;
 	long owner_player_index;
 	long controlling_local_player_index;
 	struct unit_datum *unit;
@@ -845,8 +838,12 @@ static char blip_type_get(
 	controlling_local_player_index = owner_player_index == NONE
 		? NONE
 		: player_get(player_index_from_unit_index(object_index))->local_player_index;
-	if (controlling_local_player_index == local_player_index)
+	if (controlling_local_player_index == local_player_index ||
+		(owner_player_index != NONE &&
+			owner_player_index == local_player_get_view_player_index((short)local_player_index)))
+	{
 		return _blip_type_self;
+	}
 
 	if (!unit_try_and_get(object_index))
 		return _blip_type_enemy;
@@ -897,7 +894,7 @@ static char blip_type_get(
 		return _blip_type_vehicle_friend;
 	}
 
-	team_index = player_get(local_player_get_player_index(local_player_index))->team_index;
+	team_index = player_get(local_player_get_view_player_index((short)local_player_index))->team_index;
 	blip_type = (game_team_is_enemy(
 		unit->object.owner_team_index,
 		team_index) != FALSE) + _blip_type_friend;

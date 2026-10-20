@@ -25,6 +25,7 @@ that draw the first-person weapon (rasterizer and render sources).
 #include "render/render_cameras_internal.h"
 #include "units/unit_definitions.h"
 #include "units/units.h"
+#include "spectator.h"
 
 #include <math.h>
 
@@ -72,7 +73,8 @@ static real render_fov_adjust(short local_player_index, real native_vertical_fie
 	{
 		return native_vertical_field_of_view;
 	}
-	unit_index = player_control_get_unit_index(local_player_index);
+	/* (a spectator's, the player's it watches in first person: spectator.c) */
+	unit_index = local_player_get_view_unit_index(local_player_index);
 	if (unit_index == NONE)
 		return native_vertical_field_of_view;
 	unit = unit_try_and_get(unit_index);

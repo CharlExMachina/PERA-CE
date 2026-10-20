@@ -109,6 +109,7 @@ symbols in this file:
 
 #include <stddef.h>
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
+#include "spectator.h" /* port: port/linux/game/spectator.c */
 
 /* ---------- constants */
 
@@ -632,8 +633,9 @@ void player_effect_update(
 		local_player_index != NONE;
 		local_player_index = local_player_get_next(local_player_index))
 	{
-		if (local_player_get_player_index(local_player_index) == NONE
-			|| player_get(local_player_get_player_index(local_player_index))->unit_index == NONE)
+		/* port: the view's player's unit (a spectator's, the player it watches
+		in first person: port/linux/game/spectator.c) */
+		if (local_player_get_view_unit_index(local_player_index) == NONE)
 		{
 			player_effect_clear_damage_indicators(local_player_index);
 			csmemset(player_effect_get(local_player_index), 0, sizeof(struct player_effect_datum));
@@ -652,9 +654,10 @@ void player_effect_continuous_refresh(
 
 	for (local_player_index = 0; local_player_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
 	{
-		if (local_player_get_player_index(local_player_index) != NONE)
+		/* port: the view's player's */
+		if (local_player_get_view_player_index(local_player_index) != NONE)
 		{
-			long unit_index = player_get(local_player_get_player_index(local_player_index))->unit_index;
+			long unit_index = local_player_get_view_unit_index(local_player_index);
 
 			if (unit_index != NONE)
 			{
@@ -731,9 +734,13 @@ void player_effect_screen_flash(
 {
 	if (player_index != NONE)
 	{
-		long local_player_index = player_get(player_index)->local_player_index;
+		/* port: each local player's who sees the game as the player: their
+		own, and a multiplayer spectator's who watches them in first person
+		(port/linux/game/spectator.c) */
+		short local_player_index;
 
-		if (local_player_index != NONE)
+		for (local_player_index = 0; local_player_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
+		if (local_player_get_view_player_index(local_player_index) == player_index)
 		{
 			struct player_effect_datum *effect = player_effect_get((short)local_player_index);
 
@@ -1239,13 +1246,17 @@ void player_effect_start(
 	real scale,
 	real total_damage)
 {
-	short local_player_index = player_get(player_index)->local_player_index;
+	/* port: each local player's who sees the game as the player: their own,
+	and a multiplayer spectator's who watches them in first person
+	(port/linux/game/spectator.c) */
+	short local_player_index;
 
 	match_assert("c:\\halo\\SOURCE\\effects\\player_effects.c", 342, direction);
 
 	lock_global_random_seed();
 
-	if (local_player_index != NONE)
+	for (local_player_index = 0; local_player_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
+	if (player_index != NONE && local_player_get_view_player_index(local_player_index) == player_index)
 	{
 		struct damage_effect_definition *definition =
 			damage_effect_definition_get(damage->definition_index);
@@ -1257,6 +1268,9 @@ void player_effect_start(
 			&definition->screen_flash,
 			scale,
 			1.0f);
+		/* port: (a spectator's aim is its own, and the player's, which the
+		impulse turns, it sees turn) */
+		if (local_player_get_player_index(local_player_index) == player_index)
 		player_effect_update_camera_impulse(
 			local_player_index,
 			effect,
@@ -1287,15 +1301,10 @@ void player_effect_start(
 			}
 			else
 			{
-				long unit_index;
+				/* port: the view's player's */
+				long unit_index = local_player_get_view_unit_index(local_player_index);
 				struct unit_datum *unit;
 				struct object_datum *attacker;
-
-				if (local_player_get_player_index(local_player_index) == NONE)
-					unit_index = NONE;
-				else
-					unit_index = player_get(
-						local_player_get_player_index(local_player_index))->unit_index;
 
 				unit = unit_try_and_get(unit_index);
 				attacker = object_try_and_get(damage->owner_object_index);

@@ -34,6 +34,11 @@ being hit looks and feels like on the clients).
 - The damage to a unit goes to the machines of the players it concerns
   (the unit's, its riders', the damage's owner's) and those sent the
   unit's player this tick, which see it; a killing blow to all.
+- A spectator watching a player in first person sees that player's screen
+  flash and shake (spectator.c): a client from the damage to the player's
+  unit the host sends it (it sees the player, so is sent their unit's
+  damage), and its own copy of their weapon's kick; the host from the
+  damage it deals. Nothing more is sent for it.
 - Scenery and devices that can be destroyed (lights, panels) are the
   map's, at the same index on every machine. A client reports its hits on
   them like any other, and every client deals the host's damage to its own
@@ -56,6 +61,7 @@ being hit looks and feels like on the clients).
 #include "scenario/scenario.h"
 #include "units/units.h"
 #include "network_distributed.h"
+#include "spectator.h"
 
 #include <math.h>
 
@@ -640,11 +646,14 @@ boolean network_damage_deals(
 
 		if (authorized)
 			return TRUE;
-		/* a weapon's own shake of this machine's own player firing it: its
-		screen effect at once (the host does not send it,
-		network_damage_player_effect), and nothing else of it */
+		/* a weapon's own shake of this machine's own player firing it (or a
+		player a spectator here watches in first person): its screen effect
+		at once (the host does not send it, network_damage_player_effect),
+		and nothing else of it */
 		unit = (struct unit_datum *)object_try_and_get_and_verify_type(object_index, _object_mask_unit);
-		if (unit && unit->unit.player_index != NONE && distributed_player_is_local(unit->unit.player_index) &&
+		if (unit && unit->unit.player_index != NONE &&
+			(distributed_player_is_local(unit->unit.player_index) ||
+				spectator_first_person_watched(unit->unit.player_index)) &&
 			distributed_living_unit(player_try_and_get(unit->unit.player_index)) == object_index &&
 			distributed_damage_is_recoil(damage, object_index))
 		{
@@ -2211,11 +2220,21 @@ void network_damage_handle_events(
 			if (network_objects_client_has(event->object_index) &&
 				object_try_and_get_and_verify_type(event->object_index, _object_mask_unit))
 			{
+				long player_index = unit_get(event->object_index)->unit.player_index;
+
 				/* (what harm it did the units' states bring: no death from here) */
 				damage_replay_aftermath(event->object_index, &damage,
 					event->being_damaged_flags &
 						~(FLAG(_object_being_damaged_body_depleted_bit) | FLAG(_object_being_damaged_killed_instantly_bit)),
 					event->shield_damage, event->body_damage, event->body_damage_multiplier, event->body_part);
+				/* (another machine's player a spectator here watches in first
+				person: their screen's effect, which the host sends only
+				their machine) */
+				if (player_index != NONE && !distributed_player_is_local(player_index) &&
+					spectator_first_person_watched(player_index))
+				{
+					damage_replay_player_effect(player_index, &damage, event->shield_damage + event->body_damage);
+				}
 			}
 			break;
 		case _damage_event_kill:

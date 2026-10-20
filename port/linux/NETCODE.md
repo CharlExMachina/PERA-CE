@@ -354,14 +354,19 @@ spectator's machine has no place it sees the game from: the host sends it
 every player's unit and input every tick, as it does a machine that has had
 no player alive (`distributed_host_plan_players`), so that whoever it
 watches moves smoothly. A client, whose camera is otherwise its player's
-own, has the spectator's cameras (the free camera, third person) only while
-the host says its player is one. What a spectator is shown needs nothing
-more of the host: the items' timers are the game clock's against the map's
-placements (`game_engine_update_item_spawn` spawns them at multiples of
-their period, taken or not), and the players' shields, health and respawn
-counts are what every client has. Builds without spectators drop the kind
-as unknown, so the network version is unchanged: such a build's player made
-a spectator is not spawned, and watches nothing.
+own, has the spectator's cameras (the free camera, third person, first
+person) only while the host says its player is one. What a spectator is
+shown needs nothing more of the host: the items' timers are the game
+clock's against the map's placements (`game_engine_update_item_spawn`
+spawns them at multiples of their period, taken or not), and the players'
+shields, health and respawn counts are what every client has. In first
+person the spectator sees the player's weapon as their inputs fire it on
+the spectator's machine, and the flash and shake of the damage they take: a
+client replays it from the damage to their unit, which the host sends every
+machine that sees the player (`network_damage.c`); the host sends nothing
+more for it. Builds without spectators drop the kind as unknown, so the
+network version is unchanged: such a build's player made a spectator is not
+spawned, and watches nothing.
 
 Voice chat (`network_voice.c`, the sound in `port/linux/src/voice_audio.c`)
 travels as distributed messages too, but in the lobby as well as in a game:
@@ -814,8 +819,8 @@ game without the menus (in a team game the joining player takes the other
 team), and `debug.test_input` plays controller 1 with a scripted bot (or,
 `look:<seed>`, one that stands still, only turning and looking up and
 down; `spectate:<seed>`, a spectator's controls: the next player, a team
-game's teams and the free camera in turn); each machine logs every player's
-position, health and shields,
+game's teams, first person and the free camera in turn); each machine logs
+every player's position, health and shields,
 where they aim and face, their animation state and how hard they move,
 weapons, grenades, score, kills and deaths every second, with the objects
 made and removed and the hits reported, dealt, rejected and replayed, so

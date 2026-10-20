@@ -7,16 +7,32 @@ move its camera and pick whom it watches instead (player_control.c gives
 them here, each frame).
 
 The cameras (one of the director's, director.c): the free camera, which
-flies through the map, and third person, which stays behind the player
-watched and turns about them. A client has every player's unit and aim from
-the host as its own players would see them (port/linux/NETCODE.md), and the
-host sends a spectator's machine all of them every tick.
+flies through the map; third person, which stays behind the player watched
+and turns about them; and first person, which sees as the player watched
+sees. A client has every player's unit and aim from the host as its own
+players would see them (port/linux/NETCODE.md), and the host sends a
+spectator's machine all of them every tick.
+
+In first person the spectator is shown what the player is: the view from
+their eyes along their aim, as wide as their weapon's zoom has it (the
+player's own seat in a vehicle the game shows from behind, from behind);
+their weapon in hand, which fires, reloads, throws grenades and strikes as
+they do, since their inputs drive their unit here too; and their HUD (the
+game's own: shields, health, weapon, motion sensor, the damage indicators).
+The game's code that finds a local player's unit for these asks here for
+the player a local player sees the game as (local_player_get_view_player_index
+and the others below): a spectator in first person, the player watched; any
+other, their own. Damage to the player flashes and shakes the spectator's
+view as it would the player's (player_effect_start, player_effects.c): the
+host deals it (it is the host's own effect), and a client replays the
+damage the host sends of the units it sees (network_damage.c), with its own
+copy of the player's weapon's kick.
 
 The controls, each the player's own binding of it:
 
 	fire             the next player
 	throw grenade    the player before
-	action           the free camera, back to the player
+	action           the camera: third person, first person, the free camera
 	melee            a team game: every player, the red team's, the blue team's
 	switch weapon    what is shown: all of it, the player watched only, nothing
 	switch grenade   the free camera's speed
@@ -41,7 +57,10 @@ the map's own placements: the host sends nothing for it.
 */
 
 #include "cseries.h"
+#include "camera/director.h"
+#include "camera/first_person_camera.h"
 #include "camera/observer.h"
+#include "camera/static_camera.h"
 #include "cutscene/cinematics.h"
 #include "game/game.h"
 #include "game/game_engine.h"
@@ -50,6 +69,7 @@ the map's own placements: the host sends nothing for it.
 #include "items/equipment_definitions.h"
 #include "items/item_definitions.h"
 #include "items/items.h"
+#include "items/weapons.h"
 #include "math/integer_math.h"
 #include "math/real_math.h"
 #include "memory/data.h"
@@ -63,6 +83,7 @@ the map's own placements: the host sends nothing for it.
 #include "text/draw_string.h"
 #include "text/font_group.h"
 #include "text/unicode.h"
+#include "units/unit_definitions.h"
 #include "units/units.h"
 
 #include "network_distributed.h"
@@ -78,6 +99,7 @@ enum
 {
 	_spectator_camera_free,
 	_spectator_camera_third_person,
+	_spectator_camera_first_person,
 	NUMBER_OF_SPECTATOR_CAMERAS
 };
 
@@ -103,7 +125,7 @@ enum
 {
 	_spectator_press_next,
 	_spectator_press_previous,
-	_spectator_press_free,
+	_spectator_press_camera,
 	_spectator_press_team,
 	_spectator_press_overlay,
 	_spectator_press_speed,
@@ -133,6 +155,9 @@ enum
 /* how far behind the player third person stays, and behind their vehicle */
 #define SPECTATOR_FOLLOW_DISTANCE 2.2f
 #define SPECTATOR_VEHICLE_DISTANCE 5.0f
+/* how long a zoom in or out takes in first person, as the player's own
+does (first_person_camera_update) */
+#define SPECTATOR_ZOOM_SECONDS 0.18f
 /* how far up and down a camera looks (radians) */
 #define SPECTATOR_PITCH_LIMIT 1.5f
 /* a body is watched from above: how far the camera looks down at it, and
@@ -189,6 +214,8 @@ struct spectator_view
 	real_euler_angles2d facing;
 	/* how far third person is turned from behind the player */
 	real_euler_angles2d orbit;
+	/* how wide first person last saw, 0 for not yet */
+	real field_of_view;
 	/* the controls since the camera was last updated: how far it turned,
 	its throttle, up less down, and the presses */
 	real_euler_angles2d turn;
@@ -353,6 +380,32 @@ static long spectator_watched_unit(
 	return unit_index;
 }
 
+/* the player a local spectator watches in first person, while they are
+alive; NONE for none */
+static long spectator_first_person_player(
+	short local_player_index)
+{
+	struct spectator_view const *view = spectator_view_get(local_player_index);
+	struct player_datum *player;
+
+	if (!view || view->camera != _spectator_camera_first_person || !spectator_view_current(view) ||
+		view->watched_player_index == NONE || !spectator_local_player(local_player_index))
+	{
+		return NONE;
+	}
+	player = player_try_and_get(view->watched_player_index);
+	if (!player || player->unit_index == NONE || !object_try_and_get(player->unit_index))
+		return NONE;
+	return view->watched_player_index;
+}
+
+/* the unit's zoom level, NONE unzoomed (a char, which is unsigned on ARM) */
+static short spectator_unit_zoom_level(
+	long unit_index)
+{
+	return (signed char)unit_get(unit_index)->unit.current_zoom_level;
+}
+
 /* ---------- private code: the cameras */
 
 static void spectator_view_begin(
@@ -368,6 +421,7 @@ static void spectator_view_begin(
 		view->camera = _spectator_camera_third_person;
 		view->speed = 1;
 		view->watched_player_index = NONE;
+		view->field_of_view = 0.0f;
 		/* (from where the player's own camera was) */
 		view->position = observer->position;
 		if (magnitude_squared3d(&observer->forward) > 0.5f)
@@ -427,12 +481,22 @@ static void spectator_view_controls(
 				view->camera = _spectator_camera_third_person;
 		}
 	}
-	if (TEST_FLAG(pressed, _spectator_press_free))
+	if (TEST_FLAG(pressed, _spectator_press_camera))
 	{
-		if (view->camera == _spectator_camera_free)
-			view->camera = _spectator_camera_third_person;
-		else
+		/* (third person, first person, the free camera, in turn) */
+		if (view->camera == _spectator_camera_third_person)
+		{
+			view->camera = _spectator_camera_first_person;
+			view->field_of_view = 0.0f;
+		}
+		else if (view->camera == _spectator_camera_first_person)
+		{
 			spectator_view_free(view, local_player_index);
+		}
+		else
+		{
+			view->camera = _spectator_camera_third_person;
+		}
 	}
 	if (TEST_FLAG(pressed, _spectator_press_overlay))
 		view->overlay = (short)((view->overlay + 1) % NUMBER_OF_SPECTATOR_OVERLAYS);
@@ -548,6 +612,57 @@ static void spectator_camera_third_person(
 	command->focus_distance = distance;
 	vector3d_from_euler_angles2d(&command->forward, &angles);
 	observer_up_from_forward(&command->forward, &command->up);
+}
+
+/* how wide the unit sees, as its weapon's zoom has it
+(player_control_get_field_of_view's, of the unit's zoom) */
+static real spectator_unit_field_of_view(
+	long unit_index)
+{
+	struct unit_datum *unit = unit_get(unit_index);
+	real field_of_view = unit_definition_get(unit->definition_index)->unit.camera_field_of_view;
+	long weapon_index = unit_inventory_get_weapon(unit_index, unit->unit.current_weapon_index);
+
+	if (weapon_index != NONE)
+		field_of_view = weapon_get_field_of_view(weapon_index, field_of_view, spectator_unit_zoom_level(unit_index));
+	return field_of_view;
+}
+
+/* through the living unit's eyes, along its aim, as the player's own first
+person camera sees (first_person_camera_fake: a vehicle's seat as the game
+has it) */
+static void spectator_camera_first_person(
+	struct spectator_view *view,
+	struct observer_command *command,
+	long unit_index)
+{
+	struct camera_command eyes;
+	real field_of_view = spectator_unit_field_of_view(unit_index);
+
+	first_person_camera_fake(unit_index, &eyes);
+	/* (the other cameras start from here) */
+	view->position = eyes.position;
+	euler_angles2d_from_vector3d(&view->facing, &eyes.forward);
+	view->orbit.yaw = view->orbit.pitch = 0.0f;
+
+	spectator_command_begin(command);
+	command->focus_position = eyes.position;
+	command->focus_distance = 0.0f;
+	command->forward = eyes.forward;
+	command->up = eyes.up;
+	command->field_of_view = field_of_view;
+	/* (a zoom in or out over a moment, as the player's own; otherwise the
+	field of view goes on as it was going) */
+	command->parameter_flags[_observer_command_parameter_field_of_view] = 0;
+	if (view->field_of_view != field_of_view)
+	{
+		if (view->field_of_view != 0.0f)
+		{
+			command->parameter_flags[_observer_command_parameter_field_of_view] = FLAG(_observer_time_valid_bit);
+			command->parameter_timers[_observer_command_parameter_field_of_view] = SPECTATOR_ZOOM_SECONDS;
+		}
+		view->field_of_view = field_of_view;
+	}
 }
 
 /* ---------- private code: the items' timers */
@@ -954,16 +1069,19 @@ static void spectator_draw_item_timers(
 }
 
 /* at the foot of the view: whom the spectator watches, their shields and
-health or the time to their respawn, the camera, and the controls */
+health (but in first person, where their HUD shows them) or the time to
+their respawn, the camera, and the controls */
 static void spectator_draw_watched(
 	struct spectator_view const *view,
 	rectangle2d const *bounds,
-	boolean help)
+	boolean help,
+	boolean first_person)
 {
 	static wchar_t const *const camera_names[NUMBER_OF_SPECTATOR_CAMERAS] =
 	{
 		L"FREE CAMERA",
 		L"THIRD PERSON",
+		L"FIRST PERSON",
 	};
 	static wchar_t const *const team_names[NUMBER_OF_SPECTATOR_TEAMS] =
 	{
@@ -995,8 +1113,8 @@ static void spectator_draw_watched(
 			L"FIRE  NEXT PLAYER     GRENADE  PREVIOUS PLAYER     FLASHLIGHT  HIDE THIS");
 		spectator_draw_text(bounds->x0, (short)(hint_y + hint_height), bounds->x1, 2, SPECTATOR_HINT_SCALE, &dim,
 			game_engine_has_teams() ?
-				L"ACTION  FREE CAMERA     MELEE  TEAM     SWITCH WEAPON  DISPLAY" :
-				L"ACTION  FREE CAMERA     SWITCH WEAPON  DISPLAY");
+				L"ACTION  CAMERA     MELEE  TEAM     SWITCH WEAPON  DISPLAY" :
+				L"ACTION  CAMERA     SWITCH WEAPON  DISPLAY");
 	}
 	if (!player)
 	{
@@ -1011,7 +1129,12 @@ static void spectator_draw_watched(
 	text[NUMBEROF(text) - 1] = 0;
 	spectator_draw_text(bounds->x0, name_y, bounds->x1, 2, SPECTATOR_NAME_SCALE, &color, text);
 	color = *global_real_argb_white;
-	if (player->unit_index != NONE)
+	if (player->unit_index != NONE && first_person)
+	{
+		usnprintf(text, NUMBEROF(text) - 1, L"%s%s", camera_names[view->camera],
+			game_engine_has_teams() ? team_names[view->team] : L"");
+	}
+	else if (player->unit_index != NONE)
 	{
 		struct object_datum *object = object_try_and_get(player->unit_index);
 
@@ -1058,6 +1181,71 @@ boolean spectator_local_player(
 	return player_index != NONE && network_spectator_player(player_index);
 }
 
+short spectator_perspective(
+	short local_player_index)
+{
+	long player_index = spectator_first_person_player(local_player_index);
+	director_perspective perspective;
+
+	if (player_index == NONE)
+		return NONE;
+	return director_desired_perspective(player_get(player_index)->unit_index, &perspective) ?
+		_director_perspective_third_person : _director_perspective_first_person;
+}
+
+boolean spectator_first_person_watched(
+	long player_index)
+{
+	short local_player_index;
+
+	for (local_player_index = 0; local_player_index < MAXIMUM_LOCAL_PLAYERS; local_player_index++)
+	{
+		if (player_index != NONE && spectator_first_person_player(local_player_index) == player_index)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+long local_player_get_view_player_index(
+	short local_player_index)
+{
+	long player_index = spectator_first_person_player(local_player_index);
+
+	return player_index != NONE ? player_index : local_player_get_player_index(local_player_index);
+}
+
+long local_player_get_view_unit_index(
+	short local_player_index)
+{
+	long player_index = local_player_get_view_player_index(local_player_index);
+
+	return player_index != NONE ? player_get(player_index)->unit_index : NONE;
+}
+
+struct player_datum *local_player_get_view_player(
+	short local_player_index)
+{
+	/* (each local player's, the latest asked for) */
+	static struct player_datum view_players[MAXIMUM_LOCAL_PLAYERS];
+	long player_index = spectator_first_person_player(local_player_index);
+
+	if (player_index == NONE)
+		return player_get(local_player_get_player_index(local_player_index));
+	view_players[local_player_index] = *player_get(player_index);
+	view_players[local_player_index].local_player_index = local_player_index;
+	return &view_players[local_player_index];
+}
+
+short local_player_get_view_zoom_level(
+	short local_player_index)
+{
+	long player_index = spectator_first_person_player(local_player_index);
+
+	if (player_index == NONE)
+		return player_control_get_zoom_level(local_player_index);
+	return spectator_unit_zoom_level(player_get(player_index)->unit_index);
+}
+
 void spectator_handle_input(
 	short local_player_index,
 	real_euler_angles2d const *facing_delta,
@@ -1073,7 +1261,7 @@ void spectator_handle_input(
 		return;
 	SET_FLAG(down, _spectator_press_next, TEST_FLAG(unit_control_flags, _unit_control_weapon_primary_trigger_bit));
 	SET_FLAG(down, _spectator_press_previous, TEST_FLAG(unit_control_flags, _unit_control_throw_grenade_bit));
-	SET_FLAG(down, _spectator_press_free, TEST_FLAG(unit_control_flags, _unit_control_action_bit));
+	SET_FLAG(down, _spectator_press_camera, TEST_FLAG(unit_control_flags, _unit_control_action_bit));
 	SET_FLAG(down, _spectator_press_team, TEST_FLAG(unit_control_flags, _unit_control_use_equipment_bit));
 	SET_FLAG(down, _spectator_press_overlay, switch_weapon);
 	SET_FLAG(down, _spectator_press_speed, switch_grenade);
@@ -1112,6 +1300,10 @@ void spectator_camera_update(
 	unit_index = spectator_watched_unit(view, &alive);
 	if (view->camera == _spectator_camera_free)
 		spectator_camera_free(view, command, PIN(control->seconds_elapsed, 0.0f, 0.1f));
+	/* (first person sees from behind where the player's own view would,
+	and a body from above) */
+	else if (spectator_perspective(control->local_player_index) == _director_perspective_first_person)
+		spectator_camera_first_person(view, command, unit_index);
 	else
 		spectator_camera_third_person(view, command, unit_index, alive);
 	view->turn.yaw = view->turn.pitch = 0.0f;
@@ -1122,6 +1314,8 @@ void spectator_draw(
 {
 	struct spectator_view const *view = spectator_view_get(local_player_index);
 	rectangle2d bounds = render.camera.window_bounds;
+	/* (seeing as the player sees, the player's HUD is where the lists would be) */
+	boolean first_person = spectator_perspective(local_player_index) != NONE;
 
 	if (!spectator_view_current(view) || !spectator_local_player(local_player_index) ||
 		view->overlay == _spectator_overlay_none || cinematic_in_progress() || game_engine_showing_postgame())
@@ -1129,10 +1323,10 @@ void spectator_draw(
 		return;
 	}
 	offset_rectangle2d(&bounds, (short)-render.camera.viewport_bounds.x0, (short)-render.camera.viewport_bounds.y0);
-	if (view->overlay == _spectator_overlay_all)
+	if (view->overlay == _spectator_overlay_all && !first_person)
 	{
 		spectator_draw_players(view, local_player_get_player_index(local_player_index), &bounds);
 		spectator_draw_item_timers(&bounds);
 	}
-	spectator_draw_watched(view, &bounds, !spectator_help_hidden[local_player_index]);
+	spectator_draw_watched(view, &bounds, !spectator_help_hidden[local_player_index], first_person);
 }

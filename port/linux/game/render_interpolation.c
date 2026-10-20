@@ -42,6 +42,7 @@ with their unit, and with what it rides.
 #include "game/players.h"
 #include "render/render_cameras.h"
 #include "units/units.h"
+#include "spectator.h"
 
 /* port/linux/src/port_config.c */
 int config_boolean(const char *name);
@@ -638,7 +639,8 @@ void render_interpolation_correct_object(long object_index, real_vector3d const 
 		record->blended_frame = NONE;
 	}
 	/* a local player's unit (by itself, or with what it rides): its
-	first-person view, which the observer poses from it, glides with it */
+	first-person view, which the observer poses from it, glides with it (and
+	a spectator's who watches its player in first person: spectator.c) */
 	{
 		short local_player_index;
 
@@ -646,8 +648,12 @@ void render_interpolation_correct_object(long object_index, real_vector3d const 
 		{
 			struct interpolated_camera *camera = &interpolated_cameras[local_player_index];
 
-			if (!camera->valid || player_control_get_unit_index(local_player_index) != object_index)
+			if (!camera->valid || (player_control_get_unit_index(local_player_index) != object_index &&
+				(director_get_perspective(local_player_index) != _director_perspective_first_person ||
+					local_player_get_view_unit_index(local_player_index) != object_index)))
+			{
 				continue;
+			}
 			camera->previous.position.x -= offset->i;
 			camera->previous.position.y -= offset->j;
 			camera->previous.position.z -= offset->k;
