@@ -82,6 +82,7 @@ their handlers open opens.
 #include "halo_menus.h"
 #include "custom_edition_cache.h"
 #include "custom_edition_maps.h"
+#include "network_spectator.h"
 #include "network_voice.h"
 #include "text/draw_string.h"
 /* (internet play's server browser: the platform layer's) */
@@ -4933,6 +4934,16 @@ static boolean lobby_player_choose(void)
 	return TRUE;
 }
 
+/* whether the lobby's game has spectators: a multiplayer game (not a
+network co-op game's campaign level) */
+static boolean lobby_spectators_offered(void)
+{
+	void *client = global_network_game_client_get();
+	struct network_game *game = client ? network_game_client_get_game(client) : NULL;
+
+	return game && campaign_level_of(game->map.name) == NONE;
+}
+
 /* the lobby's line under its players: how another player joins */
 static void lobby_join_help(struct widget_instance *list)
 {
@@ -4944,6 +4955,12 @@ static void lobby_join_help(struct widget_instance *list)
 	{
 		text = L"New player: press START.";
 	}
+	/* (the host's, in a multiplayer game's lobby: its rows pick the
+	spectators, lobby_spectator) */
+	else if (lobby_spectators_offered() && global_network_game_server_get())
+	{
+		text = L"A on a player: spectator.";
+	}
 	else if (lobby_local_player_count() < MAXIMUM_LOCAL_PLAYERS)
 	{
 		for (controller = 0; controller < MAXIMUM_LOCAL_PLAYERS; controller++)
@@ -4953,6 +4970,32 @@ static void lobby_join_help(struct widget_instance *list)
 		}
 	}
 	text_set(help, text);
+}
+
+/* "port lobby spectator" (A on a player's row): the host makes the row's
+player a spectator of the game to come, or a player again
+(port/linux/game/network_spectator.c); another machine's rows do nothing */
+static boolean lobby_spectator(struct widget_instance *row)
+{
+	void *client = global_network_game_client_get();
+	struct network_game *game = client ? network_game_client_get_game(client) : NULL;
+	short index = row && !strncmp(row->name, "list_item_", 10) ? (short)atoi(row->name + 10) : NONE;
+	short slot;
+
+	if (!global_network_game_server_get() || !game)
+		return FALSE;
+	/* (nor the automated tests' scripted player's, whose presses wander over
+	the rows: debug.test_input) */
+	if (*config_string("debug.test_input"))
+		return FALSE;
+	if (index < 0 || index >= LOBBY_ROWS || multiplayer.lobby_first + index >= lobby_player_count ||
+		!lobby_spectators_offered())
+	{
+		return campaign_fail();
+	}
+	/* (its slot in the game's list of players, which is the host's) */
+	slot = (short)(lobby_players[multiplayer.lobby_first + index] - game->players);
+	return network_spectator_host_set(slot, !network_spectator_listed(slot));
 }
 
 static void lobby_row_text(short row, wchar_t *text)
@@ -4967,6 +5010,14 @@ static void lobby_row_text(short row, wchar_t *text)
 		usnprintf(text, ROW_TEXT_LENGTH - 1, L"%s  (%s)", name, player->team_index ? L"BLUE" : L"RED");
 	else
 		usnprintf(text, ROW_TEXT_LENGTH - 1, L"%s", name);
+	/* (a player the host has made a spectator of the game to come:
+	network_spectator.c) */
+	if (game && lobby_spectators_offered() && network_spectator_listed((short)(player - game->players)))
+	{
+		size_t length = ustrlen(text);
+
+		usnprintf(text + length, ROW_TEXT_LENGTH - 1 - length, L"  (SPECTATOR)");
+	}
 	/* (this machine's players, when it has more than one: their controllers) */
 	if (lobby_local_player_count() >= 2 && (short)player->machine_index == network_game_client_get_local_machine_index())
 	{
@@ -6407,6 +6458,10 @@ boolean pc_menu_event_function_invoke(
 		else if (!strcmp(name, "port lobby add player"))
 		{
 			return lobby_add_player();
+		}
+		else if (!strcmp(name, "port lobby spectator"))
+		{
+			return lobby_spectator(widget);
 		}
 		else if (!strcmp(name, "port lobby join"))
 		{

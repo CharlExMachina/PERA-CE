@@ -395,6 +395,9 @@ static char const *const port_function_names[] =
 	/* (the SKULLS screens, the campaign's and Server Setup's: menu_functions.c) */
 	"port skulls init", "port skulls init network", "port skulls toggle", "port skulls clear",
 	"port skulls save",
+	/* (the host's lobby: A on a player's row makes them a spectator of the
+	game to come, menu_functions.c's lobby_spectator) */
+	"port lobby spectator",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from

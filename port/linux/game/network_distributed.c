@@ -3995,6 +3995,13 @@ void network_distributed_handle_message(
 			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
 		return;
 	}
+	/* (a game's spectators, in the lobby too, where the host picks them:
+	network_spectator.c) */
+	if (network_spectator_handles_message(message, size))
+	{
+		network_spectator_handle_message(machine_index, message, size);
+		return;
+	}
 	/* (none between games: loading, or in the menus) */
 	if (size < sizeof(header) || !game_in_progress())
 		return;
@@ -4056,7 +4063,6 @@ void network_distributed_handle_message(
 	case _distributed_message_chat_up:
 	case _distributed_message_chat_down: entry_size = network_chat_line_entry_size(); break;
 	case _distributed_message_chat_config: entry_size = network_chat_config_entry_size(); break;
-	case _distributed_message_spectators: entry_size = network_spectator_entry_size(); break;
 	case _distributed_message_player_inputs: entry_size = sizeof(struct distributed_player_input); break;
 	case _distributed_message_relayed_actions: entry_size = DISTRIBUTED_RELAYED_ACTION_MINIMUM_SIZE; break;
 	case _distributed_message_game_state:
@@ -4085,7 +4091,6 @@ void network_distributed_handle_message(
 	case _distributed_message_chat_up:
 	case _distributed_message_chat_down:
 	case _distributed_message_chat_config:
-	case _distributed_message_spectators:
 		if (header.count < 1)
 			return;
 		break;
@@ -4165,9 +4170,6 @@ void network_distributed_handle_message(
 		break;
 	case _distributed_message_votekick_status:
 		network_votekick_handle_status(entries);
-		break;
-	case _distributed_message_spectators:
-		network_spectator_handle(entries);
 		break;
 	case _distributed_message_chat_up:
 		network_chat_handle_up(machine_index, entries, distributed_handling_stream_message);

@@ -35,56 +35,78 @@
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/lobby/list_item_0" width="390" height="28" bitmap="bitmaps/sel_list_item_bkd_top" font="ui\large_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="left right" run="swap player team"/>
+		<on event="a" run="port lobby spectator"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/new_select/list_item_text" x="25"/>
 		<child widget="main_menu/new_select/list_item_arrows"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/lobby/list_item_1" width="390" height="28" bitmap="bitmaps/sel_list_item_bkd" font="ui\large_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="left right" run="swap player team"/>
+		<on event="a" run="port lobby spectator"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/new_select/list_item_text" x="25"/>
 		<child widget="main_menu/new_select/list_item_arrows"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/lobby/list_item_2" width="390" height="28" bitmap="bitmaps/sel_list_item_bkd" font="ui\large_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="left right" run="swap player team"/>
+		<on event="a" run="port lobby spectator"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/new_select/list_item_text" x="25"/>
 		<child widget="main_menu/new_select/list_item_arrows"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/lobby/list_item_3" width="390" height="28" bitmap="bitmaps/sel_list_item_bkd" font="ui\large_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="left right" run="swap player team"/>
+		<on event="a" run="port lobby spectator"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/new_select/list_item_text" x="25"/>
 		<child widget="main_menu/new_select/list_item_arrows"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/lobby/list_item_4" width="390" height="28" bitmap="bitmaps/sel_list_item_bkd" font="ui\large_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="left right" run="swap player team"/>
+		<on event="a" run="port lobby spectator"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/new_select/list_item_text" x="25"/>
 		<child widget="main_menu/new_select/list_item_arrows"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/lobby/list_item_5" width="390" height="28" bitmap="bitmaps/sel_list_item_bkd" font="ui\large_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="left right" run="swap player team"/>
+		<on event="a" run="port lobby spectator"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/new_select/list_item_text" x="25"/>
 		<child widget="main_menu/new_select/list_item_arrows"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/lobby/list_item_6" width="390" height="28" bitmap="bitmaps/sel_list_item_bkd" font="ui\large_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="left right" run="swap player team"/>
+		<on event="a" run="port lobby spectator"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/new_select/list_item_text" x="25"/>
 		<child widget="main_menu/new_select/list_item_arrows"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/lobby/list_item_7" width="390" height="28" bitmap="bitmaps/sel_list_item_bkd" font="ui\large_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="left right" run="swap player team"/>
+		<on event="a" run="port lobby spectator"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/new_select/list_item_text" x="25"/>
 		<child widget="main_menu/new_select/list_item_arrows"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/lobby/list_item_8" width="390" height="28" bitmap="bitmaps/sel_list_item_bkd" font="ui\large_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="left right" run="swap player team"/>
+		<on event="a" run="port lobby spectator"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/new_select/list_item_text" x="25"/>
 		<child widget="main_menu/new_select/list_item_arrows"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/lobby/list_item_9" width="390" height="28" bitmap="bitmaps/sel_list_item_bkd" font="ui\large_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="left right" run="swap player team"/>
+		<on event="a" run="port lobby spectator"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/new_select/list_item_text" x="25"/>
 		<child widget="main_menu/new_select/list_item_arrows"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/lobby/list_item_10" width="390" height="28" bitmap="bitmaps/sel_list_item_bkd" font="ui\large_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="left right" run="swap player team"/>
+		<on event="a" run="port lobby spectator"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/new_select/list_item_text" x="25"/>
 		<child widget="main_menu/new_select/list_item_arrows"/>
 	</widget>

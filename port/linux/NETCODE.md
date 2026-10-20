@@ -344,16 +344,20 @@ version is unchanged.
 
 A multiplayer game's spectators (`network_spectator.c`, their view in
 `spectator.c`): the host alone picks which players watch the game instead
-of playing it (a name on its scoreboard, or the console's `spectate <player
-name>`), its own players too. The host spawns no spectator
+of playing it (a player's row in its lobby, a name on its scoreboard, or the
+console's `spectate <player name>`), its own players too. The host spawns no spectator
 (`game_engine_should_spawn_player`), counts none among a team's players
 (the last team alive, odd man out, the teams' balance), and takes the unit
 of a player it makes one out of the game as it takes a player's who leaves:
 no death, no score. It sends every client `_distributed_message_spectators`
-(a bit a player, by absolute index) reliably when they change and to each
-machine once it has loaded, and no client asks for anything. The host's
-spectators last from game to game, each known by its slot, name and
-machine, so that a slot another player takes is no spectator's. A
+(a bit a player, by absolute index, which is the player's slot in the
+host's list) reliably when they change and to each machine once it has
+loaded, and no client asks for anything; in the lobby, where the rows say
+who is one, when they change and every two seconds, taken before the
+netcode's checks that a game is running, as voice chat's messages are. The
+host's spectators last from the lobby into the game and from game to game,
+each known by its slot, name and machine, so that a slot another player
+takes is no spectator's. A
 spectator's machine has no place it sees the game from: the host sends it
 every player's unit and input every tick, as it does a machine that has had
 no player alive (`distributed_host_plan_players`), so that whoever it

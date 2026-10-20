@@ -631,14 +631,21 @@ can make a player a spectator. A spectator does not play. The game does not
 spawn a spectator, and a spectator is in no team for the game's rules (the
 last team alive, the balance of the teams).
 
-Only the host selects the spectators, during a game:
+Only the host selects the spectators, in the lobby or during a game:
 
-- Hold the scoreboard key, right-click to release the mouse, and select the
-  name of a player. Select **Make a spectator**. The host can select its own
-  name. Select **Return to the game** to make the player play again.
-- Or enter `spectate <player name>` in the developer console. Tab completes
-  the name. The command changes the player to a spectator, or back to a
-  player.
+- In the lobby (GAME LOBBY), move to the row of a player and push A, or
+  click the row. The row then shows `(SPECTATOR)` after the name of the
+  player, on all the machines. Do this again to make the player a player
+  again. A player selected in the lobby is a spectator from the start of
+  the game.
+- During a game, hold the scoreboard key, right-click to release the mouse,
+  and select the name of a player. Select **Make a spectator**. Select
+  **Return to the game** to make the player play again.
+- Or enter `spectate <player name>` in the developer console, in the lobby
+  or during a game. Tab completes the name. The command changes the player
+  to a spectator, or back to a player.
+
+The host can select its own player.
 
 A player who becomes a spectator leaves the game at once. This is not a
 death and does not change the score. A player who returns spawns as a new
@@ -672,9 +679,9 @@ controller, with the bindings of the player):
 | Throw grenade | Selects the player before. |
 | Action | Changes the camera: third person, first person, then the free camera. |
 | Melee | In a team game: all the players, only the red team, or only the blue team. With a team selected, fire and throw grenade select only the living players of that team. |
-| Switch weapon | Changes what the screen shows: all the data, only the selected player, or nothing. With nothing, the names of the controls are also hidden. |
+| Switch weapon | Changes what the screen shows, in this sequence: all the data; only the list of players; the list of players and the power items; only the power items; all the data but the scores; only the scores; nothing. |
 | Switch grenade | Changes the speed of the free camera. |
-| Flashlight | Shows or hides the names of the controls at the bottom of the screen. |
+| Flashlight | Shows or hides the list of the controls at the bottom right of the screen. |
 
 The screen of a spectator shows these data (in first person, only the name
 of the selected player, because the HUD of the player shows the rest):
@@ -683,9 +690,14 @@ of the selected player, because the HUD of the player shows the rest):
   player (as bars and as numbers, where 100 is full).
 - If the selected player is dead, the time until the player spawns again.
   The camera stays on the body until then.
-- All the players, each with its shields and health, or with the time
-  until it spawns again. In a team game, each name has the color of its
-  team.
+- At the top left, all the players, each with its shields and health, or
+  with the time until it spawns again. In a team game, each name has the
+  color of its team.
+- At the top center, the scores: the scores of the two teams in a team
+  game, or the four players with the highest scores.
+- At the bottom right, the controls of the spectator, each with the key or
+  the mouse button that the player has for it, for example `(MB1) Next
+  Player`. The list shows the bindings of the keyboard and the mouse.
 - The power items of the map (overshield, active camouflage, rocket
   launcher, sniper rifle): the time until each spawns again, and if each is
   in its position (UP) or not (TAKEN).

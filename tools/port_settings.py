@@ -1324,7 +1324,9 @@ def _lobby() -> list:
                                                  ("color", "#FF2896FF"), ("align", "right"), ("text_y", 5),
                                                  ("text_flags", "no_focus_test")], [])
     # (its rows: any controller's left and right switch its own player's team,
-    # on the rows only, so that they move along the buttons)
+    # on the rows only, so that they move along the buttons; the host's A, or
+    # its click, makes the row's player a spectator of the game to come or a
+    # player again: menu_functions.c's lobby_spectator)
     rows = [f'<child widget="{base}/list_item_{index}" x="20" y="{73 + 30 * index}"/>' for index in range(11)]
     lines += _widget(f"{base}/lobby_list", [("type", "column_list"), ("width", 640), ("height", 480),
                                             ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
@@ -1338,6 +1340,8 @@ def _lobby() -> list:
                           ("bitmap", "bitmaps/sel_list_item_bkd_top" if index == 0 else "bitmaps/sel_list_item_bkd"),
                           ("font", "ui\\large_ui"), ("color", "#FF2896FF"), ("align", "center"), ("text_y", 3)],
                          ['<on event="left right" run="swap player team"/>',
+                          '<on event="a" run="port lobby spectator"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
                           '<child widget="main_menu/new_select/list_item_text" x="25"/>',
                           '<child widget="main_menu/new_select/list_item_arrows"/>'])
     lines += _widget(f"{base}/lobby_desc", [("width", 640), ("height", 480)],

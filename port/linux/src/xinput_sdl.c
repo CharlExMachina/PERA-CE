@@ -745,8 +745,9 @@ still, only turning and looking up and down (where remote players aim and
 whether they stand); "spectate:<seed>" plays a spectator
 (port/linux/game/spectator.c): it looks about, takes the next player every
 ten seconds, a team game's teams every seventeen, puts the controls' names
-away or back every thirteen, and of every forty seconds watches in first
-person for ten and flies the free camera for ten */
+away or back every thirteen, changes what is shown every nine, and of every
+forty seconds watches in first person for ten and flies the free camera for
+ten */
 static int test_input_holding_action;
 static Uint64 test_input_holding_action_since;
 
@@ -880,7 +881,8 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 	}
 	if (spectating)
 	{
-		/* (by the controller's own buttons: fire, melee, flashlight, action, jump) */
+		/* (by the controller's own buttons: fire, melee, flashlight, switch
+		weapon, action, jump) */
 		double phase = fmod(t, 40.0);
 
 		pad->sThumbRX = (SHORT)(sin(t * 0.4) * 9000.0);
@@ -890,6 +892,8 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 			pad->bAnalogButtons[XINPUT_GAMEPAD_B] = 255;
 		if (fmod(t, 13.0) < 0.2)
 			pad->bAnalogButtons[XINPUT_GAMEPAD_WHITE] = 255;
+		if (fmod(t, 9.0) < 0.2)
+			pad->bAnalogButtons[XINPUT_GAMEPAD_Y] = 255;
 		/* (the camera: first person at 15, the free camera at 25, third
 		person at 35) */
 		if ((phase >= 15.0 && phase < 15.2) || (phase >= 25.0 && phase < 25.2) || (phase >= 35.0 && phase < 35.2))

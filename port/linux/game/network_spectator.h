@@ -23,11 +23,20 @@ enum
 /* whether the player (a datum index) is a spectator: in a network
 multiplayer game, as the host says */
 boolean network_spectator_player(long player_index);
-/* whether this machine hosts a network multiplayer game (its scoreboard
-offers Spectate, its console takes "spectate") */
+/* whether the player at a slot of the host's list of players is a
+spectator, as the lobby's rows say (menu_functions.c); in a game the slot is
+the player's datum */
+boolean network_spectator_listed(short player_index);
+/* whether this machine hosts a network multiplayer game under way (its
+scoreboard offers Spectate) */
 boolean network_spectator_host(void);
-/* (the host) makes the player (absolute index) a spectator, or a player
-again; every machine is told */
+/* ... or hosts one or its lobby (its console takes "spectate", and its
+lobby's rows pick spectators) */
+boolean network_spectator_host_may_pick(void);
+/* each frame (main.c): the host's lobby tells its machines the spectators */
+void network_spectator_update(void);
+/* (the host) makes the player (absolute index, or in the lobby its slot) a
+spectator, or a player again; every machine is told */
 boolean network_spectator_host_set(short player_index, boolean spectator);
 /* the host's "spectate <name>": the player of that name (or the one whose
 name begins with it) made a spectator, or a player again */
