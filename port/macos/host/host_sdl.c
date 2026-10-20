@@ -601,6 +601,13 @@ int host_sdl_warp_mouse(uint32_t window, float x, float y)
 	return object != NULL;
 }
 
+int host_sdl_set_window_mouse_grab(uint32_t window, int grabbed)
+{
+	SDL_Window *object = handle_get(window, _handle_window);
+
+	return object ? SDL_SetWindowMouseGrab(object, grabbed != 0) : 0;
+}
+
 uint32_t host_sdl_primary_display(void)
 {
 	return SDL_GetPrimaryDisplay();
@@ -682,6 +689,34 @@ int host_sdl_push_event(const void *event)
 int host_sdl_hint_boolean(const char *name, int otherwise)
 {
 	return SDL_GetHintBoolean(name, otherwise != 0) ? 1 : 0;
+}
+
+/* (the game's window has its handle already; another has none) */
+uint32_t host_sdl_keyboard_focus(void)
+{
+	SDL_Window *focus = SDL_GetKeyboardFocus();
+	uint32_t index, found = 0;
+
+	if (!focus)
+		return 0;
+	pthread_mutex_lock(&handle_lock);
+	for (index = 1; index < HANDLE_COUNT && !found; index++)
+	{
+		if (handles[index].type == _handle_window && handles[index].object == focus)
+			found = index;
+	}
+	pthread_mutex_unlock(&handle_lock);
+	return found;
+}
+
+int host_sdl_show_cursor(int shown)
+{
+	return shown ? SDL_ShowCursor() : SDL_HideCursor();
+}
+
+uint32_t host_sdl_key_from_scancode(int32_t scancode, int32_t modifiers, int key_event)
+{
+	return SDL_GetKeyFromScancode((SDL_Scancode)scancode, (SDL_Keymod)modifiers, key_event != 0);
 }
 
 int host_sdl_text_input_active(uint32_t window)

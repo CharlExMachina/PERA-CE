@@ -63,6 +63,8 @@ void d3d8_surface_resize(D3DSurface *surface, D3DFORMAT format, unsigned long wi
 
 static long screen_width;
 static float screen_scale[2] = { 1.0f, 1.0f };
+/* how many times the display's pixels each way supersampling draws */
+static float screen_supersampling = 1.0f;
 static long ui_offset;
 #define UI_OFFSET ((long)ui_offset)
 
@@ -143,6 +145,7 @@ static void screen_mode_choose(long *width, float scale[2])
 
 	*width = 640;
 	scale[0] = scale[1] = 1.0f;
+	screen_supersampling = 1.0f;
 	if (platform_screen_mode(&display_width, &display_height) && display_width > 0 && display_height > 0)
 	{
 		long wanted = (SCREEN_HEIGHT * display_width + display_height / 2) / display_height;
@@ -164,6 +167,7 @@ static void screen_mode_choose(long *width, float scale[2])
 			{
 				scale[0] *= factor;
 				scale[1] *= factor;
+				screen_supersampling = factor;
 			}
 		}
 	}
@@ -190,6 +194,58 @@ float halo_screen_scale(void)
 {
 	halo_screen_width();
 	return screen_scale[0] > screen_scale[1] ? screen_scale[0] : screen_scale[1];
+}
+
+/* display.model_detail: the size a model is measured at to choose its
+level of detail (d3d8_gl.c) */
+enum
+{
+	_model_detail_stock,
+	_model_detail_native,
+	_model_detail_highest,
+};
+
+static int model_detail = -1;
+static unsigned long model_detail_read_at;
+
+static int model_detail_setting(void)
+{
+	if (model_detail < 0 || model_detail_read_at != config_changes())
+	{
+		const char *setting = config_string("display.model_detail");
+		int value = !strcmp(setting, "native") ? _model_detail_native :
+			!strcmp(setting, "highest") ? _model_detail_highest : _model_detail_stock;
+
+		model_detail_read_at = config_changes();
+		if (value != model_detail)
+		{
+			if (value == _model_detail_stock && strcmp(setting, "stock"))
+				platform_log("model detail: \"%s\" is unknown, so stock", setting);
+			else
+				platform_log("model detail: %s", setting);
+		}
+		model_detail = value;
+	}
+	return model_detail;
+}
+
+int halo_model_detail_stock(void)
+{
+	return model_detail_setting() == _model_detail_stock;
+}
+
+float halo_model_detail_scale(int level)
+{
+	float display_scale;
+
+	model_detail_setting();
+	if (model_detail == _model_detail_stock)
+		return 1.0f;
+	if (model_detail == _model_detail_highest && level)
+		return 1.0e6f;
+	halo_screen_width();
+	display_scale = screen_scale[1] / screen_supersampling;
+	return display_scale > 1.0f ? display_scale : 1.0f;
 }
 
 /* display.shadow_resolution (d3d8_gl.c) */
@@ -345,7 +401,14 @@ static struct
 	unsigned long skipped_no_program, skipped_no_target, skipped_pipeline;
 	unsigned long target_changes, passes;
 	unsigned long mirrored_bytes, streamed_bytes;
+	unsigned long texture_uploads, texture_upload_bytes;
 } stats;
+
+void xgpu_statistics_texture_upload(unsigned long bytes)
+{
+	stats.texture_uploads++;
+	stats.texture_upload_bytes += bytes;
+}
 
 static D3DDevice *device_pointer(void)
 {
@@ -2305,6 +2368,7 @@ struct vertex_uniforms
 	float point_size;
 	float screen_offset;
 	float unused[2];
+	float height_fade[4];
 	float attributes[XGPU_VERTEX_ATTRIBUTE_COUNT][4];
 };
 
@@ -2329,6 +2393,23 @@ struct fragment_uniforms
 /* each the latest draw's, and a serial that changes when they do */
 static struct vertex_uniforms vertex_uniforms;
 static struct fragment_uniforms fragment_uniforms;
+
+/* the height fade of the draws that follow (d3d8_gl_set_height_fade): off
+while its scale is zero */
+static float height_fade_value[4];
+
+/* The draws that follow fade out above a height on their model (the shield
+flare rising up a body: port/linux/game/overshield_effect.c), as d3d8_gl.c's:
+each vertex's colors are scaled by clamp((height - z) * inverse_softness, 0,
+1), where z is (oT0.z - offset) / scale (nv2a_vsh.c). A scale of zero turns
+it off. */
+void d3d8_gl_set_height_fade(float inverse_softness, float height, float offset, float scale)
+{
+	height_fade_value[0] = inverse_softness;
+	height_fade_value[1] = height;
+	height_fade_value[2] = offset;
+	height_fade_value[3] = scale;
+}
 static uint32_t vertex_uniforms_serial, fragment_uniforms_serial;
 
 static unsigned long model_light_register(int light)
@@ -2347,6 +2428,7 @@ static void uniforms_update(const float texture_scale[4][4], BOOL immediate)
 	memcpy(vertex.viewport_offset, device.viewport_offset, sizeof(vertex.viewport_offset));
 	vertex.point_size = D3D__RenderState[D3DRS_POINTSIZE] ? dword_to_float(D3D__RenderState[D3DRS_POINTSIZE]) : 1.0f;
 	vertex.screen_offset = (float)UI_OFFSET;
+	memcpy(vertex.height_fade, height_fade_value, sizeof(vertex.height_fade));
 	memcpy(vertex.attributes, device.attributes, sizeof(vertex.attributes));
 	(void)immediate;
 	if (!vertex_uniforms_serial || !words_equal(&vertex, &vertex_uniforms, sizeof(vertex)))
@@ -3509,6 +3591,19 @@ void WINAPI D3DDevice_Clear(DWORD count, CONST D3DRECT *rectangles, DWORD flags,
 	}
 }
 
+/* ---------- high dynamic range
+
+display.hdr's tone mapping (d3d8_gl.c) is OpenGL's only: the Metal back
+buffer is 8 bits a channel, so there is nothing past white to map. */
+
+void halo_screen_tone_map(short x0, short y0, short x1, short y1)
+{
+	(void)x0;
+	(void)y0;
+	(void)x1;
+	(void)y1;
+}
+
 /* ---------- the anti-aliasing passes
 
 display.anti_aliasing's FXAA over a window's 3D view, before the HUD and menus
@@ -3759,11 +3854,12 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 	if (debug_settings.statistics && device.frame % 60 == 0)
 	{
 		platform_log("frame %lu: %lu draws, %lu immediate, %lu clears, %lu target changes, %lu passes; skipped %lu "
-			"no program, %lu no target, %lu pipeline; %lu KB mirrored, %lu KB streamed",
+			"no program, %lu no target, %lu pipeline; %lu KB mirrored, %lu KB streamed; %lu textures (%lu KB) uploaded",
 			device.frame, stats.draws / stats.presents, stats.immediate_draws / stats.presents,
 			stats.clears / stats.presents, stats.target_changes / stats.presents, stats.passes / stats.presents,
 			stats.skipped_no_program, stats.skipped_no_target, stats.skipped_pipeline,
-			stats.mirrored_bytes / stats.presents / 1024, stats.streamed_bytes / stats.presents / 1024);
+			stats.mirrored_bytes / stats.presents / 1024, stats.streamed_bytes / stats.presents / 1024,
+			stats.texture_uploads, stats.texture_upload_bytes / 1024);
 		memset(&stats, 0, sizeof(stats));
 	}
 	platform_pump_events();

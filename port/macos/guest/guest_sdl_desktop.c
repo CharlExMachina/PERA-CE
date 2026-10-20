@@ -4,19 +4,22 @@ GUEST_SDL_DESKTOP.C
 The SDL3 functions the desktop's platform layer calls (sdl_platform.c,
 xinput_sdl.c, menu_files.c, port_config.c) that the Android guest's does not,
 for the macOS guest: the window's size and fullscreen, the displays and
-their modes, the open file dialog, the audio devices' names and the small
-renderer of the disc image's extraction. The rest are in
+their modes, the mouse's grab and the cursor, the keyboard's focus and keys,
+the open file dialog, the audio devices' names and the small renderer of the
+disc image's extraction. The rest are in
 port/android/guest/runtime/guest_sdl.c.
 
 As there, SDL's objects are handles. What SDL hands back in memory of its own
 (a display mode, a list of names) is copied into the guest's: a display
 mode's layout differs between the two ABIs (macos_host.h). What needs no
-SDL (atomics, properties nothing reads back, the clock) is done here.
+SDL (atomics, properties nothing reads back, the clock, a file's
+information) is done here.
 */
 
 /* before SDL: musl's alloca.h must come first */
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <SDL3/SDL.h>
 
@@ -85,6 +88,37 @@ bool SDL_SetNumberProperty(SDL_PropertiesID props, const char *name, Sint64 valu
 	return true;
 }
 
+/* (the window's properties, which only display.hdr_output reads: a Metal
+window is SDR, so it has none, and each is its default) */
+SDL_PropertiesID SDL_GetWindowProperties(SDL_Window *window)
+{
+	(void)window;
+	return 0;
+}
+
+bool SDL_GetBooleanProperty(SDL_PropertiesID props, const char *name, bool default_value)
+{
+	(void)props;
+	(void)name;
+	return default_value;
+}
+
+float SDL_GetFloatProperty(SDL_PropertiesID props, const char *name, float default_value)
+{
+	(void)props;
+	(void)name;
+	return default_value;
+}
+
+/* (OpenGL's window attributes, which display.hdr_output sets before the
+window is made: a Metal window has none) */
+bool SDL_GL_SetAttribute(SDL_GLAttr attribute, int value)
+{
+	(void)attribute;
+	(void)value;
+	return true;
+}
+
 /* ---------- the window */
 
 void SDL_DestroyWindow(SDL_Window *window)
@@ -122,6 +156,11 @@ bool SDL_SetWindowFullscreen(SDL_Window *window, bool fullscreen)
 void SDL_WarpMouseInWindow(SDL_Window *window, float x, float y)
 {
 	host_sdl_warp_mouse((unsigned int)window, x, y);
+}
+
+bool SDL_SetWindowMouseGrab(SDL_Window *window, bool grabbed)
+{
+	return host_sdl_set_window_mouse_grab((unsigned int)window, grabbed) != 0;
 }
 
 /* ---------- displays */
@@ -291,6 +330,26 @@ bool SDL_HasScreenKeyboardSupport(void)
 	return host_sdl_has_screen_keyboard() != 0;
 }
 
+SDL_Window *SDL_GetKeyboardFocus(void)
+{
+	return (SDL_Window *)host_sdl_keyboard_focus();
+}
+
+bool SDL_ShowCursor(void)
+{
+	return host_sdl_show_cursor(1) != 0;
+}
+
+bool SDL_HideCursor(void)
+{
+	return host_sdl_show_cursor(0) != 0;
+}
+
+SDL_Keycode SDL_GetKeyFromScancode(SDL_Scancode scancode, SDL_Keymod modstate, bool key_event)
+{
+	return (SDL_Keycode)host_sdl_key_from_scancode((int)scancode, (int)modstate, key_event);
+}
+
 /* ---------- audio devices */
 
 #define MAXIMUM_AUDIO_DEVICES 64
@@ -349,6 +408,27 @@ const char *SDL_GetAudioDeviceName(SDL_AudioDeviceID devid)
 }
 
 /* ---------- files */
+
+/* (the guest's own stat, whose system call the host makes on the Mac's
+files) */
+bool SDL_GetPathInfo(const char *path, SDL_PathInfo *info)
+{
+	struct stat status;
+
+	if (!path || stat(path, &status) != 0)
+		return false;
+	if (info)
+	{
+		memset(info, 0, sizeof(*info));
+		info->type = S_ISREG(status.st_mode) ? SDL_PATHTYPE_FILE :
+			S_ISDIR(status.st_mode) ? SDL_PATHTYPE_DIRECTORY : SDL_PATHTYPE_OTHER;
+		info->size = (Uint64)status.st_size;
+		info->create_time = SDL_SECONDS_TO_NS(status.st_ctim.tv_sec) + status.st_ctim.tv_nsec;
+		info->modify_time = SDL_SECONDS_TO_NS(status.st_mtim.tv_sec) + status.st_mtim.tv_nsec;
+		info->access_time = SDL_SECONDS_TO_NS(status.st_atim.tv_sec) + status.st_atim.tv_nsec;
+	}
+	return true;
+}
 
 const char *SDL_GetBasePath(void)
 {
