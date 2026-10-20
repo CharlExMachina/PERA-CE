@@ -1,9 +1,10 @@
 # Notes for agents
 
 This repository ports the Halo: Combat Evolved decompilation (Xbox build
-01.01.14.2342, `cachebeta.exe`) to Linux, Windows, Android and the web. The game's C
+01.01.14.2342, `cachebeta.exe`) to Linux, Windows, macOS, Android and the web. The game's C
 sources are the decompilation; the port adds a platform layer that
-implements the Xbox APIs the game calls, and features the Xbox game did not
+implements the Xbox APIs the game calls (Direct3D on OpenGL, or on Metal on
+the Mac), and features the Xbox game did not
 have (a new netcode, internet play, the PC version's menus, Custom Edition
 maps, touch controls). The project is published as OpenCE.
 
@@ -20,12 +21,13 @@ end.
 | `port/linux/include/` | The port's headers: the limits (`halo_port_limits.h`, with `HALO_PORT_NETWORK_VERSION`), capacities (`halo_port_capacity.h`), the prefix header, `halo_linux_source_fixups.h` (port functions the game's sources call) |
 | `port/include/xdk/` | Stand-ins for the Xbox SDK's headers (declarations only) |
 | `port/windows/` | The Windows build's own files (`win32_*.c`, headers) |
-| `port/android/` | The Android app: the guest runtime, the host library (`host/`), the Java app (`app/`), host imports (`host_imports.list`) |
+| `port/android/` | The Android app: the guest runtime (the macOS build's too), the host library (`host/`), the Java app (`app/`), host imports (`host_imports.list`) |
+| `port/macos/` | The macOS app: the host (`host/`: loader, window memory, Linux system calls on Darwin, SDL, Metal), the guest's Metal Direct3D device and desktop SDL calls (`guest/`), the Metal interface (`include/halo_metal.h`), host imports (`host_imports.list`) |
 | `port/web/` | The web build: its runtime (`src/`: entry, sockets inside the page, memory watch), the page and its service worker (`site/`), the SDL port, tests |
 | `port/assets/` | What the builds embed or ship: high-res HUD (`hud/`), fonts, titles, menus (`menus/`), icons, network brokers |
 | `port/third_party/` | Vendored libraries, each with a README naming its upstream, version and checksum |
 | `port/tools/` | Stand-alone tools (`cache_file_report.c`) |
-| `tools/` | Build scripts (`linux_build.py`, `windows_build.py`, `android_build.py`, `web_build.py`, `ci_build.py`, `web_serve.py`), generators (`ce_menus.py`, `port_settings.py`, `hud_assets.py`, `title_assets.py`, `embed_assets.py`, `xdk_headers.py`) and tests |
+| `tools/` | Build scripts (`linux_build.py`, `windows_build.py`, `android_build.py`, `macos_build.py` with `macos_asm_rebase.py`, `macos_imports.py` and `macos_image_check.py`, `web_build.py`, `ci_build.py`, `web_serve.py`), generators (`ce_menus.py`, `port_settings.py`, `hud_assets.py`, `title_assets.py`, `embed_assets.py`, `xdk_headers.py`) and tests |
 | `docs/` | Longer design notes (`custom_edition_caches.md`, `mods.md`) |
 | `pgo/` | Profile-guided optimisation profiles |
 | `assets/` | Game data for local runs (gitignored: `maps/`, `custom_maps/`) |
@@ -40,6 +42,7 @@ ninja android                  # the Android guest image and native libraries
 ninja android_apk              # the APK (Gradle)
 ninja web                      # build/web/site (Emscripten: port/web/README.md)
 ninja windows                  # on Windows only
+ninja macos                    # build/macos/OpenCE.app, on an Apple silicon Mac only
 python tools/ci_build.py linux release   # what CI builds
 ```
 
@@ -57,6 +60,17 @@ python tools/ci_build.py linux release   # what CI builds
   and only the SDL functions `guest_sdl.c` bridges. Run `ninja android`
   after changing anything it compiles: `port/linux/src`, `port/linux/game`,
   `port/android`, `source/`, the build scripts.
+- macOS: the game is the same ILP32 AArch64 guest as Android's, run in a 4 GB
+  window of the process at a 4 GB boundary (macOS maps nothing below 4 GB):
+  `tools/macos_asm_rebase.py` rewrites every load, store and indirect branch
+  of the compiler's assembly to go through the window's base in `x28`, and
+  `tools/macos_image_check.py` refuses an image with one that does not.
+  Guest code must not be assembly the rewrite has not seen. Host functions
+  take pointers the import stubs rebased (`tools/macos_imports.py`, from the
+  prototypes in `port/macos/include` and `guest_host.h`) and return guest
+  addresses or handles. The guest's pages are 16 KB. Run `ninja macos`
+  after changing what it compiles (as for Android, and `port/macos`).
+  Refer to [port/macos/README.md](port/macos/README.md).
 - Web: the game is `wasm32` (also ILP32), run on a Web Worker; calls must
   match their callee's type exactly (the link fails on a mismatch), and
   WebGL 2 is ES 3.0. Run `ninja web` after changing what it compiles (as
@@ -70,6 +84,8 @@ python tools/ci_build.py linux release   # what CI builds
 | `HALO_GLES` | Android, web | The OpenGL ES renderer |
 | `HALO_ARM64_GUEST` | Android | The guest's ABI (ILP32 AArch64) |
 | `HALO_WEB` | Web | The browser: its frames, storage, sockets and WebGL 2's limits (with `HALO_GLES`, not `HALO_ANDROID`) |
+| `HALO_METAL` | macOS | The Metal renderer (`port/macos/guest/d3d8_metal.c` in place of `d3d8_gl.c`); with `HALO_ARM64_GUEST` |
+| `HALO_MACOS` | macOS | The Mac app: its files and window (with `HALO_ARM64_GUEST` and `HALO_METAL`, not `HALO_ANDROID` or `HALO_GLES`) |
 | `HALO_WINDOWS` | Windows (`halo_windows_prefix.h`) | The Windows build |
 | `HALO_RELEASE` | `--release` | No assertions checked |
 | `HALO_PROFILE` | `--profile` | The profiling build; a normal build must be unchanged by it |
@@ -91,6 +107,7 @@ python tools/test_light_storage.py
 python tools/test_death_timing.py
 python -m pytest -q tools/test_web_build.py                 # the web build's graph, sockets, menus
 node --test "port/web/tests/*.test.js"                      # the web page's importer and service worker
+python -m pytest -q tools/test_macos_asm_rebase.py           # the macOS guest's rewrite (runs a guest on an Apple silicon Mac)
 node port/web/tests/webrtc_native.mjs chromium firefox      # the native builds' WebRTC with browsers (Playwright)
 ```
 
@@ -214,6 +231,7 @@ as documentation of file formats, never copied.
 | [port/linux/NETCODE.md](port/linux/NETCODE.md) | The distributed netcode, network versions, joining a game in progress, map sharing, transport, testing |
 | [port/windows/README.md](port/windows/README.md) | The Windows build, its headers, inline functions, crash reports |
 | [port/android/README.md](port/android/README.md) | The Android build, the guest and host, touch controls, Android settings, finding problems |
+| [port/macos/README.md](port/macos/README.md) | The macOS build, the guest's window and its rewrite, the host, Metal, finding problems |
 | [port/web/README.md](port/web/README.md) | The web build, the page, the game data in the browser, limits, how it operates, hosting on GitHub Pages |
 | [port/include/xdk/README.md](port/include/xdk/README.md) | How the SDK declarations were written and are checked |
 | [docs/custom_edition_caches.md](docs/custom_edition_caches.md) | Loading and converting Custom Edition maps, and the evidence for each layout |

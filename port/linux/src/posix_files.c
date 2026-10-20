@@ -2,7 +2,8 @@
 POSIX_FILES.C
 
 glibc file system helpers for the platform layer (see posix.h). Built with
-the host ABI and _FILE_OFFSET_BITS=64.
+the host ABI and _FILE_OFFSET_BITS=64 (and in the macOS host, with Darwin's
+C library).
 */
 
 #include <dirent.h>
@@ -21,6 +22,13 @@ static void split64(unsigned long long value, posix_ulong *low, posix_ulong *hig
 	*low = (posix_ulong)(value & 0xffffffffULL);
 	*high = (posix_ulong)(value >> 32);
 }
+
+#ifdef __APPLE__
+/* (the macOS host's: port/macos) */
+#define st_mtim st_mtimespec
+#define st_atim st_atimespec
+#define st_ctim st_ctimespec
+#endif
 
 static void fill_information(const struct stat *st, struct posix_file_information *information)
 {

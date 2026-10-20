@@ -1,7 +1,9 @@
 /*
 SDL_PLATFORM.C
 
-The SDL3 window, OpenGL context and event loop behind the Linux build.
+The SDL3 window, OpenGL context and event loop behind the Linux build (the
+macOS build draws into the window with Metal instead: HALO_METAL, the host's
+port/macos/host/host_metal.m).
 
 The window is created with the Direct3D device (d3d8_gl.c) on the game's
 main thread, which is also the only thread that pumps events. Keyboard and
@@ -18,6 +20,9 @@ and the debug keyboard that the game's console reads.
 #include "xiso.h"
 #include "touch_input.h"
 #include "../game/text_filter.h"
+#ifdef HALO_METAL
+#include "halo_metal.h"
+#endif
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -28,7 +33,9 @@ and the debug keyboard that the game's console reads.
 #endif
 
 static SDL_Window *platform_window;
+#ifndef HALO_METAL
 static SDL_GLContext platform_gl_context;
+#endif
 static SDL_ThreadID platform_event_thread;
 static BOOL platform_sdl_started = FALSE;
 
@@ -101,8 +108,9 @@ void dsound_sdl_output_device_check(void);
 void updater_start(void);
 void updater_poll(SDL_Window *window);
 static void screen_keyboard_update(void);
-#ifndef HALO_GLES
-/* the windows' icon, a PNG (tools/embed_assets.py, from port/assets/icon) */
+#if !defined(HALO_GLES) && !defined(HALO_MACOS)
+/* the windows' icon, a PNG (tools/embed_assets.py, from port/assets/icon;
+the Mac app's is its bundle's) */
 extern const unsigned int platform_window_icon[];
 extern const unsigned long platform_window_icon_size;
 #endif
@@ -765,15 +773,24 @@ or last resized: platform_display_apply */
 static long platform_window_width = -1, platform_window_height = -1;
 #endif
 
+#ifdef HALO_METAL
+#define PLATFORM_WINDOW_DRAWING SDL_WINDOW_METAL
+#else
+#define PLATFORM_WINDOW_DRAWING SDL_WINDOW_OPENGL
+#endif
+
 BOOL platform_video_initialize(unsigned long width, unsigned long height)
 {
+#ifndef HALO_METAL
 	int version;
+#endif
 
 	if (platform_window)
 		return TRUE;
 	if (!platform_sdl_initialize())
 		return FALSE;
 
+#ifndef HALO_METAL
 #ifdef HALO_GLES
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -801,6 +818,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	explicit mesa_glthread setting alone and other drivers ignore it. */
 	setenv("mesa_glthread", "true", 0);
 #endif
+#endif
 
 #ifdef HALO_ANDROID
 	{
@@ -809,7 +827,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 		if (scale < 1)
 			scale = 1;
 		platform_window = SDL_CreateWindow("Halo", (int)(width * scale), (int)(height * scale),
-			SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN);
+			PLATFORM_WINDOW_DRAWING | SDL_WINDOW_FULLSCREEN);
 	}
 #else
 	/* fullscreen (either kind) unless display.mode is the window, which F11
@@ -820,7 +838,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	(void)height;
 	platform_window_size_setting(&platform_window_width, &platform_window_height);
 	platform_window = SDL_CreateWindow("Halo", (int)platform_window_width, (int)platform_window_height,
-		SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
+		PLATFORM_WINDOW_DRAWING | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
 		(config_boolean("debug.hidden_window") ? SDL_WINDOW_HIDDEN : 0) |
 		(platform_fullscreen_setting() ? SDL_WINDOW_FULLSCREEN : 0));
 #endif
@@ -830,7 +848,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 		return FALSE;
 	}
 #ifndef HALO_ANDROID
-#ifndef HALO_GLES
+#if !defined(HALO_GLES) && !defined(HALO_MACOS)
 	/* the game's icon, which the desktop shows for the window (on Windows
 	also halo.exe's own, port/windows/halo.rc; a web page has its own) */
 	if (platform_window_icon_size)
@@ -845,6 +863,15 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	platform_fullscreen_requested = platform_fullscreen_setting();
 	platform_fullscreen_kind_apply();
 #endif
+#ifdef HALO_METAL
+	/* the window's Metal layer and the GPU's queue (d3d8_metal.c draws) */
+	if (!host_metal_initialize((unsigned int)platform_window, config_boolean("display.vsync")))
+	{
+		platform_log("cannot draw with Metal (the host's log has why)");
+		return FALSE;
+	}
+	platform_event_thread = SDL_GetCurrentThreadID();
+#else
 	platform_gl_context = SDL_GL_CreateContext(platform_window);
 #ifdef HALO_GLES
 	/* ES 3.2 where the driver has it, otherwise the renderer makes do with
@@ -867,6 +894,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	(void)version;
 	platform_event_thread = SDL_GetCurrentThreadID();
 	platform_log("OpenGL %s on %s", (const char *)glGetString(GL_VERSION), (const char *)glGetString(GL_RENDERER));
+#endif
 #ifndef HALO_ANDROID
 	platform_mouse_capture(TRUE);
 #endif
@@ -900,7 +928,11 @@ void platform_display_apply(void)
 	if (!platform_window)
 		return;
 #endif
+#ifdef HALO_METAL
+	host_metal_set_vsync(config_boolean("display.vsync"));
+#else
 	SDL_GL_SetSwapInterval(config_boolean("display.vsync") ? 1 : 0);
+#endif
 }
 
 void platform_video_drawable_size(int *width, int *height)
@@ -956,7 +988,10 @@ void platform_video_swap(void)
 	Uint64 interval, now;
 
 #endif
+#ifndef HALO_METAL
+	/* (Metal's frame is presented as it is committed: d3d8_metal.c) */
 	SDL_GL_SwapWindow(platform_window);
+#endif
 #ifdef HALO_WEB
 	web_frame_shown();
 #endif

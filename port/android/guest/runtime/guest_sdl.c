@@ -2,7 +2,8 @@
 GUEST_SDL.C
 
 The SDL3 functions the platform layer calls (sdl_platform.c, xinput_sdl.c,
-dsound_sdl.c), for the guest. SDL itself runs in the host; objects it
+dsound_sdl.c), for the guest (Android's, and the macOS port's, which adds
+the desktop's in port/macos/guest/guest_sdl_desktop.c). SDL itself runs in the host; objects it
 returns (windows, contexts, gamepads, audio streams) are 64-bit pointers
 there, so the guest only ever sees small integer handles that the host maps
 back (host_sdl.c). Events are written by SDL straight into the guest's
@@ -18,8 +19,10 @@ type that carries no pointer, which covers all the platform layer reads.
 
 #include "guest_host.h"
 
+#ifndef HALO_METAL
 /* guest/runtime/guest_gl.c (generated) */
 SDL_FunctionPointer guest_gl_get_proc_address(const char *name);
+#endif
 
 bool SDL_Init(SDL_InitFlags flags)
 {
@@ -82,10 +85,12 @@ char *SDL_GetClipboardText(void)
 	return strdup(buffer);
 }
 
+#ifdef HALO_ANDROID
 bool SDL_ShowAndroidToast(const char *message, int duration, int gravity, int xoffset, int yoffset)
 {
 	return host_sdl_show_toast(message, duration, gravity, xoffset, yoffset) != 0;
 }
+#endif
 
 /* ---------- a message for the player (sdl_platform.c): the host's own window */
 
@@ -153,6 +158,8 @@ bool SDL_SetWindowRelativeMouseMode(SDL_Window *window, bool enabled)
 	return host_sdl_set_relative_mouse((unsigned int)window, enabled) != 0;
 }
 
+#ifndef HALO_METAL
+/* (the macOS guest draws with Metal: port/macos/include/halo_metal.h) */
 bool SDL_GL_SetAttribute(SDL_GLAttr attribute, int value)
 {
 	return host_sdl_gl_set_attribute((int)attribute, value) != 0;
@@ -182,6 +189,7 @@ SDL_FunctionPointer SDL_GL_GetProcAddress(const char *name)
 {
 	return guest_gl_get_proc_address(name);
 }
+#endif
 
 /* ---------- events */
 

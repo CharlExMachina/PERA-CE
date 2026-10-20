@@ -206,8 +206,10 @@ def fetch_third_party() -> None:
         subprocess.run(["git", "-C", str(SDL_DIR), "apply", str(SDL_ANDROID_MOUSE_PATCH.resolve())], check=True)
 
 
-def _musl_sources() -> List[Path]:
-    src = MUSL_DIR / "src"
+def _musl_sources(musl_dir: Path = MUSL_DIR) -> List[Path]:
+    """musl's sources the guest is built with (the macOS build passes its own
+    copy of musl, tools/macos_build.py)"""
+    src = musl_dir / "src"
     result = set()
     for directory in MUSL_DIRECTORIES:
         for path in (src / directory).glob("*.c"):

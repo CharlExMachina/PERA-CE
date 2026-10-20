@@ -309,12 +309,16 @@ unsigned int text_hires_atlas_texture(unsigned long data)
 		return 0;
 	if (!atlas_texture)
 	{
+#ifdef HALO_METAL
+		atlas_texture = xgpu_metal_texture_rgba(NULL, ATLAS_SIZE, ATLAS_SIZE, 1);
+#else
 		glGenTextures(1, &atlas_texture);
 		glBindTexture(GL_TEXTURE_2D, atlas_texture);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, ATLAS_SIZE, ATLAS_SIZE, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 		xgpu_gl_state_invalidate();
+#endif
 		dirty_top = 0;
 		dirty_bottom = ATLAS_SIZE;
 	}
@@ -334,10 +338,26 @@ unsigned int text_hires_atlas_texture(unsigned long data)
 				texels[index * 4 + 0] = texels[index * 4 + 1] = texels[index * 4 + 2] = 255;
 				texels[index * 4 + 3] = coverage[index];
 			}
+#ifdef HALO_METAL
+			{
+				/* (rows the GPU may be drawing from: their glyphs are the same) */
+				struct halo_metal_region region;
+
+				memset(&region, 0, sizeof(region));
+				region.y = (uint32_t)dirty_top;
+				region.width = ATLAS_SIZE;
+				region.height = (uint32_t)rows;
+				region.depth = 1;
+				region.bytes_per_row = ATLAS_SIZE * 4;
+				region.bytes_per_image = (uint32_t)(rows * ATLAS_SIZE * 4);
+				host_metal_texture_upload(atlas_texture, &region, texels);
+			}
+#else
 			glBindTexture(GL_TEXTURE_2D, atlas_texture);
 			glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, dirty_top, ATLAS_SIZE, (GLsizei)rows, GL_RGBA, GL_UNSIGNED_BYTE, texels);
 			xgpu_gl_state_invalidate();
+#endif
 			free(texels);
 			dirty_top = ATLAS_SIZE;
 			dirty_bottom = 0;

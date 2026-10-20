@@ -1,9 +1,9 @@
-# Halo: Combat Evolved for Linux, Windows, Android and the web
+# Halo: Combat Evolved for Linux, Windows, macOS, Android and the web
 
 [![Join our Discord](https://invidget.switchblade.xyz/9gqcHyr5km)](https://discord.gg/9gqcHyr5km)
 
 This project is a port of the Halo: Combat Evolved decompilation to Linux,
-Windows, Android and web browsers. The decompilation is of the Xbox build 2342
+Windows, macOS, Android and web browsers. The decompilation is of the Xbox build 2342
 (`cachebeta.exe`, SHA-256
 `4cc87b45f721270392a96f1674ed2b5cd4a7bb4355faeab4531d1cf1884d9520`).
 
@@ -54,7 +54,8 @@ so players of the two versions can play together.
 2. At the first start, the game asks for the disc image. Select it.
 3. The game extracts the `maps/` folder. Then the game starts.
 
-On Linux and Windows, the game puts `maps/` next to the executable. On
+On Linux and Windows, the game puts `maps/` next to the executable; on
+macOS, in `~/Library/Application Support/OpenCE`. On
 Android, copy the disc image to the phone first. The app puts `maps/` in its
 data folder. Refer to [port/android/README.md](port/android/README.md). On
 the web, the page copies `maps/` out of the disc image into the browser's
@@ -78,6 +79,7 @@ Each platform has its own instructions:
 | --- | --- |
 | Linux (32-bit x86 executable, OpenGL 4.5, SDL3) | [port/linux/README.md](port/linux/README.md) |
 | Windows (32-bit x86 executable, OpenGL 4.5, SDL3) | [port/windows/README.md](port/windows/README.md) |
+| macOS (Apple silicon app, Metal, SDL3) | [port/macos/README.md](port/macos/README.md) |
 | Android (arm64 app, OpenGL ES 3, SDL3) | [port/android/README.md](port/android/README.md) |
 | Web (WebAssembly, WebGL 2, SDL3; desktop Chrome, Edge and Firefox) | [port/web/README.md](port/web/README.md) |
 
@@ -89,7 +91,7 @@ functions. These are almost the same on all platforms.
 The game can play system link games on a local network and on the internet:
 
 - A system link game can have up to 128 players on up to 128 machines.
-- Linux, Windows and Android machines and browsers can play in the same
+- Linux, Windows, macOS and Android machines and browsers can play in the same
   game. On a local network, the native builds play system link; browsers
   play each other in rooms, over WebRTC
   ([port/web/README.md](port/web/README.md)).
@@ -118,6 +120,7 @@ To build the game:
 | --- | --- |
 | `ninja linux` | `build/linux/halo` |
 | `ninja windows` (on Windows) | `build/windows/halo.exe` and `SDL3.dll` |
+| `ninja macos` (on a Mac) | `build/macos/OpenCE.app` |
 | `ninja android_apk` | `port/android/app/build/outputs/apk/debug/app-debug.apk` |
 | `ninja web` | `build/web/site/`, the web site (`python tools/web_serve.py` serves it) |
 

@@ -25,6 +25,10 @@ Windows it is __stdcall too, and SDL would include windows.h without it) */
 #endif
 #pragma pop_macro("APIENTRY")
 
+/* (the Metal renderer, HALO_METAL, takes only GL's types and enumerants, which
+the texture cache's shared code names its textures' kinds with: no GL
+function is there to call) */
+#ifndef HALO_METAL
 #ifdef HALO_GLES
 /* OpenGL ES 3.2 (port/android/README.md); tools/android_gl_stubs.py reads
 this list to generate the guest's entry points */
@@ -501,5 +505,6 @@ pointers, sees the declarations without these aliases */
 
 /* returns FALSE (and logs) if a required function is missing */
 int gl_functions_load(void);
+#endif
 
 #endif

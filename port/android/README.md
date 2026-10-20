@@ -318,6 +318,9 @@ The guest is the game, the platform layer and a small runtime:
 
 The APK contains the image as an asset.
 
+The macOS build runs the same guest, its runtime and C library included,
+in a window of its process (refer to [port/macos/README.md](../macos/README.md)).
+
 The C library of the guest is a part of musl for a new `arm64_32`
 architecture (`guest/libc/arch/arm64_32`). It has ILP32 types and a 32-bit
 `time_t`, as in the MSVC runtime of the game. Its system calls go to the

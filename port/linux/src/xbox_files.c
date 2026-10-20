@@ -166,6 +166,11 @@ const char *platform_save_root(void)
 		else if (getenv("APPDATA") && *getenv("APPDATA"))
 			snprintf(root, sizeof(root), "%s/halo", getenv("APPDATA"));
 #endif
+#ifdef HALO_MACOS
+		/* the Mac app keeps them with its other files (port/macos/README.md) */
+		else if (home && *home)
+			snprintf(root, sizeof(root), "%s/Library/Application Support/OpenCE/saves", home);
+#endif
 		else if (data_home && *data_home)
 			snprintf(root, sizeof(root), "%s/halo-linux", data_home);
 		else if (home && *home)

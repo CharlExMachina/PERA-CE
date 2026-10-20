@@ -1061,7 +1061,11 @@ void halo_menus_art_register(void const *texture, char const *png)
 		if (art[index].texture)
 		{
 			xgpu_gl_texture_deleted(art[index].texture);
+#ifdef HALO_METAL
+			host_metal_texture_delete(art[index].texture);
+#else
 			glDeleteTextures(1, &art[index].texture);
+#endif
 		}
 	}
 	memset(&art[index], 0, sizeof(art[index]));
@@ -1079,7 +1083,11 @@ void halo_menus_art_forget(void)
 		if (art[index].texture)
 		{
 			xgpu_gl_texture_deleted(art[index].texture);
+#ifdef HALO_METAL
+			host_metal_texture_delete(art[index].texture);
+#else
 			glDeleteTextures(1, &art[index].texture);
+#endif
 		}
 	}
 	art_count = 0;

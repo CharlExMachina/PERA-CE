@@ -12,6 +12,11 @@ converted to 32-bit BGRA on upload.
 
 A cached texture stays valid until any page it was read from is written;
 memory_watch.c detects that by write-protecting the pages.
+
+The Metal renderer (HALO_METAL) keeps its textures in the host's Metal
+(port/macos/include/halo_metal.h): a texture is made anew each time its
+texels are uploaded, as the GPU may still be drawing a frame with the one
+before (the host frees that one once the GPU is done with it).
 */
 
 #include "xgpu.h"
@@ -423,8 +428,9 @@ static BOOL decode_level(const struct xgpu_texture_description *description, uns
 	return TRUE;
 }
 
-#ifdef HALO_GLES
-/* ---------- DXT decoding, for ES drivers without S3TC (Mali) */
+#if defined(HALO_GLES) || defined(HALO_METAL)
+/* ---------- DXT decoding, for ES drivers without S3TC (Mali), and for
+textures Metal takes no compressed formats in (3D ones) */
 
 static unsigned long color565(unsigned long value)
 {
@@ -548,6 +554,17 @@ static void dxt_decode_level(unsigned char kind, const unsigned char *source, un
 }
 #endif
 
+#ifdef HALO_METAL
+static uint32_t compressed_format(unsigned char kind)
+{
+	switch (kind)
+	{
+	case _texel_dxt1: return HALO_METAL_FORMAT_BC1;
+	case _texel_dxt3: return HALO_METAL_FORMAT_BC2;
+	default: return HALO_METAL_FORMAT_BC3;
+	}
+}
+#else
 static GLenum compressed_format(unsigned char kind)
 {
 	switch (kind)
@@ -557,13 +574,14 @@ static GLenum compressed_format(unsigned char kind)
 	default: return GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
 	}
 }
+#endif
 
 /* ---------- upload */
 
 /* debug.texture_dump_directory writes level 0 of every upload as a TGA, read back from GL */
 static void texture_dump(GLenum target, const struct xgpu_texture_description *description)
 {
-#ifdef HALO_GLES
+#if defined(HALO_GLES) || defined(HALO_METAL)
 	/* ES cannot read textures back */
 	(void)target;
 	(void)description;
@@ -695,6 +713,112 @@ void halo_custom_edition_texels_forget(void)
 	custom_edition_texel_capacity = 0;
 }
 
+#ifdef HALO_METAL
+/* the texels as a new texture in *texture (the one before it deleted) */
+static void upload(GLuint *texture, GLenum target, const struct xgpu_texture_description *description,
+	const unsigned char *base, const D3DCOLOR *palette, unsigned char channel_order)
+{
+	struct format_information information = format_information(description->format);
+	unsigned long face_count = description->cube_map ? 6 : 1;
+	unsigned long face_size = xgpu_texture_face_size(description);
+	unsigned long largest = description->width * description->height * description->depth;
+	struct halo_metal_texture_description metal;
+	BOOL compressed = description->compressed;
+	unsigned long *converted = NULL;
+	unsigned long face, level, channel;
+
+	if (*texture)
+	{
+		xgpu_gl_texture_deleted(*texture);
+		host_metal_texture_delete(*texture);
+		*texture = 0;
+	}
+	memset(&metal, 0, sizeof(metal));
+	metal.type = description->cube_map ? HALO_METAL_TEXTURE_CUBE :
+		target == GL_TEXTURE_3D ? HALO_METAL_TEXTURE_3D : HALO_METAL_TEXTURE_2D;
+	metal.width = description->width;
+	metal.height = description->height;
+	metal.depth = target == GL_TEXTURE_3D ? description->depth : 1;
+	metal.levels = description->levels;
+	metal.samples = 1;
+	metal.usage = HALO_METAL_USAGE_SAMPLED;
+	/* (the channel each channel is sampled from, where Halo PC keeps it) */
+	if (channel_order != _custom_edition_channels_xbox)
+	{
+		for (channel = 0; channel < 4; channel++)
+			metal.swizzle |= (uint32_t)(HALO_METAL_SWIZZLE_RED + custom_edition_channel_sources[channel_order][channel]) <<
+				(8 * channel);
+	}
+	metal.format = compressed ? compressed_format(information.kind) : HALO_METAL_FORMAT_BGRA8;
+	*texture = host_metal_texture_create(&metal);
+	if (!*texture && compressed)
+	{
+		/* (a 3D texture: decoded) */
+		compressed = FALSE;
+		metal.format = HALO_METAL_FORMAT_BGRA8;
+		*texture = host_metal_texture_create(&metal);
+	}
+	if (!*texture)
+	{
+		platform_log("textures: Metal cannot make a %lux%lux%lu texture of format %02lx; it is not drawn",
+			description->width, description->height, description->depth, (unsigned long)description->format);
+		return;
+	}
+	if (!compressed)
+	{
+		converted = malloc(largest * sizeof(unsigned long));
+		if (!converted)
+		{
+			platform_log("textures: no memory to convert a %lux%lux%lu texture; it is not drawn",
+				description->width, description->height, description->depth);
+			return;
+		}
+	}
+	for (face = 0; face < face_count; face++)
+	{
+		for (level = 0; level < description->levels; level++)
+		{
+			const unsigned char *source = base + face * face_size + xgpu_texture_level_offset(description, level);
+			unsigned long width = level_dimension(description->width, level);
+			unsigned long height = level_dimension(description->height, level);
+			unsigned long depth = level_dimension(description->depth, level);
+			struct halo_metal_region region;
+			const void *data = source;
+
+			memset(&region, 0, sizeof(region));
+			region.level = (uint32_t)level;
+			region.slice = (uint32_t)face;
+			region.width = (uint32_t)width;
+			region.height = (uint32_t)height;
+			region.depth = (uint32_t)(target == GL_TEXTURE_3D ? depth : 1);
+			if (compressed)
+			{
+				unsigned long block_bytes = information.kind == _texel_dxt1 ? 8 : 16;
+
+				region.bytes_per_row = (uint32_t)(((width + 3) / 4) * block_bytes);
+				region.bytes_per_image = (uint32_t)(region.bytes_per_row * ((height + 3) / 4));
+			}
+			else
+			{
+				if (description->compressed)
+					dxt_decode_level(information.kind, source, width, height, depth, converted);
+				else if (!decode_level(description, level, source, palette, converted))
+				{
+					platform_log("textures: no memory to convert a %lux%lux%lu texture; it is not drawn",
+						description->width, description->height, description->depth);
+					free(converted);
+					return;
+				}
+				region.bytes_per_row = (uint32_t)(width * 4);
+				region.bytes_per_image = (uint32_t)(width * height * 4);
+				data = converted;
+			}
+			host_metal_texture_upload(*texture, &region, data);
+		}
+	}
+	free(converted);
+}
+#else
 static void upload(GLuint texture, GLenum target, const struct xgpu_texture_description *description,
 	const unsigned char *base, const D3DCOLOR *palette, unsigned char channel_order)
 {
@@ -837,6 +961,7 @@ static void upload(GLuint texture, GLenum target, const struct xgpu_texture_desc
 	free(converted);
 	texture_dump(target, description);
 }
+#endif
 
 /* ---------- cache */
 
@@ -1074,7 +1199,10 @@ GLuint xgpu_texture_get(const DWORD *resource, const D3DCOLOR *palette, GLenum *
 		}
 		entry->generation = 0;
 		entry->override = -1;
+#ifndef HALO_METAL
+		/* (Metal's is made as it is uploaded) */
 		glGenTextures(1, &entry->texture);
+#endif
 		entry->next = *bucket;
 		*bucket = entry;
 	}
@@ -1102,7 +1230,12 @@ GLuint xgpu_texture_get(const DWORD *resource, const D3DCOLOR *palette, GLenum *
 		/* (which bitmap is here may have changed with the pixels) */
 		if (entry->hud_upscale)
 		{
+#ifdef HALO_METAL
+			xgpu_gl_texture_deleted(entry->hud_upscale);
+			host_metal_texture_delete(entry->hud_upscale);
+#else
 			glDeleteTextures(1, &entry->hud_upscale);
+#endif
 			entry->hud_upscale = 0;
 			xgpu_gl_state_invalidate();
 		}
@@ -1136,8 +1269,13 @@ GLuint xgpu_texture_get(const DWORD *resource, const D3DCOLOR *palette, GLenum *
 					entry->description.height, entry->size, entry->generation,
 					ones * 100 / entry->size, zeros * 100 / entry->size);
 			}
+#ifdef HALO_METAL
+			upload(&entry->texture, entry->target, &entry->description, (const unsigned char *)entry->address, palette,
+				custom_edition_texels_order(entry->address));
+#else
 			upload(entry->texture, entry->target, &entry->description, (const unsigned char *)entry->address, palette,
 				custom_edition_texels_order(entry->address));
+#endif
 		}
 	}
 	entry->last_used_frame = texture_frame;
@@ -1191,9 +1329,19 @@ void xgpu_texture_cache_begin_frame(void)
 			if (texture_frame - entry->last_used_frame > TEXTURE_IDLE_FRAMES)
 			{
 				*link = entry->next;
+#ifdef HALO_METAL
+				xgpu_gl_texture_deleted(entry->texture);
+				host_metal_texture_delete(entry->texture);
+				if (entry->hud_upscale)
+				{
+					xgpu_gl_texture_deleted(entry->hud_upscale);
+					host_metal_texture_delete(entry->hud_upscale);
+				}
+#else
 				glDeleteTextures(1, &entry->texture);
 				if (entry->hud_upscale)
 					glDeleteTextures(1, &entry->hud_upscale);
+#endif
 				xgpu_gl_state_invalidate();
 				texture_drop_serial++;
 				free(entry);

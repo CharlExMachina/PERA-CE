@@ -13,6 +13,12 @@ A pixel shader runs in three parts:
 - the final combiner (PSFinalCombinerInputsABCD/EFG):
   rgb = A*B + (1-A)*C + D, alpha = G.
 Register values are clamped to [-1, 1] between stages, as on the hardware.
+
+The Metal renderer (HALO_METAL) takes Metal shading language instead
+(nv2a_pixel_shader_to_msl): the same shader, written in GLSL's terms over
+nv2a_vsh.c's prologue, which spells them in Metal's; the uniforms and the
+varyings are structures, and only the textures the shader samples are its
+arguments. Metal's samplers have no LOD bias, as ES's: the lookups apply it.
 */
 
 #include "xgpu.h"
@@ -314,8 +320,9 @@ static void dot_input(struct xgpu_text *text, const DWORD *state, int stage)
 	}
 }
 
-#ifdef HALO_GLES
-/* ES samplers have no LOD bias: pass D3DTSS_MIPMAPLODBIAS to the lookup */
+#if defined(HALO_GLES) || defined(HALO_METAL)
+/* ES's and Metal's samplers have no LOD bias: pass D3DTSS_MIPMAPLODBIAS to
+the lookup */
 #define SAMPLE_BIAS ", texture_lod_bias[%d]"
 #define SHADER_VERSION \
 	"precision highp float;\n" \
@@ -328,27 +335,32 @@ static void dot_input(struct xgpu_text *text, const DWORD *state, int stage)
 #define SHADER_VERSION "#version 450 core\n"
 #endif
 
+/* the stages whose textures the shader being made samples (Metal's take
+only those as arguments) */
+static unsigned int sampled_stages;
+
 static void sample(struct xgpu_text *text, const struct nv2a_pixel_shader_key *key, int stage, const char *coordinates)
 {
+	sampled_stages |= 1u << stage;
 	switch (key->sampler_type[stage])
 	{
 	case _xgpu_sampler_3d:
 		xgpu_text_append(text, "texture(tex%d, (%s).xyz" SAMPLE_BIAS ")", stage, coordinates
-#ifdef HALO_GLES
+#if defined(HALO_GLES) || defined(HALO_METAL)
 			, stage
 #endif
 			);
 		break;
 	case _xgpu_sampler_cube:
 		xgpu_text_append(text, "texture(tex%d, (%s).xyz" SAMPLE_BIAS ")", stage, coordinates
-#ifdef HALO_GLES
+#if defined(HALO_GLES) || defined(HALO_METAL)
 			, stage
 #endif
 			);
 		break;
 	default:
 		xgpu_text_append(text, "texture(tex%d, (%s).xy * texture_scale[%d].xy" SAMPLE_BIAS ")", stage, coordinates, stage
-#ifdef HALO_GLES
+#if defined(HALO_GLES) || defined(HALO_METAL)
 			, stage
 #endif
 			);
@@ -380,6 +392,7 @@ static void texture_stage(struct xgpu_text *text, const struct nv2a_pixel_shader
 		{
 			/* IDs must not be averaged with another segment or corrupted by
 			low-alpha artwork. Zero marks the atlas's continuous meters. */
+			sampled_stages |= 1u;
 			xgpu_text_append(text,
 				"\t{\n\t\tvec2 uv = (%s).xy * texture_scale[0].xy;\n"
 				"\t\tivec2 size = textureSize(tex0, 0);\n"
@@ -546,12 +559,22 @@ static void model_lighting(struct xgpu_text *text, BOOL point_lights)
 {
 	int light;
 
+#ifdef HALO_METAL
+	(void)point_lights;
+	xgpu_text_append(text,
+		"%s"
+		"static vec3 model_lighting(constant fragment_uniforms &u, nv2a_fragment_lit_in vin)\n"
+		"{\n", "");
+#else
 	xgpu_text_append(text,
 		"uniform vec4 model_lights[%d];\n"
 		"in vec4 xWorldNormal;\n"
 		"%s"
 		"vec3 model_lighting()\n"
-		"{\n"
+		"{\n",
+		XGPU_MODEL_LIGHT_COUNT, point_lights ? "in vec3 xWorldPosition;\n" : "");
+#endif
+	xgpu_text_append(text,
 		/* the normal's direction between the vertices, at the length the
 		vertices' normals have, as the programs light by it unnormalized
 		(shorter than 1 on some models: the first-person weapons) */
@@ -560,8 +583,7 @@ static void model_lighting(struct xgpu_text *text, BOOL point_lights)
 		back by the translucency, and the second */
 		"\tfloat facing = dot(n, -model_lights[7].xyz);\n"
 		"\tvec3 light = model_lights[11].xyz + max(max(facing, -facing * model_lights[0].z), 0.0) * model_lights[8].xyz +\n"
-		"\t\tmax(dot(n, -model_lights[9].xyz), 0.0) * model_lights[10].xyz;\n",
-		XGPU_MODEL_LIGHT_COUNT, point_lights ? "in vec3 xWorldPosition;\n" : "");
+		"\t\tmax(dot(n, -model_lights[9].xyz), 0.0) * model_lights[10].xyz;\n");
 	/* each point light: its position and 1 / radius squared, its cone's axis
 	and falloff scale, its color and falloff offset */
 	for (light = 0; point_lights && light < 2; light++)
@@ -582,10 +604,23 @@ static void model_lighting(struct xgpu_text *text, BOOL point_lights)
 	xgpu_text_append(text, "\treturn clamp(light, 0.0, 1.0);\n}\n");
 }
 
-char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key)
+#define SIGNED_BYTE_FUNCTIONS \
+	"float signed_byte(float x)\n" \
+	"{\n" \
+	"	float b = floor(x * 255.0 + 0.5);\n" \
+	"	return (b >= 128.0 ? b - 256.0 : b) / 127.0;\n" \
+	"}\n" \
+	"vec3 signed_bytes(vec3 x)\n" \
+	"{\n" \
+	"	return vec3(signed_byte(x.r), signed_byte(x.g), signed_byte(x.b));\n" \
+	"}\n"
+
+/* the shader's main function from its texture stages to its result (in
+result), after the inputs and uniforms are declared: the same in both
+languages but for the few places that name a language's own */
+static void pixel_body(struct xgpu_text *text, const struct nv2a_pixel_shader_key *key)
 {
 	const DWORD *state = key->combiner_state;
-	struct xgpu_text text = { 0 };
 	unsigned long combiner_count = state[D3DRS_PSCOMBINERCOUNT] & 0xff;
 	DWORD final_abcd = state[D3DRS_PSFINALCOMBINERINPUTSABCD];
 	DWORD final_efg = state[D3DRS_PSFINALCOMBINERINPUTSEFG];
@@ -593,6 +628,128 @@ char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key)
 
 	if (combiner_count > 8)
 		combiner_count = 8;
+	xgpu_text_append(text,
+		"\tvec4 v0 = xD0;\n"
+		"\tvec4 v1 = xD1;\n"
+		"\tvec4 t0 = vec4(0.0), t1 = vec4(0.0), t2 = vec4(0.0), t3 = vec4(0.0);\n"
+		"\tfloat dot0 = 0.0, dot1 = 0.0, dot2 = 0.0, dot3 = 0.0;\n");
+	if (key->per_pixel_lighting)
+#ifdef HALO_METAL
+		xgpu_text_append(text, "\tv0.rgb = model_lighting(u, vin);\n");
+#else
+		xgpu_text_append(text, "\tv0.rgb = model_lighting();\n");
+#endif
+	for (stage = 0; stage < 4; stage++)
+		texture_stage(text, key, stage);
+
+	/* the fog register: rgb is the fog color, alpha the fog factor */
+	if (key->fog_enable)
+	{
+		switch (key->fog_table_mode)
+		{
+		case D3DFOG_EXP:
+			xgpu_text_append(text, "\tfloat fog_factor = exp(-fog_parameters.z * xFog);\n");
+			break;
+		case D3DFOG_EXP2:
+			xgpu_text_append(text, "\tfloat fog_factor = exp(-(fog_parameters.z * xFog) * (fog_parameters.z * xFog));\n");
+			break;
+		case D3DFOG_LINEAR:
+			xgpu_text_append(text, "\tfloat fog_factor = (fog_parameters.y - xFog) / max(fog_parameters.y - fog_parameters.x, 1.0e-6);\n");
+			break;
+		default:
+			xgpu_text_append(text, "\tfloat fog_factor = xFog;\n");
+			break;
+		}
+	}
+	else
+	{
+		xgpu_text_append(text, "\tfloat fog_factor = 1.0;\n");
+	}
+	xgpu_text_append(text,
+		"\tvec4 fog = vec4(fog_color.rgb, clamp(fog_factor, 0.0, 1.0));\n"
+		"\tvec4 r0 = vec4(0.0, 0.0, 0.0, t0.a);\n"
+		"\tvec4 r1 = vec4(0.0);\n");
+
+	for (stage = 0; stage < (int)combiner_count; stage++)
+		combiner_stage(text, state, stage);
+
+	if (final_abcd == 0 && final_efg == 0)
+	{
+		xgpu_text_append(text, "\tvec4 result = r0;\n");
+	}
+	else
+	{
+		unsigned long settings = final_efg & 0xff;
+
+		xgpu_text_append(text, "\tvec4 ef_product = vec4(");
+		final_input(text, (final_efg >> 24) & 0xff, FALSE);
+		xgpu_text_append(text, " * ");
+		final_input(text, (final_efg >> 16) & 0xff, FALSE);
+		xgpu_text_append(text, ", 0.0);\n");
+		xgpu_text_append(text, "\tvec4 v1r0_sum = vec4(%s + %s, 0.0);\n",
+			(settings & 0x40) ? "(1.0 - clamp(v1.rgb, 0.0, 1.0))" : "clamp(v1.rgb, 0.0, 1.0)",
+			(settings & 0x20) ? "(1.0 - clamp(r0.rgb, 0.0, 1.0))" : "clamp(r0.rgb, 0.0, 1.0)");
+		if (settings & 0x80)
+			xgpu_text_append(text, "\tv1r0_sum = clamp(v1r0_sum, 0.0, 1.0);\n");
+		xgpu_text_append(text, "\tvec3 fA = ");
+		final_input(text, (final_abcd >> 24) & 0xff, FALSE);
+		xgpu_text_append(text, ";\n\tvec3 fB = ");
+		final_input(text, (final_abcd >> 16) & 0xff, FALSE);
+		xgpu_text_append(text, ";\n\tvec3 fC = ");
+		final_input(text, (final_abcd >> 8) & 0xff, FALSE);
+		xgpu_text_append(text, ";\n\tvec3 fD = ");
+		final_input(text, final_abcd & 0xff, FALSE);
+		xgpu_text_append(text, ";\n\tfloat fG = ");
+		final_input(text, (final_efg >> 8) & 0xff, TRUE);
+		xgpu_text_append(text, ";\n\tvec4 result = vec4(fA * fB + (1.0 - fA) * fC + fD, fG);\n");
+	}
+
+	if (key->coverage_alpha)
+		xgpu_text_append(text, "\tresult.a = mix(1.0, result.a, t0.g);\n");
+	if (key->alpha_test_function)
+	{
+		const char *comparison = comparison_operator(key->alpha_test_function);
+
+		if (!comparison)
+		{
+			xgpu_text_append(text, "\tdiscard;\n");
+		}
+		else if (*comparison && key->alpha_test_samples && comparison[0] != '=' && comparison[0] != '!')
+		{
+			/* multisampled: the samples covered as alpha passes the reference
+			over the pixel (its change across the pixel from fwidth), the rest
+			left as they are; alpha itself is kept, the game keeping values of
+			its own in destination alpha */
+			xgpu_text_append(text,
+				"\tfloat test_alpha = clamp(result.a, 0.0, 1.0) * 255.0;\n"
+				"\tfloat test_coverage = clamp(%s(test_alpha - alpha_reference) / max(fwidth(test_alpha), 1.0) + 0.5, 0.0, 1.0);\n"
+				"\tint test_samples = int(test_coverage * %d.0 + 0.5);\n"
+				"\tif (test_samples == 0) discard;\n"
+#ifdef HALO_METAL
+				"\tsample_mask = (1u << test_samples) - 1u;\n",
+#else
+				"\tgl_SampleMask[0] = (1 << test_samples) - 1;\n",
+#endif
+				comparison[0] == '<' ? "-" : "", (int)key->alpha_test_samples);
+		}
+		else if (*comparison)
+		{
+			xgpu_text_append(text, "\tif (!(floor(clamp(result.a, 0.0, 1.0) * 255.0 + 0.5) %s alpha_reference)) discard;\n", comparison);
+		}
+	}
+	if (*config_string("debug.gpu_debug_expression"))
+		xgpu_text_append(text, "\tresult = vec4(vec3(%s), 1.0);\n", config_string("debug.gpu_debug_expression"));
+	if (config_boolean("debug.gpu_debug_texture0"))
+		xgpu_text_append(text, "\tresult = vec4(t0.rgb, 1.0);\n");
+	if (config_boolean("debug.gpu_debug_flat"))
+		xgpu_text_append(text, "\tresult = xD0.a > 0.0 ? vec4(xD0.rgb, 1.0) : vec4(1.0, 0.0, 1.0, 1.0);\n");
+}
+
+#ifndef HALO_METAL
+char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key)
+{
+	struct xgpu_text text = { 0 };
+	int stage;
 
 #ifdef HALO_GLES
 	xgpu_text_append(&text, "#version %s\n", xgpu_capabilities.shading_language);
@@ -625,124 +782,10 @@ char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key)
 	if (key->per_pixel_lighting)
 		model_lighting(&text, key->per_pixel_lighting == 2);
 	xgpu_text_append(&text,
-		"float signed_byte(float x)\n"
-		"{\n"
-		"	float b = floor(x * 255.0 + 0.5);\n"
-		"	return (b >= 128.0 ? b - 256.0 : b) / 127.0;\n"
-		"}\n"
-		"vec3 signed_bytes(vec3 x)\n"
-		"{\n"
-		"	return vec3(signed_byte(x.r), signed_byte(x.g), signed_byte(x.b));\n"
-		"}\n"
+		SIGNED_BYTE_FUNCTIONS
 		"void main()\n"
-		"{\n"
-		"\tvec4 v0 = xD0;\n"
-		"\tvec4 v1 = xD1;\n"
-		"\tvec4 t0 = vec4(0.0), t1 = vec4(0.0), t2 = vec4(0.0), t3 = vec4(0.0);\n"
-		"\tfloat dot0 = 0.0, dot1 = 0.0, dot2 = 0.0, dot3 = 0.0;\n");
-	if (key->per_pixel_lighting)
-		xgpu_text_append(&text, "\tv0.rgb = model_lighting();\n");
-
-	for (stage = 0; stage < 4; stage++)
-		texture_stage(&text, key, stage);
-
-	/* the fog register: rgb is the fog color, alpha the fog factor */
-	if (key->fog_enable)
-	{
-		switch (key->fog_table_mode)
-		{
-		case D3DFOG_EXP:
-			xgpu_text_append(&text, "\tfloat fog_factor = exp(-fog_parameters.z * xFog);\n");
-			break;
-		case D3DFOG_EXP2:
-			xgpu_text_append(&text, "\tfloat fog_factor = exp(-(fog_parameters.z * xFog) * (fog_parameters.z * xFog));\n");
-			break;
-		case D3DFOG_LINEAR:
-			xgpu_text_append(&text, "\tfloat fog_factor = (fog_parameters.y - xFog) / max(fog_parameters.y - fog_parameters.x, 1.0e-6);\n");
-			break;
-		default:
-			xgpu_text_append(&text, "\tfloat fog_factor = xFog;\n");
-			break;
-		}
-	}
-	else
-	{
-		xgpu_text_append(&text, "\tfloat fog_factor = 1.0;\n");
-	}
-	xgpu_text_append(&text,
-		"\tvec4 fog = vec4(fog_color.rgb, clamp(fog_factor, 0.0, 1.0));\n"
-		"\tvec4 r0 = vec4(0.0, 0.0, 0.0, t0.a);\n"
-		"\tvec4 r1 = vec4(0.0);\n");
-
-	for (stage = 0; stage < (int)combiner_count; stage++)
-		combiner_stage(&text, state, stage);
-
-	if (final_abcd == 0 && final_efg == 0)
-	{
-		xgpu_text_append(&text, "\tvec4 result = r0;\n");
-	}
-	else
-	{
-		unsigned long settings = final_efg & 0xff;
-
-		xgpu_text_append(&text, "\tvec4 ef_product = vec4(");
-		final_input(&text, (final_efg >> 24) & 0xff, FALSE);
-		xgpu_text_append(&text, " * ");
-		final_input(&text, (final_efg >> 16) & 0xff, FALSE);
-		xgpu_text_append(&text, ", 0.0);\n");
-		xgpu_text_append(&text, "\tvec4 v1r0_sum = vec4(%s + %s, 0.0);\n",
-			(settings & 0x40) ? "(1.0 - clamp(v1.rgb, 0.0, 1.0))" : "clamp(v1.rgb, 0.0, 1.0)",
-			(settings & 0x20) ? "(1.0 - clamp(r0.rgb, 0.0, 1.0))" : "clamp(r0.rgb, 0.0, 1.0)");
-		if (settings & 0x80)
-			xgpu_text_append(&text, "\tv1r0_sum = clamp(v1r0_sum, 0.0, 1.0);\n");
-		xgpu_text_append(&text, "\tvec3 fA = ");
-		final_input(&text, (final_abcd >> 24) & 0xff, FALSE);
-		xgpu_text_append(&text, ";\n\tvec3 fB = ");
-		final_input(&text, (final_abcd >> 16) & 0xff, FALSE);
-		xgpu_text_append(&text, ";\n\tvec3 fC = ");
-		final_input(&text, (final_abcd >> 8) & 0xff, FALSE);
-		xgpu_text_append(&text, ";\n\tvec3 fD = ");
-		final_input(&text, final_abcd & 0xff, FALSE);
-		xgpu_text_append(&text, ";\n\tfloat fG = ");
-		final_input(&text, (final_efg >> 8) & 0xff, TRUE);
-		xgpu_text_append(&text, ";\n\tvec4 result = vec4(fA * fB + (1.0 - fA) * fC + fD, fG);\n");
-	}
-
-	if (key->coverage_alpha)
-		xgpu_text_append(&text, "\tresult.a = mix(1.0, result.a, t0.g);\n");
-	if (key->alpha_test_function)
-	{
-		const char *comparison = comparison_operator(key->alpha_test_function);
-
-		if (!comparison)
-		{
-			xgpu_text_append(&text, "\tdiscard;\n");
-		}
-		else if (*comparison && key->alpha_test_samples && comparison[0] != '=' && comparison[0] != '!')
-		{
-			/* multisampled: the samples covered as alpha passes the reference
-			over the pixel (its change across the pixel from fwidth), the rest
-			left as they are; alpha itself is kept, the game keeping values of
-			its own in destination alpha */
-			xgpu_text_append(&text,
-				"\tfloat test_alpha = clamp(result.a, 0.0, 1.0) * 255.0;\n"
-				"\tfloat test_coverage = clamp(%s(test_alpha - alpha_reference) / max(fwidth(test_alpha), 1.0) + 0.5, 0.0, 1.0);\n"
-				"\tint test_samples = int(test_coverage * %d.0 + 0.5);\n"
-				"\tif (test_samples == 0) discard;\n"
-				"\tgl_SampleMask[0] = (1 << test_samples) - 1;\n",
-				comparison[0] == '<' ? "-" : "", (int)key->alpha_test_samples);
-		}
-		else if (*comparison)
-		{
-			xgpu_text_append(&text, "\tif (!(floor(clamp(result.a, 0.0, 1.0) * 255.0 + 0.5) %s alpha_reference)) discard;\n", comparison);
-		}
-	}
-	if (*config_string("debug.gpu_debug_expression"))
-		xgpu_text_append(&text, "\tresult = vec4(vec3(%s), 1.0);\n", config_string("debug.gpu_debug_expression"));
-	if (config_boolean("debug.gpu_debug_texture0"))
-		xgpu_text_append(&text, "\tresult = vec4(t0.rgb, 1.0);\n");
-	if (config_boolean("debug.gpu_debug_flat"))
-		xgpu_text_append(&text, "\tresult = xD0.a > 0.0 ? vec4(xD0.rgb, 1.0) : vec4(1.0, 0.0, 1.0, 1.0);\n");
+		"{\n");
+	pixel_body(&text, key);
 #ifdef HALO_GLES
 	if (key->count_samples)
 		xgpu_text_append(&text, "\tatomicCounterIncrement(visible_samples);\n");
@@ -761,3 +804,148 @@ char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key)
 	xgpu_text_append(&text, "\tfragment_color = clamp(result, 0.0, 1.0);\n}\n");
 	return text.buffer;
 }
+#else
+/* nv2a_vsh.c */
+extern const char nv2a_msl_prologue[];
+
+/* the uniforms (d3d8_metal.c struct fragment_uniforms) */
+#define MSL_FRAGMENT_UNIFORMS \
+	"struct fragment_uniforms\n" \
+	"{\n" \
+	"	float4 ps_c0[8];\n" \
+	"	float4 ps_c1[8];\n" \
+	"	float4 ps_final_c0;\n" \
+	"	float4 ps_final_c1;\n" \
+	"	float4 fog_color;\n" \
+	"	float4 fog_parameters;\n" \
+	"	float4 bump_matrix[4];\n" \
+	"	float4 bump_luminance[4];\n" \
+	"	float4 texture_scale[4];\n" \
+	"	float4 texture_lod_bias;\n" \
+	"	float4 blend_constant;\n" \
+	"	float alpha_reference;\n" \
+	"	float unused[3];\n" \
+	"	float4 model_lights[12];\n" \
+	"};\n"
+
+/* the varyings, taken by name from nv2a_vsh.c's (their [[user]] names) */
+#define MSL_FRAGMENT_INPUTS \
+	"struct nv2a_fragment_in\n" \
+	"{\n" \
+	"	float4 position [[position]];\n" \
+	"	float4 xD0 [[user(xD0)]], xD1 [[user(xD1)]], xT0 [[user(xT0)]], xT1 [[user(xT1)]];\n" \
+	"	float4 xT2 [[user(xT2)]], xT3 [[user(xT3)]];\n" \
+	"	float xFog [[user(xFog)]];\n" \
+	"};\n" \
+	"struct nv2a_fragment_lit_in\n" \
+	"{\n" \
+	"	float4 position [[position]];\n" \
+	"	float4 xD0 [[user(xD0)]], xD1 [[user(xD1)]], xT0 [[user(xT0)]], xT1 [[user(xT1)]];\n" \
+	"	float4 xT2 [[user(xT2)]], xT3 [[user(xT3)]];\n" \
+	"	float xFog [[user(xFog)]];\n" \
+	"	float4 xWorldNormal [[user(xWorldNormal)]];\n" \
+	"	float3 xWorldPosition [[user(xWorldPosition)]];\n" \
+	"};\n" \
+	"struct nv2a_fragment_out\n" \
+	"{\n" \
+	"	float4 color [[color(0)]];\n" \
+	"	uint mask [[sample_mask]];\n" \
+	"};\n"
+
+static const char *msl_texture_type(unsigned char type)
+{
+	switch (type)
+	{
+	case _xgpu_sampler_3d: return "texture3d<float>";
+	case _xgpu_sampler_cube: return "texturecube<float>";
+	default: return "texture2d<float>";
+	}
+}
+
+char *nv2a_pixel_shader_to_msl(const struct nv2a_pixel_shader_key *key)
+{
+	struct xgpu_text text = { 0 }, body = { 0 };
+	const char *inputs = key->per_pixel_lighting ? "nv2a_fragment_lit_in" : "nv2a_fragment_in";
+	BOOL masked = key->alpha_test_samples != 0;
+	int stage;
+
+	/* the body first, which tells which textures it samples */
+	sampled_stages = 0;
+	pixel_body(&body, key);
+	xgpu_text_append(&text, "%s", nv2a_msl_prologue);
+	xgpu_text_append(&text,
+		MSL_FRAGMENT_UNIFORMS
+		MSL_FRAGMENT_INPUTS
+		"#define textureSize(t, l) int2(int((t).get_width(l)), int((t).get_height(l)))\n"
+		"#define texelFetch(t, p, l) (t).read(uint2(p), l)\n"
+		"#define discard discard_fragment()\n"
+		"#define ps_c0 u.ps_c0\n"
+		"#define ps_c1 u.ps_c1\n"
+		"#define ps_final_c0 u.ps_final_c0\n"
+		"#define ps_final_c1 u.ps_final_c1\n"
+		"#define fog_color u.fog_color\n"
+		"#define fog_parameters u.fog_parameters\n"
+		"#define bump_matrix u.bump_matrix\n"
+		"#define bump_luminance u.bump_luminance\n"
+		"#define texture_scale u.texture_scale\n"
+		"#define texture_lod_bias u.texture_lod_bias\n"
+		"#define blend_constant u.blend_constant\n"
+		"#define alpha_reference u.alpha_reference\n"
+		"#define model_lights u.model_lights\n"
+		"#define xD0 vin.xD0\n"
+		"#define xD1 vin.xD1\n"
+		"#define xT0 vin.xT0\n"
+		"#define xT1 vin.xT1\n"
+		"#define xT2 vin.xT2\n"
+		"#define xT3 vin.xT3\n"
+		"#define xFog vin.xFog\n"
+		"#define xWorldNormal vin.xWorldNormal\n"
+		"#define xWorldPosition vin.xWorldPosition\n"
+		SIGNED_BYTE_FUNCTIONS);
+	if (key->per_pixel_lighting)
+		model_lighting(&text, key->per_pixel_lighting == 2);
+	xgpu_text_append(&text, "fragment %s main0(%s vin [[stage_in]], constant fragment_uniforms &u [[buffer(0)]]",
+		masked ? "nv2a_fragment_out" : "float4", inputs);
+	for (stage = 0; stage < 4; stage++)
+	{
+		if (sampled_stages & (1u << stage))
+		{
+			xgpu_text_append(&text, ",\n\t%s tex%d [[texture(%d)]], sampler tex%d_s [[sampler(%d)]]",
+				msl_texture_type(key->sampler_type[stage]), stage, stage, stage, stage);
+		}
+	}
+	/* (GLSL's lookups, past the arguments, whose [[texture]] attributes the
+	macro would take for itself) */
+	xgpu_text_append(&text, ")\n{\n#define texture(t, c, b) (t).sample(t##_s, (c), bias(b))\n"
+		"\tvec4 fragment_color;\n%s", masked ? "\tuint sample_mask = 0xffffffffu;\n" : "");
+	xgpu_text_append(&text, "%s", body.buffer ? body.buffer : "");
+	free(body.buffer);
+	if (key->source_blend)
+	{
+		static const char *const factors[] =
+		{
+			"blend_constant", "(1.0 - blend_constant)", "vec4(blend_constant.a)", "vec4(1.0 - blend_constant.a)"
+		};
+
+		xgpu_text_append(&text, "\tfragment_color = clamp(result, 0.0, 1.0) * %s;\n",
+			factors[(key->source_blend - 1) & 3]);
+	}
+	else
+	{
+		xgpu_text_append(&text, "\tfragment_color = clamp(result, 0.0, 1.0);\n");
+	}
+	if (masked)
+	{
+		xgpu_text_append(&text,
+			"\tnv2a_fragment_out out;\n"
+			"\tout.color = fragment_color;\n"
+			"\tout.mask = sample_mask;\n"
+			"\treturn out;\n}\n");
+	}
+	else
+	{
+		xgpu_text_append(&text, "\treturn fragment_color;\n}\n");
+	}
+	return text.buffer;
+}
+#endif

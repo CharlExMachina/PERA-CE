@@ -4,7 +4,9 @@ XGPU.H
 Internals shared by the OpenGL implementation of the Xbox Direct3D API:
 the NV2A shader translators (nv2a_vsh.c, nv2a_psh.c), texture decoding
 (xbox_textures.c), guest memory write tracking (memory_watch.c) and the
-device itself (d3d8_gl.c).
+device itself (d3d8_gl.c). The macOS build's Metal device
+(port/macos/guest/d3d8_metal.c, HALO_METAL) shares them, its textures host
+handles where these say GLuint (port/macos/include/halo_metal.h).
 */
 
 #ifndef __HALO_LINUX_XGPU_H
@@ -12,6 +14,9 @@ device itself (d3d8_gl.c).
 
 #include "platform.h"
 #include "gl.h"
+#ifdef HALO_METAL
+#include "halo_metal.h"
+#endif
 
 #ifdef HALO_GLES
 /* OpenGL ES features that are optional (d3d8_gl.c gl_initialize) */
@@ -50,10 +55,12 @@ void xgpu_gl_state_invalidate(void);
 may give its name to a new texture (call before glDeleteTextures) */
 void xgpu_gl_texture_deleted(unsigned int texture);
 
+#ifndef HALO_METAL
 /* a compiled shader, or a linked program of two, or 0 with the log
 written */
 GLuint xgpu_compile_shader(GLenum type, const char *code, const char *what);
 GLuint xgpu_link_program(GLuint vertex_shader, GLuint fragment_shader, const char *what);
+#endif
 
 /* ---------- generated source text */
 
@@ -99,6 +106,14 @@ lights the diffuse color for each pixel (nv2a_pixel_shader_key
 per_pixel_lighting). Returns a malloc'd string. */
 char *nv2a_vertex_shader_to_glsl(const DWORD *instructions, unsigned long instruction_count,
 	unsigned long packed_attribute_mask, const struct nv2a_vertex_lighting *lighting);
+#ifdef HALO_METAL
+/* the same in Metal shading language, its function main0: only the
+attributes of streamed_attribute_mask are inputs (those of
+integer_attribute_mask whole numbers), the others read from the uniforms */
+char *nv2a_vertex_shader_to_msl(const DWORD *instructions, unsigned long instruction_count,
+	unsigned long packed_attribute_mask, unsigned long streamed_attribute_mask, unsigned long integer_attribute_mask,
+	const struct nv2a_vertex_lighting *lighting);
+#endif
 
 /* ---------- pixel shaders */
 
@@ -154,6 +169,10 @@ struct nv2a_pixel_shader_key
 };
 
 char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key);
+#ifdef HALO_METAL
+/* the same in Metal shading language, its function main0 */
+char *nv2a_pixel_shader_to_msl(const struct nv2a_pixel_shader_key *key);
+#endif
 
 #ifdef HALO_GLES
 /* ES samplers have no LOD bias of their own */
@@ -205,6 +224,12 @@ unsigned long xgpu_texture_face_size(const struct xgpu_texture_description *desc
 unsigned long xgpu_texture_level_offset(const struct xgpu_texture_description *description, unsigned long level);
 unsigned long xgpu_texture_level_pitch(const struct xgpu_texture_description *description, unsigned long level);
 
+#ifdef HALO_METAL
+/* d3d8_metal.c: a 2D texture of RGBA bytes (or none yet, NULL) of levels
+levels, which are made from the first; its handle, or 0 */
+GLuint xgpu_metal_texture_rgba(const void *pixels, unsigned long width, unsigned long height, unsigned long levels);
+#endif
+
 /* the GL texture for an Xbox texture header, uploading or refreshing it
 from guest memory as needed; *target receives GL_TEXTURE_2D etc. */
 GLuint xgpu_texture_get(const DWORD *resource, const D3DCOLOR *palette, GLenum *target,
@@ -245,6 +270,7 @@ window's 3D view in place before the HUD and menus are drawn over it, so
 that their text stays sharp. Supersampling and multisampling are the
 device's (d3d8_gl.c). */
 
+#ifndef HALO_METAL
 /* the programs and textures of FXAA, or of SMAA, made now; FALSE if they
 cannot be (once FALSE, it stays so) */
 BOOL xgpu_post_prepare(BOOL smaa);
@@ -254,5 +280,6 @@ target's framebuffer, width by height, GL_RGBA8; FALSE if its programs do
 not build */
 BOOL xgpu_post_anti_alias(BOOL smaa, GLuint framebuffer, unsigned long width, unsigned long height,
 	const GLint corners[4]);
+#endif
 
 #endif
