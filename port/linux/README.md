@@ -463,7 +463,7 @@ display. Firing, animation, sound and world lights continue.
 | `network.voice_mode` | `"team_global_enemy_proximity"` | `HALO_NET_VOICE_MODE` | When you host: who hears whom during a game. `"off"`; `"team_proximity"` (teammates who are near); `"team_enemy_proximity"` (all players who are near); `"team_global"` (all teammates); `"team_global_enemy_proximity"` (all teammates, and enemies who are near). Refer to "Voice chat". |
 | `network.voice_kbps` | `24` | `HALO_NET_VOICE_KBPS` | When you host: the voice quality in the lobby and in a game, in kilobits per second, `8` to `64`. |
 | `network.voice_proximity` | `15.0` | `HALO_NET_VOICE_PROXIMITY` | When you host: the distance in world units (1 unit is approximately 3 metres) at which players are near, for voice chat. `5` to `100`. |
-| `network.text_chat` | `"on"` | `HALO_NET_TEXT_CHAT` | When you host: the text chat. `"on"`, lines with links refused; `"links"`, links allowed; `"off"`, no chat (in either case). Always off in a game listed in the server browser. TEXT CHAT in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. Refer to "Text chat". |
+| `network.text_chat` | `"on"` | `HALO_NET_TEXT_CHAT` | When you host: the text chat. `"on"`, lines with links refused; `"links"`, links allowed; `"off"`, no chat (in either case). Always off in a game listed in the server browser. TEXT CHAT on Server Setup, beside the invite link and LISTING (and on Hardcore's server page), writes ON or OFF here. A saved `"links"` shows as ON. Refer to "Text chat". |
 | `network.votekick` | `true` | `HALO_NET_VOTEKICK` | When you host: `true`, the players can vote to kick a player. Refer to "Security". `false`: no votes. VOTE KICK in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. |
 | `network.votekick_minutes` | `5` | `HALO_NET_VOTEKICK_MINUTES` | When you host: the minutes that a player must play on the server before the player can start a vote to kick (`0` to `60`). To vote, a player must play for 2 minutes, or for this time if it is less. |
 | `network.votekick_ban_minutes` | `30` | `HALO_NET_VOTEKICK_BAN_MINUTES` | When you host: the minutes that a player who is kicked by a vote cannot join again (`1` to `1440`). |
@@ -780,20 +780,20 @@ TEXT CHAT in Settings > Network Setup > Multiplayer HUD (`display.text_chat`)
 can HIDE the chat entirely, for purists and streamers: no lines show, and
 its keys open nothing.
 
-The host chooses the text chat for its games with TEXT CHAT in Server
-Setup > Teamplay Options (in co-op, Voice and Voting; `network.text_chat`):
-ON (the default: a line with a link, such as `discord.gg/...`,
-`example.com`, `www.`, an address, or `example [dot] com`, is refused),
-WITH LINKS, or OFF. A domain that is a word as well (`.me`, `.to`, `.is`)
-counts only with a path after it (`youtu.be/...`), so that `go.to` and
-`he.is` are not refused. A game listed in
-the server browser (a public internet game) never has the text chat,
-whatever it says (TEXT CHAT shows OFF there, and cannot be changed, while
-LISTING is PUBLIC); a private game, joined by its invite, and a LAN game have
-it as chosen. A player who joins a game from the server browser has no text
-chat in it even if its host turns it on: their game takes no line from that
-host and sends none. Pressing T where the chat is off says so, and a refused line
-tells its sender why.
+The host chooses the text chat for its games with TEXT CHAT on Server
+Setup, beside the invite link and LISTING, and on Hardcore's server page
+(`network.text_chat`): ON (the default: a line with a link, such as
+`discord.gg/...`, `example.com`, `www.`, an address, or `example [dot] com`,
+is refused) or OFF. A saved `links` still counts as ON until the host picks
+OFF. A domain that is a word as well (`.me`, `.to`, `.is`) counts only with
+a path after it (`youtu.be/...`), so that `go.to` and `he.is` are not
+refused. A game listed in the server browser (a public internet game) never
+has the text chat, whatever it says (TEXT CHAT shows OFF there, and cannot
+be changed, while LISTING is PUBLIC); a private game, joined by its invite,
+and a LAN game have it as chosen. A player who joins a game from the server
+browser has no text chat in it even if its host turns it on: their game
+takes no line from that host and sends none. Pressing T where the chat is
+off says so, and a refused line tells its sender why.
 
 On the scoreboard (right-click, then click the player), Mute voice and chat
 mutes a player for you alone: you no longer see their lines or hear their

@@ -56,6 +56,16 @@ void hardcore_rules_note_variant(struct game_variant *variant);
 void hardcore_rules_store(long profile_index);
 void hardcore_rules_forget(long profile_index);
 void hardcore_rules_choose(long profile_index);
+/* The sheet loaded for the game type being edited differs from its file. */
+boolean hardcore_rules_changed(void);
+/* Server Setup's copy. It starts as the chosen game type's sheet. A setup
+option replaces it for this game and does not write the game type's file. */
+void hardcore_rules_setup_begin(void);
+void hardcore_rules_setup_end(void);
+boolean hardcore_rules_setup_active(void);
+struct hardcore_rules *hardcore_rules_setup(void);
+/* The game being started uses Server Setup's sheet. */
+void hardcore_rules_setup_apply(struct game_variant *variant);
 /* The black loading screen with the halo ring. The match clock stays at
 0 until that screen has faded out and the players are in with their weapons. */
 void hardcore_rules_hold_pregame(void);

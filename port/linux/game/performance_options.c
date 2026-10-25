@@ -449,8 +449,28 @@ void performance_options_render_world(void)
 		return;
 	if ((performance_flags & _performance_option_spawn_markers) && performance_fallback_count >= 1)
 		performance_spawn_marker_render(performance_fallback, performance_fallback_count);
-	/* The darker zones are the hardcore map's randoms mesh when it sits
-	on the starts. A map that never placed one draws none. */
+	/* The darker zone is that map's respawn mesh, lined up on the player
+	   starts. Spawn pads do not replace those starts. A map that never
+	   placed a zone draws none. */
 	if (hardcore_rules_random_areas())
-		performance_random_area_render(performance_fallback, performance_fallback_count);
+	{
+		static struct player_starting_location starts[MAXIMUM_SCENARIO_PLAYERS_PER_BLOCK];
+		struct scenario *scenario = global_scenario_get();
+		short index;
+		short count = 0;
+
+		if (scenario && game_engine)
+		{
+			for (index = 0; index < scenario->players.count &&
+				count < (short)NUMBEROF(starts); index++)
+			{
+				struct player_starting_location const *start = TAG_BLOCK_GET_ELEMENT(
+					&scenario->players, index, struct player_starting_location);
+
+				if (match_game_type(game_engine->type, NUMBEROF(start->game_types), start->game_types))
+					starts[count++] = *start;
+			}
+		}
+		performance_random_area_render(starts, count);
+	}
 }

@@ -3526,6 +3526,9 @@ VOTING), PASSWORD's and MAP SHARING's (its help_strings, tools/port_settings.py)
 #define COOPERATIVE_VOICE_OPTIONS_HELP 13
 #define SERVER_PASSWORD_HELP 14
 #define MAP_SHARE_OPTIONS_HELP 15
+/* TEXT CHAT's help, then the line shown while LISTING is PUBLIC */
+#define TEXT_CHAT_HELP 16
+#define TEXT_CHAT_LOCKED_HELP 17
 
 /* co-op's EXTRA ENEMIES' choices (network.coop_enemies_mode's values, as
 gametype_options' coop_extra_enemies_spinner has them, in this order): its
@@ -3615,6 +3618,36 @@ static void wide_to_text(wchar_t const *wide, char *text, short size)
 	text[index] = 0;
 }
 
+/* TEXT CHAT on Server Setup and the hardcore server page (network.text_chat).
+A listed public game shows OFF and leaves the stored choice, so a private
+game or a LAN game gets it back. A saved "links" loads as ON. */
+static void server_text_chat_apply(struct widget_instance *list)
+{
+	struct widget_instance *spinner = named(list, "server_text_chat_spinner", 0);
+	static boolean chat_was_locked = TRUE;
+	boolean listed = p2p_hosting_listed() != 0;
+
+	if (!spinner)
+		return;
+	if (listed)
+	{
+		spinner->parameters.list.selected_index = 1;
+		spinner->disabled = TRUE;
+		chat_was_locked = TRUE;
+		return;
+	}
+	spinner->disabled = FALSE;
+	/* the strings are not ready on the first pass. saving then would write
+	on over a stored off. */
+	if (chat_was_locked)
+	{
+		if (setting_load(spinner) && spinner->parameters.list.number_of_items > 1)
+			chat_was_locked = FALSE;
+	}
+	if (!chat_was_locked)
+		setting_save(spinner);
+}
+
 /* "server settings update" */
 static struct game_variant *edit_variant(void);
 
@@ -3697,6 +3730,16 @@ static void server_settings_update(struct widget_instance *list)
 		text_field_show(named(list, "password_value", 0), index ? text : "NONE", text_field_editing(row));
 		if (help && list->focused_child == row)
 			help->parameters.text_box.string_list_index = SERVER_PASSWORD_HELP;
+	}
+	/* TEXT CHAT (network.text_chat): after LISTING has set whether this
+	game is public, so a listed game holds the row at OFF */
+	server_text_chat_apply(list);
+	{
+		struct widget_instance *help = list->parameters.list.extended_description;
+
+		if (help && list->focused_child == named(list, "op_text_chat", 0))
+			help->parameters.text_box.string_list_index =
+				(short)(p2p_hosting_listed() ? TEXT_CHAT_LOCKED_HELP : TEXT_CHAT_HELP);
 	}
 }
 
@@ -4908,8 +4951,7 @@ static struct widget_instance *focused_leaf(struct widget_instance *widget)
 	return widget;
 }
 
-/* "port lobby open" (the lobby made, or come back to): no player being added.
-Settings is there in every lobby. */
+/* "port lobby open" (the lobby made, or come back to): no player being added */
 static boolean lobby_join_reset(void)
 {
 	lobby_join.adding = FALSE;
@@ -4919,38 +4961,8 @@ static boolean lobby_join_reset(void)
 
 static boolean lobby_open(struct widget_instance *screen)
 {
+	(void)screen;
 	lobby_join_reset();
-	visible_set(named(screen, "lobby_settings", 0), TRUE);
-	return TRUE;
-}
-
-/* the line Download Maps last set, while that row is chosen */
-static wchar_t const *lobby_download_note;
-
-/* "port lobby download": a client asks the host for this game's map.
-the host's row only says whether this game is sharing. */
-static boolean lobby_download(void)
-{
-	void *client = global_network_game_client_get();
-	struct network_game *game = client ? network_game_client_get_game(client) : NULL;
-	unsigned long version = 0;
-
-	if (global_network_game_server_get())
-	{
-		lobby_download_note = config_boolean("network.map_share") ?
-			L"Players can download this map." : L"This game is not sharing maps.";
-		return TRUE;
-	}
-	if (!game || !custom_edition_level_name(game->map.name))
-	{
-		lobby_download_note = L"This map is already on this machine.";
-		return TRUE;
-	}
-	if (!map_share_game_map_version(game->map.name, &version))
-		version = 0;
-	map_share_download_permit();
-	lobby_download_note = map_share_download_begin(game->map.name, version, "the lobby") ?
-		L"Downloading this map." : L"The host is not sharing this map.";
 	return TRUE;
 }
 
@@ -5056,12 +5068,7 @@ static void lobby_join_help(struct widget_instance *list)
 	wchar_t const *text = L"";
 	short controller;
 
-	/* text chat is the host's, and Download Maps is on that page */
-	if (list->focused_child && !strcmp(list->focused_child->name, "lobby_settings"))
-	{
-		text = L"Text chat and map download.";
-	}
-	else if (lobby_join.adding)
+	if (lobby_join.adding)
 	{
 		text = L"New player: press START.";
 	}
@@ -5198,121 +5205,6 @@ void menu_functions_text_box_drawn(struct widget_instance *widget, rectangle2d c
 	}
 }
 
-/* settings is in every lobby. the last player row is its place. */
-static void lobby_settings_apply(struct widget_instance *list)
-{
-	struct widget_instance *settings = named(list, "lobby_settings", 0);
-
-	visible_set(settings, TRUE);
-	/* the row's bar is its second frame. the list does not switch a
-	three-frame picture, so the focused row is set here. */
-	if (settings)
-		settings->animation.current_frame_index = list->focused_child == settings ? 1 : 0;
-}
-
-/* the machine hosting this lobby. the server pointer is set with the
-connection, and either one is enough: a client has neither. */
-static boolean lobby_chat_host(void)
-{
-	return global_network_game_server_get() != NULL ||
-		game_connection() == _game_connection_network_server;
-}
-
-/* a public internet game with the public lobby option on. a private game
-and a LAN game are not listed, so the host can set text chat for those. */
-static boolean lobby_chat_listed(void)
-{
-	if (!lobby_chat_host() || multiplayer.mode != _multiplayer_mode_host_internet ||
-		multiplayer.game_private)
-		return FALSE;
-	return config_boolean("network.public_lobby") != 0;
-}
-
-/* "port lobby chat": left or right on the text chat row. a listed public
-game stays off. a private host and a LAN host switch on and off. */
-static boolean lobby_chat_toggle(struct widget_instance *widget)
-{
-	struct widget_instance *spinner = named(widget, "lobby_chat_spinner", 0);
-
-	if (!spinner || !lobby_chat_host() || lobby_chat_listed())
-		return TRUE;
-	spinner->disabled = FALSE;
-	if (spinner->parent && spinner->parent->focused_child != spinner)
-		spinner->parent->focused_child = spinner;
-	if (spinner->parameters.list.number_of_items < 2)
-		return TRUE;
-	spinner->parameters.list.selected_index =
-		spinner->parameters.list.selected_index == 0 ? 1 : 0;
-	setting_save(spinner);
-	return TRUE;
-}
-
-/* "port lobby settings": the host's text chat, written as it changes, and
-Download Maps' words. a client sees the host's chat and cannot change it.
-a listed public game stays off. */
-static void lobby_settings_save(struct widget_instance *list)
-{
-	struct widget_instance *spinner = named(list, "lobby_chat_spinner", 0);
-	struct widget_instance *download = named(list, "lobby_download_label", 0);
-	struct widget_instance *help = named(list->parent, "lobby_settings_help", 0);
-	boolean host = lobby_chat_host();
-	boolean sharing = config_boolean("network.map_share") != 0;
-	boolean listed = lobby_chat_listed();
-	boolean locked = !host || listed;
-	static boolean chat_was_locked = TRUE;
-
-	/* a private game or a LAN game is not a public listing. the flag is what
-	chat reads, so a stale public flag would keep chat off after the host
-	set the game private. going public to private replaces the invite. */
-	if (host && (p2p_hosting_listed() != 0) != (listed != 0))
-		p2p_set_hosting_public(listed != 0);
-
-	if (spinner)
-	{
-		if (locked)
-		{
-			spinner->parameters.list.selected_index = !host && network_chat_allowed() ? 0 : 1;
-			if (host)
-				spinner->parameters.list.selected_index = 1;
-			spinner->disabled = TRUE;
-			chat_was_locked = TRUE;
-		}
-		else
-		{
-			spinner->disabled = FALSE;
-			if (spinner->parent && spinner->parent->focused_child != spinner)
-				spinner->parent->focused_child = spinner;
-			/* the strings are not ready on the first pass. saving then would
-			write on over a stored off. */
-			if (chat_was_locked)
-			{
-				if (setting_load(spinner) && spinner->parameters.list.number_of_items > 1)
-					chat_was_locked = FALSE;
-			}
-			if (!chat_was_locked)
-				setting_save(spinner);
-		}
-	}
-	label_set(download, host ? (sharing ? L"SHARING MAPS" : L"NOT SHARING") : L"DOWNLOAD MAP");
-	{
-		wchar_t const *text = L"The host sets text chat.";
-
-		if (list->focused_child && !strcmp(list->focused_child->name, "lobby_download"))
-			text = lobby_download_note ? lobby_download_note :
-				(host ? (sharing ? L"Players can download this map." : L"This game is not sharing maps.") :
-				L"Download this game's map from the host.");
-		else
-		{
-			lobby_download_note = NULL;
-			if (host && listed)
-				text = L"Text chat is off while this game is public.";
-			else if (host)
-				text = L"Text chat for this game. Off in a public game.";
-		}
-		label_set(help, text);
-	}
-}
-
 /* "port lobby update" */
 static void lobby_update(struct widget_instance *list)
 {
@@ -5322,8 +5214,7 @@ static void lobby_update(struct widget_instance *list)
 	short state_data, state = client ? network_game_client_get_state(client, &state_data) : NONE;
 	wchar_t text[LOBBY_TEXT_LENGTH];
 	short index;
-	/* the last player row is Settings, in every lobby */
-	short rows = (short)(LOBBY_ROWS - 1);
+	short rows = LOBBY_ROWS;
 
 	lobby_player_count = 0;
 	for (index = 0; game && state >= _client_state_pregame && index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS; index++)
@@ -5350,10 +5241,6 @@ static void lobby_update(struct widget_instance *list)
 		}
 		lobby_icons.updated_at = system_milliseconds();
 	}
-	lobby_settings_apply(list);
-	/* a player row Settings took over cannot keep the focus */
-	if (focused_row(list) >= rows)
-		focus_row(list, (short)(rows - 1));
 	lobby_join_help(list);
 	visible_set(named(list, "lobby_button_team", 0), game && game->variant.universal_variant.teams);
 	/* (the buttons' focus, off Switch Team when it is hidden) */
@@ -5817,6 +5704,15 @@ static struct gametype_option const *gametype_option_named(char const *spinner)
 	return NULL;
 }
 
+/* Edit Gametypes writes the sheet saved with the game type. Server Setup
+writes its own copy, which replaces that sheet for the game being hosted. */
+static struct hardcore_rules *option_rules(void)
+{
+	if (gametype_edit.setup && !multiplayer.hardcore && hardcore_rules_setup_active())
+		return hardcore_rules_setup();
+	return hardcore_rules_editing();
+}
+
 static long gametype_option_value(struct gametype_option const *option, struct game_variant *variant,
 	struct game_variant_options *options)
 {
@@ -5832,7 +5728,7 @@ static long gametype_option_value(struct gametype_option const *option, struct g
 	case _option_short: return *(short *)(o + option->offset);
 	case _option_option_byte: return o[option->offset];
 	case _option_radar: return options->radar_players;
-	case _option_hardcore: return ((unsigned char *)hardcore_rules_editing())[option->offset];
+	case _option_hardcore: return ((unsigned char *)option_rules())[option->offset];
 	}
 	return 0;
 }
@@ -5865,17 +5761,21 @@ static void gametype_option_value_set(struct gametype_option const *option, long
 			variant->universal_variant.flags |= FLAG(_game_variant_draw_object_in_motion_sensor_bit);
 		break;
 	case _option_hardcore:
-		((unsigned char *)hardcore_rules_editing())[option->offset] = (unsigned char)value;
+	{
+		struct hardcore_rules *rules = option_rules();
+
+		((unsigned char *)rules)[option->offset] = (unsigned char)value;
 		/* port: training mode is one switch. the pads, the respawn
 		volumes and the percent are still separate bytes, and they move together. */
 		if (option->offset == RULES_FIELD(spawns_visible) ||
 			option->offset == RULES_FIELD(random_areas))
 		{
-			hardcore_rules_editing()->spawns_visible = (unsigned char)value;
-			hardcore_rules_editing()->random_areas = (unsigned char)value;
-			hardcore_rules_editing()->random_pct = (unsigned char)value;
+			rules->spawns_visible = (unsigned char)value;
+			rules->random_areas = (unsigned char)value;
+			rules->random_pct = (unsigned char)value;
 		}
 		break;
+	}
 	}
 }
 
@@ -6170,31 +6070,16 @@ static boolean gametype_options_save(struct widget_instance *widget)
 /* ---- Server Setup's options: a copy of the game's gametype (the one chosen
 before), edited by the editor's screens, the game's on START GAME */
 
-/* port: a regular game. a copy left from the mode is replaced when the
-   chosen gametype is a classic one, and the sheet does not come with it. */
+/* port: a regular game. Server Setup's sheet is the one this game uses,
+   including a stock sheet that turns off the game type's training mode. */
 static void gametype_setup_classic(void)
 {
-	struct game_variant chosen;
-
-	if (gametype_edit.setup && !hardcore_rules_is_stock(hardcore_rules_editing()))
+	if (!gametype_edit.setup)
 	{
-		hardcore_rules_note_variant(&gametype_edit.setup_variant);
-		hardcore_rules_commit();
+		hardcore_rules_clear_session();
 		return;
 	}
-	hardcore_rules_clear_session();
-	if (gametype_edit.setup &&
-		TEST_FLAG(gametype_edit.setup_variant.universal_variant.flags,
-			_game_variant_anniversary_rules_bit) &&
-		player_ui_game_variant_specified(&chosen) &&
-		!TEST_FLAG(chosen.universal_variant.flags, _game_variant_anniversary_rules_bit))
-	{
-		gametype_setup_end();
-		gametype_setup_begin();
-	}
-	if (gametype_edit.setup)
-		SET_FLAG(gametype_edit.setup_variant.universal_variant.flags,
-			_game_variant_anniversary_rules_bit, FALSE);
+	hardcore_rules_setup_apply(&gametype_edit.setup_variant);
 }
 
 static void gametype_setup_begin(void)
@@ -6206,11 +6091,13 @@ static void gametype_setup_begin(void)
 	gametype_edit.setup_options = *player_ui_get_game_variant_options();
 	gametype_edit.setup = TRUE;
 	gametype_edit.vehicle_side = 0;
+	hardcore_rules_setup_begin();
 }
 
 static void gametype_setup_end(void)
 {
 	gametype_edit.setup = FALSE;
+	hardcore_rules_setup_end();
 }
 
 static boolean gametype_setup_apply(void)
@@ -7262,6 +7149,7 @@ static void hardcore_server_update(struct widget_instance *list)
 		text[index] = 0;
 		text_field_show(named(list, "password_value", 0), index ? text : "NONE", text_field_editing(row));
 	}
+	server_text_chat_apply(list);
 	if (!help || !list->focused_child)
 		return;
 	if (!strcmp(list->focused_child->name, "op_server_name"))
@@ -7281,6 +7169,8 @@ static void hardcore_server_update(struct widget_instance *list)
 		help->parameters.text_box.string_list_index = 7;
 	else if (!strcmp(list->focused_child->name, "op_game_rules"))
 		help->parameters.text_box.string_list_index = 8;
+	else if (!strcmp(list->focused_child->name, "op_text_chat"))
+		help->parameters.text_box.string_list_index = p2p_hosting_listed() ? 10 : 9;
 	else
 		help->parameters.text_box.string_list_index = 0;
 }
@@ -7595,14 +7485,6 @@ boolean pc_menu_event_function_invoke(
 		{
 			return lobby_open(widget);
 		}
-		else if (!strcmp(name, "port lobby download"))
-		{
-			return lobby_download();
-		}
-		else if (!strcmp(name, "port lobby chat"))
-		{
-			return lobby_chat_toggle(widget);
-		}
 		else if (!strcmp(name, "port profile edit"))
 		{
 			return profile_edit_open(widget, event, widget_deleted);
@@ -7754,8 +7636,6 @@ void pc_menu_game_data_function_invoke(
 		preview_update(widget);
 	else if (!strcmp(name, "port lobby update"))
 		lobby_update(widget);
-	else if (!strcmp(name, "port lobby settings"))
-		lobby_settings_save(widget);
 	else if (!strcmp(name, "port profile rows"))
 		profile_rows_apply(widget);
 	else if (!strcmp(name, "port settings help"))

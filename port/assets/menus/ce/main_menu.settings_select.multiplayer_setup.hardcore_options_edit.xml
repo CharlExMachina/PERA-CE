@@ -656,9 +656,10 @@
 		<child widget="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/op_max_players" x="54" y="103"/>
 		<child widget="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/op_invite" x="54" y="133"/>
 		<child widget="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/op_listing" x="54" y="163"/>
-		<child widget="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/op_password" x="54" y="193"/>
-		<child widget="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/op_map_share" x="54" y="223"/>
-		<child widget="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/op_game_rules" x="54" y="253"/>
+		<child widget="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/op_text_chat" x="54" y="193"/>
+		<child widget="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/op_password" x="54" y="223"/>
+		<child widget="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/op_map_share" x="54" y="253"/>
+		<child widget="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/op_game_rules" x="54" y="283"/>
 		<child widget="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/server_button_bar" y="414"/>
 	</widget>
 	<widget name="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/op_server_name" width="512" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/option_bkds" color="#FF2896FF">
@@ -705,6 +706,16 @@
 	<widget name="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/listing_spinner" type="spinner" left="3" top="2" width="147" height="20" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="PUBLIC|PRIVATE" font="ui\large_ui" color="#FF2896FF" align="center" text_y="1" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="7 -6 19 0" footer_bounds="7 150 19 156">
 		<on event="left_mouse" run="mouse spinner 1wide click"/>
 	</widget>
+	<widget name="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/op_text_chat" width="512" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/option_bkds" color="#FF2896FF">
+		<child widget="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/text_chat_label"/>
+		<child widget="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/server_text_chat_spinner" x="320" y="1"/>
+	</widget>
+	<widget name="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/text_chat_label" type="text" controller="1" width="300" height="22" text="TEXT CHAT" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="4">
+	</widget>
+	<widget name="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/server_text_chat_spinner" type="spinner" left="3" top="2" width="147" height="20" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="ON|OFF" setting="network.text_chat" values="on|off" font="ui\large_ui" color="#FF2896FF" align="center" text_y="1" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="7 -6 19 0" footer_bounds="7 150 19 156">
+		<on event="created" run="port setting load"/>
+		<on event="left_mouse" run="mouse spinner 1wide click"/>
+	</widget>
 	<widget name="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/op_password" width="512" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/option_bkds" color="#FF2896FF">
 		<on event="a" run="ss edit server password"/>
 		<on event="start" run="ss edit server password"/>
@@ -749,6 +760,8 @@
 		<string text="Players from the Server Browser must type it to\njoin. Enter sets it."/>
 		<string text="Sending players who join without the map the map."/>
 		<string text="Slayer, CTF, oddball or crazy king, and the\nhardcore rules."/>
+		<string text="Text chat for this game. A public listed game stays off."/>
+		<string text="Text chat is off while this game is public."/>
 	</strings>
 	<widget name="main_menu/settings_select/multiplayer_setup/hardcore_options_edit/server_button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<data input="common button bar update"/>

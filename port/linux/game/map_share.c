@@ -1435,8 +1435,7 @@ static byte files_wanted(
 	return wanted;
 }
 
-/* the lobby's Download Maps button sets this for one call, so a player
-can take the map without network.map_download staying on */
+/* the next map_share_download_begin may run when network.map_download is off */
 static boolean download_button_allow;
 
 void map_share_download_permit(

@@ -653,10 +653,17 @@ static void handle_one_player_input(
 			player->desired_angles.yaw);
 	}
 
+	/* The loading film is still up. These ticks place the player and draw
+	   the weapon. Movement, look and buttons wait until that screen is
+	   finished and the match clock starts. The look was already read, so
+	   a mouse move during the film does not turn them when it ends. */
 	if (director_inhibited_input(local_player_index) ||
-		player_control_port_menu_has_controller(local_player_index))
+		player_control_port_menu_has_controller(local_player_index) ||
+		hardcore_rules_opening_hold())
 	{
 		csmemset(&input, 0, sizeof(input));
+		if (hardcore_rules_opening_hold())
+			player->look_acceleration_time = 0.f;
 	}
 
 	if (game_connection() == _game_connection_local)

@@ -117,7 +117,7 @@ whose resource maps are missing, with network.map_download on). The download
 runs in the lobby (the host waits for it to precache), or, for a game in
 progress, before this machine's players join. */
 /* the next map_share_download_begin may run even when network.map_download
-is off. one call, then it is off again. the lobby's Download Maps uses it */
+is off. one call, then it is off again */
 void map_share_download_permit(
 	void);
 boolean map_share_download_begin(

@@ -46,7 +46,7 @@
 	</widget>
 	<widget name="main_menu/settings_select/multiplayer_setup/teamplay_options_edit/teamplay_button_ok" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" string_list="strings/common_button_captions" string_index="1" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
 		<on event="a" run="mp prof save teamplay options" back="true"/>
-		<on event="start" back="true"/>
+		<on event="start" run="mp prof save teamplay options" back="true"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
 	<widget name="main_menu/settings_select/multiplayer_setup/teamplay_options_edit/teamplay_options_help" type="text" controller="1" left="68" top="341" width="482" height="79" string_list="main_menu/settings_select/multiplayer_setup/teamplay_options_edit/cap_teamplay_options" font="ui\large_ui" color="#FFFFFFFF">

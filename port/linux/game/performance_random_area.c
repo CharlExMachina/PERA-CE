@@ -1,8 +1,8 @@
 /* A hardcore match draws the darker teammate respawn area from the mesh
-shipped with the game when that map has one. Hang 'em High does. The
-matching hardcore map is used when this copy has no mesh for it. Maps that
-never place one, Prisoner among them, draw nothing here. A classic game
-draws neither. */
+shipped with the game when that map has one. Hang 'em High does. A renamed
+import such as h1pb_hangemhigh uses that same mesh. The matching hardcore
+map is used when this copy has no mesh for it. Maps that never place one,
+Prisoner among them, draw nothing here. A classic game draws neither. */
 
 #include "cseries.h"
 #include "hardcore_assets.h"
@@ -648,6 +648,14 @@ static void area_prepare(void)
 	if (!area_leaf(leaf, sizeof(leaf)))
 		goto fail;
 	packed = area_from_pack(leaf);
+	/* The stock-name imports are played as h1pb_<map>. The zone is stored
+	   under the map's own name. A map that never placed one stays empty. */
+	if (packed == 0 &&
+		(leaf[0] == 'h' || leaf[0] == 'H') && leaf[1] == '1' &&
+		(leaf[2] == 'p' || leaf[2] == 'P') &&
+		(leaf[3] == 'b' || leaf[3] == 'B') &&
+		leaf[4] == '_' && leaf[5] != 0)
+		packed = area_from_pack(leaf + 5);
 	if (packed > 0)
 	{
 		area_state = AREA_STATE_LOADED;
@@ -794,8 +802,7 @@ static int area_count_inside(real ox, real oy, real oz,
 	return inside;
 }
 
-/* The mesh is kept when this offset puts it on the starts. A speck that
-covers one start is not a respawn area. */
+/* The mesh is kept when this offset puts it on the starts. */
 static int area_place_on_starts(struct player_starting_location const *starts, short count)
 {
 	real ox[4];
@@ -804,7 +811,6 @@ static int area_place_on_starts(struct player_starting_location const *starts, s
 	int scores[4];
 	int best = 0;
 	int index;
-	int need;
 
 	ox[0] = oy[0] = oz[0] = 0.0f;
 	ox[1] = area_place_count > 0 ? area_places[0].position.x : 0.0f;
@@ -823,9 +829,19 @@ static int area_place_on_starts(struct player_starting_location const *starts, s
 		if (scores[index] > scores[best])
 			best = index;
 	}
-	need = count < 4 ? (int)count : 4;
-	if (need < 1 || scores[best] < need)
+	/* A zone on a large map holds only some of the starts. One start that
+	   several offsets all touch is not enough to choose among them. */
+	if (scores[best] < 1)
 		return 0;
+	{
+		int ties = 0;
+
+		for (index = 0; index < 4; index++)
+			if (scores[index] == scores[best])
+				ties++;
+		if (scores[best] < 2 && ties > 1)
+			return 0;
+	}
 	area_offset.x = ox[best];
 	area_offset.y = oy[best];
 	area_offset.z = oz[best];

@@ -1083,7 +1083,7 @@ def _server_settings() -> list:
     game's)"""
     base = f"{MT}/server_settings"
     # (thirteen rows: the help and the buttons sit under Hardcore)
-    spec = {"screen": "server_settings_screen", "spacing": 22, "help_top": 350, "help_height": 60,
+    spec = {"screen": "server_settings_screen", "spacing": 21, "help_top": 350, "help_height": 60,
             "button_y": 414,
             "header": ("header_server_settings", f"{base}/header_server_settings")}
     rows, extra = [], []
@@ -1127,6 +1127,27 @@ def _server_settings() -> list:
                       ("header_bounds", "3 -6 15 0"), ("footer_bounds", "3 150 15 156")],
                      ['<on event="left_mouse" run="mouse spinner 1wide click"/>'])
     rows.append((f"{base}/op_listing", None))
+    # TEXT CHAT (network.text_chat): ON or OFF. A listed public game holds it
+    # at OFF (menu_functions.c's server_text_chat_apply).
+    extra += _widget(f"{base}/op_text_chat", [("width", 512), ("height", 20),
+                                              ("flags", "pass_unhandled_to_focused_child"),
+                                              ("bitmap", "bitmaps/option_bkds_short"), ("color", "#FF2896FF")],
+                     [f'<child widget="{base}/text_chat_label"/>',
+                      f'<child widget="{base}/server_text_chat_spinner" x="320" y="1"/>'])
+    extra += _widget(f"{base}/text_chat_label", [("type", "text"), ("controller", 1), ("width", 300),
+                                                 ("height", 20), ("string_list", f"{base}/labels"),
+                                                 ("string_index", 14), ("font", "ui\\small_ui"),
+                                                 ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 1)], [])
+    extra += _widget(f"{base}/server_text_chat_spinner",
+                     [("type", "spinner"), ("left", 3), ("top", 0), ("width", 147), ("height", 18),
+                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
+                      ("strings", "ON|OFF"), ("setting", "network.text_chat"), ("values", "on|off"),
+                      ("font", "ui\\small_ui"), ("color", "#FF2896FF"), ("align", "center"), ("text_y", 0),
+                      ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
+                      ("header_bounds", "3 -6 15 0"), ("footer_bounds", "3 150 15 156")],
+                     ['<on event="created" run="port setting load"/>',
+                      '<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    rows.append((f"{base}/op_text_chat", None))
     # PASSWORD (a public internet game's: menu_functions.c's server_settings_update),
     # which players from the server browser must type
     extra += _value_row(base, "password", 10 + len(COOP_SETUP_SCREENS), "ss edit server password", compact=True)
@@ -1195,7 +1216,7 @@ def _server_settings() -> list:
                                          "PLAYER OPTIONS:", "ITEM OPTIONS:", "VEHICLE OPTIONS:", "INDICATOR OPTIONS:",
                                          "TEAMPLAY OPTIONS:", "LISTING:",
                                          *(f"{title}:" for _, title, _, _ in COOP_SETUP_SCREENS), "PASSWORD:",
-                                         f"{MAP_SHARE_SETUP[1]}:"])
+                                         f"{MAP_SHARE_SETUP[1]}:", "TEXT CHAT:"])
     extra += _strings(f"{base}/help_strings", [
         "",
         "The name the game shows in the lists of games.\\nEnter changes it.",
@@ -1216,6 +1237,9 @@ def _server_settings() -> list:
         "Players from the Server Browser must type it to\\njoin (an invite link needs none). Enter sets it.",
         # (MAP SHARING's)
         MAP_SHARE_SETUP[2],
+        # (TEXT CHAT's: the second while LISTING is PUBLIC)
+        "Text chat for this game. A public listed game stays off.",
+        "Text chat is off while this game is public.",
     ])
     lines = _screen(base, spec, rows, ["server settings update"],
                     ['<on event="created" run="server settings init"/>'], extra)
@@ -1293,8 +1317,9 @@ MAP_SHARE_SETUP = ("map_share_options", "MAP SHARING",
      ["The most you send of maps, so that the game\\nkeeps the rest of your upload."] * len(MAP_SHARE_UPLOADS)),
 ])
 # (Server Setup's place of its options' rows, co-op's or the gametype's: after
-# MAP SHARING's)
-SETUP_OPTIONS_PLACE = 6
+# MAP SHARING's. TEXT CHAT and PASSWORD sit above that, so the first options
+# row is place 7.)
+SETUP_OPTIONS_PLACE = 7
 # (their screens' titles)
 TITLES.update({f"{MT}/server_settings/{key}/header_{key}": title
                for key, title, _, _ in [*COOP_SETUP_SCREENS, MAP_SHARE_SETUP]})
@@ -1369,42 +1394,11 @@ SETUP_OPTION_SCREENS = [
 ]
 
 
-def _lobby_local_row(base: str, key: str, label: str, setting: str, strings: str, values: str, row_events=None) -> list:
-    """one row of this machine's config, laid out as a settings row."""
-    wide = _choice_wide(strings)
-    spin_x = 286 if wide else 320
-    lines = _widget(f"{base}/{key}", [("width", 512), ("height", 28),
-                                      ("flags", "pass_unhandled_to_focused_child"),
-                                      ("bitmap", "bitmaps/option_bkds_short"), ("color", "#FF2896FF")],
-                    [*(row_events or []),
-                     f'<child widget="{base}/{key}_label"/>',
-                     f'<child widget="{base}/{key}_spinner" x="{spin_x}" y="1"/>'])
-    lines += _widget(f"{base}/{key}_label", [("type", "text"), ("controller", 1),
-                                             ("width", spin_x + (-13 if wide else -6) - 8), ("height", 22),
-                                             ("text", label),
-                                             ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
-                                             ("text_x", 13), ("text_y", 4)], [])
-    lines += _widget(f"{base}/{key}_spinner", [("type", "spinner"), ("left", None if wide else 3), ("top", 2),
-                                               ("width", 206 if wide else 147), ("height", 20),
-                                               ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
-                                               ("strings", strings), ("setting", setting), ("values", values),
-                                               ("font", "ui\\large_ui"), ("color", "#FF2896FF"), ("align", "center"),
-                                               ("text_y", 4 if wide else 1),
-                                               ("header_bitmap", "bitmaps/arrow_sm_left"),
-                                               ("footer_bitmap", "bitmaps/arrow_sm_right"),
-                                               ("header_bounds", "7 -13 19 -7" if wide else "7 -6 19 0"),
-                                               ("footer_bounds", "7 208 19 214" if wide else "7 150 19 156")],
-                     ['<on event="created" run="port setting load"/>',
-                      '<on event="deleted" run="port setting save"/>',
-                      '<on event="left_mouse" run="mouse spinner 1wide click"/>'])
-    return lines
-
-
 def _lobby() -> list:
     """the lobby the host's and the joining players wait in (the Xbox's
     pregame's functions, which need no widget of theirs): up to the port's
     128 players, scrolling; the game's map and gametype; the countdown.
-    Every lobby has Settings: the host's text chat, and Download Maps."""
+    Text chat is set on Server Setup, beside the invite link."""
     base = f"{MT}/lobby"
     # (split screen: another controller's START joins it, its B leaves alone:
     # menu_functions.c's lobby_join. After a game it is the only screen,
@@ -1437,9 +1431,6 @@ def _lobby() -> list:
                                             ("description", f"{base}/lobby_desc")],
                      ['<data input="net splitscreen prejoin players"/>', '<data input="port lobby update"/>',
                       *rows,
-                      # (every lobby: menu_functions.c gives this the last
-                      # player row)
-                      f'<child widget="{base}/lobby_settings" x="20" y="373"/>',
                       f'<child widget="{base}/lobby_button_bar" y="414"/>'])
     for index in range(11):
         lines += _widget(f"{base}/list_item_{index}",
@@ -1449,69 +1440,6 @@ def _lobby() -> list:
                          ['<on event="left right" run="swap player team"/>',
                           '<child widget="main_menu/new_select/list_item_text" x="25"/>',
                           '<child widget="main_menu/new_select/list_item_arrows"/>'])
-    lines += _widget(f"{base}/lobby_settings", [("width", 390), ("height", 28),
-                                               ("flags", "pass_unhandled_to_focused_child"),
-                                               ("bitmap", "bitmaps/sel_list_item_bkd"), ("color", "#FF2896FF")],
-                     [f'<on event="a" open="{base}/lobby_settings_screen" branch="true"/>',
-                      f'<on event="start" open="{base}/lobby_settings_screen" branch="true"/>',
-                      '<on event="left_mouse" run="mouse emit accept event"/>',
-                      f'<child widget="{base}/lobby_settings_label"/>'])
-    lines += _widget(f"{base}/lobby_settings_label", [("type", "text"), ("controller", 1),
-                                                      ("width", 360), ("height", 22), ("text", "SETTINGS"),
-                                                      ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
-                                                      ("text_x", 13), ("text_y", 4),
-                                                      ("text_flags", "no_focus_test")], [])
-    # the host's text chat, and Download Maps. the list writes the chat
-    # while it is open. a client sees the host's choice and cannot change it
-    lines += _widget(f"{base}/lobby_settings_screen", [("width", 640), ("height", 480),
-                                                       ("flags", "pass_unhandled_to_focused_child"),
-                                                       ("bitmap", "bitmaps/gradient")],
-                     ['<on event="b" back="true"/>',
-                      '<on event="back" back="true"/>',
-                      f'<child widget="{base}/lobby_settings_list"/>',
-                      f'<child widget="{base}/lobby_settings_title"/>',
-                      f'<child widget="{base}/lobby_settings_help"/>'])
-    lines += _widget(f"{base}/lobby_settings_title", [("type", "text"), ("controller", 1),
-                                                      ("left", 68), ("top", 28), ("width", 400), ("height", 28),
-                                                      ("text", "SETTINGS"), ("font", "ui\\large_ui"),
-                                                      ("color", "#FF2896FF"), ("text_flags", "no_focus_test")], [])
-    lines += _widget(f"{base}/lobby_settings_list", [("type", "column_list"), ("width", 640), ("height", 480),
-                                                     ("flags", "pass_unhandled_to_focused_child up_down_tabs_children")],
-                     ['<data input="port lobby settings"/>',
-                      '<on event="b" back="true"/>',
-                      '<on event="back" back="true"/>',
-                      f'<child widget="{base}/lobby_chat" x="54" y="73"/>',
-                      f'<child widget="{base}/lobby_download" x="54" y="103"/>',
-                      f'<child widget="{base}/lobby_settings_buttons" y="414"/>'])
-    lines += _lobby_local_row(base, "lobby_chat", "TEXT CHAT", "network.text_chat",
-                              "ON|OFF", "on|off",
-                              ['<on event="left right" run="port lobby chat"/>'])
-    lines += _widget(f"{base}/lobby_download", [("width", 512), ("height", 28),
-                                                ("flags", "pass_unhandled_to_focused_child"),
-                                                ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF")],
-                     ['<on event="a" run="port lobby download"/>',
-                      '<on event="start" run="port lobby download"/>',
-                      '<on event="left_mouse" run="mouse emit accept event"/>',
-                      f'<child widget="{base}/lobby_download_label"/>'])
-    lines += _widget(f"{base}/lobby_download_label", [("type", "text"), ("controller", 1),
-                                                      ("width", 480), ("height", 22), ("text", "DOWNLOAD MAP"),
-                                                      ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
-                                                      ("text_x", 13), ("text_y", 4),
-                                                      ("text_flags", "no_focus_test")], [])
-    lines += _widget(f"{base}/lobby_settings_buttons", [("type", "column_list"), ("width", 640), ("height", 28),
-                                                       ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
-                     [f'<child widget="{base}/lobby_settings_back" x="510" y="1"/>'])
-    lines += _widget(f"{base}/lobby_settings_back", [("type", "text"), ("width", 128), ("height", 24),
-                                                     ("bitmap", "bitmaps/text_button_background"),
-                                                     ("text", "BACK"), ("font", "ui\\small_ui"),
-                                                     ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 2)],
-                     ['<on event="a" back="true"/>', '<on event="start" back="true"/>',
-                      '<on event="left_mouse" run="mouse emit accept event"/>'])
-    lines += _widget(f"{base}/lobby_settings_help", [("type", "text"), ("controller", 1),
-                                                     ("left", 68), ("top", 350), ("width", 482), ("height", 60),
-                                                     ("text", "The host sets text chat."),
-                                                     ("font", "ui\\large_ui"), ("color", "#FFFFFFFF"),
-                                                     ("text_flags", "no_focus_test")], [])
     lines += _widget(f"{base}/lobby_desc", [("width", 640), ("height", 480)],
                      ['<child widget="main_menu/current_profile_name"/>',
                       f'<child widget="{base}/lobby_right_item" x="22" y="2"/>'])
@@ -2175,9 +2103,10 @@ def _hardcore_screen() -> list:
                       f'<child widget="{base}/op_max_players" x="54" y="103"/>',
                       f'<child widget="{base}/op_invite" x="54" y="133"/>',
                       f'<child widget="{base}/op_listing" x="54" y="163"/>',
-                      f'<child widget="{base}/op_password" x="54" y="193"/>',
-                      f'<child widget="{base}/op_map_share" x="54" y="223"/>',
-                      f'<child widget="{base}/op_game_rules" x="54" y="253"/>',
+                      f'<child widget="{base}/op_text_chat" x="54" y="193"/>',
+                      f'<child widget="{base}/op_password" x="54" y="223"/>',
+                      f'<child widget="{base}/op_map_share" x="54" y="253"/>',
+                      f'<child widget="{base}/op_game_rules" x="54" y="283"/>',
                       f'<child widget="{base}/server_button_bar" y="414"/>'])
     lines += _hardcore_field(base, "server_name", "GAME NAME", "ss edit server name")
     lines += _widget(f"{base}/op_max_players", [("width", 512), ("height", 28),
@@ -2214,6 +2143,23 @@ def _hardcore_screen() -> list:
                       ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
                       ("header_bounds", "7 -6 19 0"), ("footer_bounds", "7 150 19 156")],
                      ['<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    lines += _widget(f"{base}/op_text_chat", [("width", 512), ("height", 28),
+                                              ("flags", "pass_unhandled_to_focused_child"),
+                                              ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF")],
+                     [f'<child widget="{base}/text_chat_label"/>',
+                      f'<child widget="{base}/server_text_chat_spinner" x="320" y="1"/>'])
+    lines += _widget(f"{base}/text_chat_label", [("type", "text"), ("controller", 1), ("width", 300),
+                                                 ("height", 22), ("text", "TEXT CHAT"), ("font", "ui\\large_ui"),
+                                                 ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 4)], [])
+    lines += _widget(f"{base}/server_text_chat_spinner",
+                     [("type", "spinner"), ("left", 3), ("top", 2), ("width", 147), ("height", 20),
+                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
+                      ("strings", "ON|OFF"), ("setting", "network.text_chat"), ("values", "on|off"),
+                      ("font", "ui\\large_ui"), ("color", "#FF2896FF"), ("align", "center"), ("text_y", 1),
+                      ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
+                      ("header_bounds", "7 -6 19 0"), ("footer_bounds", "7 150 19 156")],
+                     ['<on event="created" run="port setting load"/>',
+                      '<on event="left_mouse" run="mouse spinner 1wide click"/>'])
     lines += _hardcore_field(base, "password", "PASSWORD", "ss edit server password")
     lines += _widget(f"{base}/op_map_share", [("width", 512), ("height", 28),
                                               ("flags", "pass_unhandled_to_focused_child"),
@@ -2249,6 +2195,8 @@ def _hardcore_screen() -> list:
         "Players from the Server Browser must type it to\\njoin. Enter sets it.",
         "Sending players who join without the map the map.",
         "Slayer, CTF, oddball or crazy king, and the\\nhardcore rules.",
+        "Text chat for this game. A public listed game stays off.",
+        "Text chat is off while this game is public.",
     ])
     lines += _widget(f"{base}/server_button_bar", [("type", "column_list"), ("width", 640), ("height", 28),
                                                    ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],

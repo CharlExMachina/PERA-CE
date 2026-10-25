@@ -68,6 +68,11 @@ static int hardcore_session;
 /* A joined client applies the host's sheet only after that message arrives.
    Its own editor must not replace those bytes. */
 static int hardcore_from_host;
+/* The sheet last loaded for a game type, and Server Setup's copy of it. */
+static struct hardcore_rules hardcore_loaded;
+static int hardcore_loaded_valid;
+static struct hardcore_rules hardcore_setup;
+static int hardcore_setup_on;
 
 static void hardcore_rules_kept_only(struct hardcore_rules *rules);
 static boolean hardcore_remote_client(void);
@@ -162,6 +167,8 @@ void hardcore_rules_store(long profile_index)
 	hardcore_rules_kept_only(&hardcore_edit);
 	file_write(&file, sizeof(hardcore_edit), &hardcore_edit);
 	file_close(&file);
+	hardcore_loaded = hardcore_edit;
+	hardcore_loaded_valid = 1;
 }
 
 void hardcore_rules_forget(long profile_index)
@@ -206,6 +213,69 @@ void hardcore_rules_choose(long profile_index)
 	if (playlist_profile_get(profile_index, &variant) &&
 		TEST_FLAG(variant.universal_variant.flags, _game_variant_anniversary_rules_bit))
 		hardcore_session = 1;
+	hardcore_loaded = hardcore_edit;
+	hardcore_loaded_valid = 1;
+}
+
+boolean hardcore_rules_changed(void)
+{
+	struct hardcore_rules current;
+	struct hardcore_rules loaded;
+
+	if (!hardcore_loaded_valid)
+		return FALSE;
+	current = hardcore_edit;
+	loaded = hardcore_loaded;
+	hardcore_rules_kept_only(&current);
+	hardcore_rules_kept_only(&loaded);
+	return csmemcmp(&current, &loaded, sizeof(current)) != 0;
+}
+
+void hardcore_rules_setup_begin(void)
+{
+	if (hardcore_setup_on)
+		return;
+	hardcore_rules_kept_only(&hardcore_edit);
+	hardcore_setup = hardcore_edit;
+	hardcore_setup_on = 1;
+}
+
+void hardcore_rules_setup_end(void)
+{
+	hardcore_setup_on = 0;
+}
+
+boolean hardcore_rules_setup_active(void)
+{
+	return hardcore_setup_on ? TRUE : FALSE;
+}
+
+struct hardcore_rules *hardcore_rules_setup(void)
+{
+	return &hardcore_setup;
+}
+
+void hardcore_rules_setup_apply(struct game_variant *variant)
+{
+	if (!hardcore_setup_on)
+	{
+		hardcore_rules_clear_session();
+		if (variant)
+			SET_FLAG(variant->universal_variant.flags, _game_variant_anniversary_rules_bit, FALSE);
+		return;
+	}
+	hardcore_rules_kept_only(&hardcore_setup);
+	hardcore_edit = hardcore_setup;
+	if (hardcore_rules_is_stock(&hardcore_edit))
+	{
+		hardcore_rules_clear_session();
+		if (variant)
+			SET_FLAG(variant->universal_variant.flags, _game_variant_anniversary_rules_bit, FALSE);
+		return;
+	}
+	if (variant)
+		hardcore_rules_note_variant(variant);
+	hardcore_rules_commit();
 }
 
 /* the menu's one switch for the pads and the volumes. an older sheet may

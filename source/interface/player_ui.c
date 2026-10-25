@@ -161,6 +161,7 @@ symbols in this file:
 #include "interface/virtual_keyboard.h"
 #include "main/main.h"
 #include "tag_files/tag_groups.h"
+#include "hardcore_rules.h"
 #include "player_ui.h"
 
 /* ---------- constants */
@@ -439,7 +440,10 @@ boolean player_ui_edit_profile_is_dirty(
 					sizeof(struct game_variant)) ||
 					/* port: and its PC options */
 					csmemcmp(&player_ui_edit_options.original, &player_ui_edit_options.current,
-						sizeof(struct game_variant_options)))
+						sizeof(struct game_variant_options)) ||
+					/* port: training mode and the other match rules. they are
+					   saved beside the variant, so OK has to see them too. */
+					hardcore_rules_changed())
 				{
 					result = TRUE;
 				}

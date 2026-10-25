@@ -15,19 +15,20 @@
 		<data input="server settings update"/>
 		<on event="created" run="server settings init"/>
 		<child widget="main_menu/multiplayer_type_select/server_settings/op_server_name" x="54" y="73"/>
-		<child widget="main_menu/multiplayer_type_select/server_settings/op_max_players" x="54" y="95"/>
-		<child widget="main_menu/multiplayer_type_select/server_settings/op_invite" x="54" y="117"/>
-		<child widget="main_menu/multiplayer_type_select/server_settings/op_listing" x="54" y="139"/>
-		<child widget="main_menu/multiplayer_type_select/server_settings/op_password" x="54" y="161"/>
-		<child widget="main_menu/multiplayer_type_select/server_settings/op_map_share_options" x="54" y="183"/>
-		<child widget="main_menu/multiplayer_type_select/server_settings/op_coop_options" x="54" y="205"/>
-		<child widget="main_menu/multiplayer_type_select/server_settings/op_voice_options" x="54" y="227"/>
-		<child widget="main_menu/multiplayer_type_select/server_settings/op_game_type" x="54" y="205"/>
-		<child widget="main_menu/multiplayer_type_select/server_settings/op_player_options" x="54" y="227"/>
-		<child widget="main_menu/multiplayer_type_select/server_settings/op_item_options" x="54" y="249"/>
-		<child widget="main_menu/multiplayer_type_select/server_settings/op_vehicle_options" x="54" y="271"/>
-		<child widget="main_menu/multiplayer_type_select/server_settings/op_indicator_options" x="54" y="293"/>
-		<child widget="main_menu/multiplayer_type_select/server_settings/op_team_options" x="54" y="315"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/op_max_players" x="54" y="94"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/op_invite" x="54" y="115"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/op_listing" x="54" y="136"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/op_text_chat" x="54" y="157"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/op_password" x="54" y="178"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/op_map_share_options" x="54" y="199"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/op_coop_options" x="54" y="220"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/op_voice_options" x="54" y="241"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/op_game_type" x="54" y="220"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/op_player_options" x="54" y="241"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/op_item_options" x="54" y="262"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/op_vehicle_options" x="54" y="283"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/op_indicator_options" x="54" y="304"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/op_team_options" x="54" y="325"/>
 		<child widget="main_menu/multiplayer_type_select/server_settings/button_bar" y="414"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/server_settings/button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items">
@@ -76,6 +77,16 @@
 	<widget name="main_menu/multiplayer_type_select/server_settings/listing_label" type="text" controller="1" width="300" height="20" string_list="main_menu/multiplayer_type_select/server_settings/labels" string_index="9" font="ui\small_ui" color="#FF2896FF" text_x="13" text_y="1">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/server_settings/listing_spinner" type="spinner" left="3" top="0" width="147" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="PUBLIC|PRIVATE" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="3 -6 15 0" footer_bounds="3 150 15 156">
+		<on event="left_mouse" run="mouse spinner 1wide click"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/op_text_chat" width="512" height="20" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/option_bkds_short" color="#FF2896FF">
+		<child widget="main_menu/multiplayer_type_select/server_settings/text_chat_label"/>
+		<child widget="main_menu/multiplayer_type_select/server_settings/server_text_chat_spinner" x="320" y="1"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/text_chat_label" type="text" controller="1" width="300" height="20" string_list="main_menu/multiplayer_type_select/server_settings/labels" string_index="14" font="ui\small_ui" color="#FF2896FF" text_x="13" text_y="1">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/server_settings/server_text_chat_spinner" type="spinner" left="3" top="0" width="147" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="ON|OFF" setting="network.text_chat" values="on|off" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="3 -6 15 0" footer_bounds="3 150 15 156">
+		<on event="created" run="port setting load"/>
 		<on event="left_mouse" run="mouse spinner 1wide click"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/server_settings/op_password" width="512" height="20" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/option_bkds_short" color="#FF2896FF">
@@ -204,6 +215,7 @@
 		<string text="VOICE AND VOTING:"/>
 		<string text="PASSWORD:"/>
 		<string text="MAP SHARING:"/>
+		<string text="TEXT CHAT:"/>
 	</strings>
 	<strings name="main_menu/multiplayer_type_select/server_settings/help_strings">
 		<string text=""/>
@@ -222,6 +234,8 @@
 		<string text="Voice chat and votes to kick a player,\nfor this game."/>
 		<string text="Players from the Server Browser must type it to\njoin (an invite link needs none). Enter sets it."/>
 		<string text="Sending players who join without the game's\nCustom Edition map the map, and how fast."/>
+		<string text="Text chat for this game. A public listed game stays off."/>
+		<string text="Text chat is off while this game is public."/>
 	</strings>
 	<widget name="main_menu/multiplayer_type_select/server_settings/coop_options/coop_options_screen" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/gradient">
 		<child widget="main_menu/multiplayer_type_select/server_settings/coop_options/header_coop_options"/>

@@ -6310,6 +6310,7 @@ boolean ui_widget_port_gametype_save(
 	struct widget_instance *widget,
 	boolean *widget_deleted)
 {
+	/* Match rules count here too: player_ui_edit_profile_is_dirty. */
 	if (!player_ui_edit_profile_is_dirty())
 	{
 		player_ui_end_editing_profile();
