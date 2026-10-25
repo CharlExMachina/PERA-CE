@@ -899,7 +899,8 @@ How it operates (`src/p2p_lobby.c`):
 - The host of a public game publishes a listing: the invite, and the name,
   map, gametype and player counts of the game. The listing goes to the
   same MQTT brokers as the invites (`network.brokers_file`), retained,
-  to a topic of the host (`corece/1/lobby/s/<hash of its key>`).
+  to a topic of the host (`hceu/3/lobby/s/<hash of its key>`). A browser
+  asks hosts to publish again on `hceu/3/lobby/q`.
 - The key of the host signs the listing (Ed25519). The key is the key of the
   invite, so no other machine can list the invite of the host, change its
   listing, or list a game with false details.

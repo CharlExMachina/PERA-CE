@@ -98,7 +98,7 @@ enum
 	host takes at most a few new players a minute: this is hours of them;
 	one is not forgotten while its host nonce lasts: USED_REQUEST_TIME) */
 	MAXIMUM_USED_REQUESTS = 1024,
-	/* (a slot's: corece/1/lobby/s/ and a key hash in hex) */
+	/* (a slot's: hceu/3/lobby/s/ and a key hash in hex) */
 	TOPIC_SIZE = 64,
 	NONCE_SIZE = 8,
 	/* an ACCEPT's or a proven JOIN's tag: the first half of an HMAC-SHA256 */

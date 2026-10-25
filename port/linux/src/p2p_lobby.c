@@ -21,11 +21,11 @@ false details:
 	printable ASCII), a stamp (8, reserved: zero), and the signature (64) of
 	"corece-lobby-1" and all before it.
 
-Each host has a slot, corece/1/lobby/s/<its key's hash in hex>: its listing,
+Each host has a slot, hceu/3/lobby/s/<its key's hash in hex>: its listing,
 retained on every broker (and expiring there after LISTING_EXPIRY seconds
 on MQTT 5), and the broker's will (set at the connection, p2p_signal.c)
 clears it if the host vanishes. Browsers subscribe to every slot and ask the
-hosts to publish again (corece/1/lobby/q). Brokers are other people's: what
+hosts to publish again (hceu/3/lobby/q). Brokers are other people's: what
 one deletes or keeps is no authority, so
 - a host publishes every REPUBLISH_INTERVAL, and sooner (at most once each
   TRIGGER_INTERVAL) when its game changes, when asked, and when its slot is
