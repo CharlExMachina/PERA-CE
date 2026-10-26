@@ -1,8 +1,9 @@
 /* A hardcore match draws the darker teammate respawn area from the mesh
-shipped with the game when that map has one. Hang 'em High does. A renamed
-import such as h1pb_hangemhigh uses that same mesh. The matching hardcore
-map is used when this copy has no mesh for it. Maps that never place one,
-Prisoner among them, draw nothing here. A classic game draws neither. */
+shipped with the game when that map has one. Hang 'em High's mesh is stored
+under its own name. Battle Creek, Derelict, Damnation and Rat Race use the
+hardcore maps' meshes, which sit on the same starts. A renamed import such
+as h1pb_hangemhigh uses that same mesh. Maps that never place one, Prisoner
+among them, draw nothing here. A classic game draws neither. */
 
 #include "cseries.h"
 #include "hardcore_assets.h"
@@ -616,6 +617,54 @@ static int area_from_pack(char const *leaf)
 	return 1;
 }
 
+static int area_is_h1pb(char const *leaf)
+{
+	return (leaf[0] == 'h' || leaf[0] == 'H') && leaf[1] == '1' &&
+		(leaf[2] == 'p' || leaf[2] == 'P') &&
+		(leaf[3] == 'b' || leaf[3] == 'B') &&
+		leaf[4] == '_' && leaf[5] != 0;
+}
+
+static int area_equal(char const *left, char const *right)
+{
+	unsigned long index;
+
+	for (index = 0; left[index] || right[index]; index++)
+	{
+		char a = left[index];
+		char b = right[index];
+
+		if (a >= 'A' && a <= 'Z')
+			a = (char)(a - 'A' + 'a');
+		if (b >= 'A' && b <= 'Z')
+			b = (char)(b - 'A' + 'a');
+		if (a != b)
+			return 0;
+	}
+	return 1;
+}
+
+/* The retail map has no mesh of its own. The hardcore copy's mesh is the
+one that covers its starts. */
+static char const *area_hardcore_leaf(char const *leaf)
+{
+	static char const *const names[][2] =
+	{
+		{ "beavercreek", "badcreek" },
+		{ "carousel", "dere" },
+		{ "damnation", "dammy" },
+		{ "ratrace", "patrace" },
+	};
+	unsigned long index;
+
+	for (index = 0; index < NUMBEROF(names); index++)
+	{
+		if (area_equal(leaf, names[index][0]))
+			return names[index][1];
+	}
+	return NULL;
+}
+
 static void area_prepare(void)
 {
 	FILE *file = NULL;
@@ -649,13 +698,18 @@ static void area_prepare(void)
 		goto fail;
 	packed = area_from_pack(leaf);
 	/* The stock-name imports are played as h1pb_<map>. The zone is stored
-	   under the map's own name. A map that never placed one stays empty. */
-	if (packed == 0 &&
-		(leaf[0] == 'h' || leaf[0] == 'H') && leaf[1] == '1' &&
-		(leaf[2] == 'p' || leaf[2] == 'P') &&
-		(leaf[3] == 'b' || leaf[3] == 'B') &&
-		leaf[4] == '_' && leaf[5] != 0)
+	   under the map's own name, or under the hardcore map when that name
+	   differs. A map that never placed one stays empty. */
+	if (packed == 0 && area_is_h1pb(leaf))
 		packed = area_from_pack(leaf + 5);
+	if (packed == 0)
+	{
+		char const *stock = area_is_h1pb(leaf) ? leaf + 5 : leaf;
+		char const *hardcore = area_hardcore_leaf(stock);
+
+		if (hardcore)
+			packed = area_from_pack(hardcore);
+	}
 	if (packed > 0)
 	{
 		area_state = AREA_STATE_LOADED;
