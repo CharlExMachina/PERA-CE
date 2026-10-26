@@ -18,7 +18,7 @@ through the window's base (tools/macos_asm_rebase.py). This graph builds
   guest calls, over SDL3 and Metal (port/macos/host);
 - SDL3, a static library built with CMake;
 
-and the app, build/macos/OpenCE.app.
+and the app, build/macos/CoreCE.app.
 """
 
 import os
@@ -46,7 +46,7 @@ THIRD_PARTY = BUILD / "third_party"
 MUSL_DIR = THIRD_PARTY / f"musl-{MUSL_VERSION}"
 MUSL_URL = f"https://musl.libc.org/releases/musl-{MUSL_VERSION}.tar.gz"
 SDL_DIR = THIRD_PARTY / "SDL3"
-APP_NAME = "OpenCE"
+APP_NAME = "CoreCE"
 # the oldest macOS the host runs on (SDL 3 and Metal 3 need less)
 MACOS_MINIMUM = "13.0"
 
@@ -493,8 +493,8 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     )
     # the app's icon, from the project's (port/assets/icon), at the sizes
     # macOS asks an .icns for
-    icon = contents / "Resources" / "OpenCE.icns"
-    iconset = BUILD / "OpenCE.iconset"
+    icon = contents / "Resources" / f"{APP_NAME}.icns"
+    iconset = BUILD / f"{APP_NAME}.iconset"
     icon_sizes = [(16, 1), (16, 2), (32, 1), (32, 2), (128, 1), (128, 2), (256, 1), (256, 2), (512, 1), (512, 2)]
     n.rule(
         name="macos_icon",

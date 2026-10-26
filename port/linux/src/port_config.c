@@ -500,7 +500,7 @@ static const struct config_setting config_settings[] =
 		"if migration fails, the game reports it and keeps the legacy folder." },
 	{ "paths.photos", _config_string, "\"\"", "HALO_PHOTOS_ROOT", _environment_value, _platform_desktop,
 		"Where photo mode's photos go; empty for the usual place (the Pictures\n"
-		"folder's OpenCE folder)." },
+		"folder's CoreCE folder)." },
 	{ "paths.custom_edition", _config_string, "\"\"", "HALO_CUSTOM_EDITION_ROOT", _environment_value, _platform_desktop,
 		"A Halo Custom Edition install whose maps folder is looked in after the\n"
 		"custom_maps folder for Custom Edition maps and their bitmaps.map,\n"

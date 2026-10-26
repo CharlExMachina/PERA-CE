@@ -7,8 +7,8 @@ sources are the decompilation; the port adds a platform layer that
 implements the Xbox APIs the game calls (Direct3D on OpenGL, or on Metal on
 the Mac), and features the Xbox game did not
 have (a new netcode, internet play, the PC version's menus, Custom Edition
-maps, touch controls). The project is published as OpenCE; it also carries
-the work of CoreCE, a fork of it from the same base.
+maps, touch controls). The project is published as CoreCE, a fork of OpenCE
+(`OpenCommunityEdition/OpenCE`) that carries OpenCE's work and its own.
 
 Start with [README.md](README.md). The other documents are listed at the
 end.
@@ -46,7 +46,7 @@ ninja android                  # the Android guest image and native libraries
 ninja android_apk              # the APK (Gradle)
 ninja web                      # build/web/site (Emscripten: port/web/README.md)
 ninja windows                  # on Windows, or on Linux after configure.py --windows-cross
-ninja macos                    # build/macos/OpenCE.app, on an Apple silicon Mac only
+ninja macos                    # build/macos/CoreCE.app, on an Apple silicon Mac only
 python tools/ci_build.py linux release   # what CI builds
 ```
 

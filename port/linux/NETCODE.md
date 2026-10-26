@@ -253,8 +253,10 @@ match clock at 0 behind the opening's loading film
 (`port/linux/game/opening_film.c`) until the film has faded off the match,
 the host placing the players while it shows (a machine of CoreCE's 33
 starts that clock at the load and spawns at 3 seconds); version 35 joins
-the two lines, and plays all of these: no machine of either line's 33, or
-of CoreCE's 34, plays with it.
+the two lines, and plays all of these, and hashes map sharing's files with
+CoreCE's label ("CoreCE map 1", `map_share_files.c`, where this fork's 33
+had "OpenCE map 1"): no machine of either line's 33, or of CoreCE's 34,
+plays with it.
 
 A host whose gametype has PB Options on (practice presets,
 `port/linux/game/performance_options.c`, `docs/performance-options.md`)

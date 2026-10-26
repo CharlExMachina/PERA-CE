@@ -203,7 +203,7 @@ The game makes the folders when it needs them. Names of files and folders
 are not case-sensitive, as on the Xbox.
 
 Photo mode's photos go in `paths.photos`, or if that setting is empty in
-the `OpenCE` folder of your Pictures folder (`~/Pictures/OpenCE`, or the
+the `CoreCE` folder of your Pictures folder (`~/Pictures/CoreCE`, or the
 folder that `XDG_PICTURES_DIR` names). Refer to "Photo mode".
 
 These files are in the data root:
@@ -502,7 +502,7 @@ the setting for one start of the game. It has priority over the file.
 | `bots.teams` | `"even"` | `HALO_BOT_TEAMS` | In a team game: `"even"` puts the bots on both teams, evening them with the players; `"against"` puts them all on the team the players are not on. |
 | `paths.data` | `""` | `HALO_DATA_ROOT` | The data root. Refer to "Start the game". |
 | `paths.saves` | `""` | `HALO_SAVE_ROOT` | The save root. Refer to "Files and folders". |
-| `paths.photos` | `""` | `HALO_PHOTOS_ROOT` | Where photo mode's photos go. Empty: the `OpenCE` folder of the Pictures folder. Refer to "Photo mode". |
+| `paths.photos` | `""` | `HALO_PHOTOS_ROOT` | Where photo mode's photos go. Empty: the `CoreCE` folder of the Pictures folder. Refer to "Photo mode". |
 | `network.address` | `""` | `HALO_NET_ADDRESS` | The IPv4 address of this machine for system link. Refer to "Play on one computer". |
 | `network.broadcast` | `""` | `HALO_NET_BROADCAST` | IPv4 addresses, with commas between them, that get the broadcasts of the game. Empty: 255.255.255.255. |
 | `network.online` | `true` | `HALO_NET_ONLINE` | `true`: internet play. `false`: system link on the local network only. |
@@ -866,7 +866,7 @@ To join a game, do one of these steps:
 - Accept a Discord invite. Refer to "Discord".
 
 The game also takes the address of the web build's page with an invite
-(`https://halocombatevolved.com/?join=<64 digits>`), as a link.
+(`https://<the site>/?join=<64 digits>`), as a link.
 
 When the machines connect, the game of the host shows in Multiplayer,
 System Link. Join the game as on a local network. System link on a local
@@ -1415,14 +1415,14 @@ hit (only those that his animations have; in a vehicle, only as paused).
 The filters are none, black and white, noir, sepia, vintage, vivid, warm,
 cool and night vision: a color matrix and a vignette over the 3D view.
 
-The photos are named for the level and the time (`OpenCE a30 2026-10-19
+The photos are named for the level and the time (`CoreCE a30 2026-10-19
 20.27.25.png`). They go in `paths.photos`, or if it is empty:
 
 | Build | Folder |
 | --- | --- |
-| Linux | `OpenCE` in the Pictures folder (`XDG_PICTURES_DIR`, usually `~/Pictures`) |
-| Windows | `%USERPROFILE%\Pictures\OpenCE` |
-| macOS | `~/Pictures/OpenCE` |
+| Linux | `CoreCE` in the Pictures folder (`XDG_PICTURES_DIR`, usually `~/Pictures`) |
+| Windows | `%USERPROFILE%\Pictures\CoreCE` |
+| macOS | `~/Pictures/CoreCE` |
 | Android | `photos` in the app's folder (`Android/data/<the app>/files`) |
 | Web | `photos` in the browser's storage for the page; the page also downloads each photo |
 

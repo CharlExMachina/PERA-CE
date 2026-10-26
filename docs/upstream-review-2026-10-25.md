@@ -65,6 +65,27 @@ maps and map downloads (iOS), the device and audio settings, the save root
 moving to `halo-og` (Linux) and `Halo OG` (Windows) with its migration, the
 CoreCE font and icons, and the other fixes the merge brought without conflict.
 
+## The name, and the Mac app's folder
+
+After the merge the project is named CoreCE throughout (it had become
+CoreCE's in its font, icons and window titles already): the README, the Mac
+app (`build/macos/CoreCE.app`), the web page, the photos (`CoreCE <level>
+<time>.png`, in the Pictures folder's `CoreCE`), DTLS certificates, map
+sharing's hash label, and the downloads, Discord and updater repository
+(`mastercheese-dev/CoreCE`). OpenCE stays where it is OpenCE the project
+(its history, its broker, its Sentry project). The Mac bundle identifier
+(`org.opence.halo`) and the web page's storage and protocol names stay, so
+that permissions and saved data carry over.
+
+The Mac app's folder is CoreCE's own: `~/Library/Application Support/CoreCE`,
+with the saves in the folder itself, as CoreCE's Mac app kept them. Its first
+start copies the earlier folder there (`OpenCE`, else `Halo OG`, else
+`Halo CE Universal`) without changing it, this app's `saves/` first
+(`port/macos/host/host_main.m`, `support_migrate`; port/macos/README.md).
+
+The match clock is CoreCE's, with its defaults (`display.match_timer` off;
+when it is on, `audio.hardcore_timer_voice` plays the countdown).
+
 ## Network version
 
 Both lines had raised `HALO_PORT_NETWORK_VERSION` after OpenCE's 32: this

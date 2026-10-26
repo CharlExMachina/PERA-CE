@@ -2,10 +2,10 @@
 
 The web build runs the game in a web browser, as WebAssembly. It is the
 same game and platform layer as the Linux build, with the OpenGL ES renderer
-of the Android build drawing through WebGL 2. Play it at
-<https://halocombatevolved.com/>: every build of `main` that passes on all
-platforms is published there (and as `halo-web-release.zip` in the release,
-for your own server).
+of the Android build drawing through WebGL 2. Every build of `main` that
+passes on all platforms is published on the GitHub Pages site of the
+repository that built it (and as `halo-web-release.zip` in the release, for
+your own server).
 
 The site serves no game data. The page copies the `maps/` folder out of your
 own Xbox disc image of Halo: Combat Evolved into the browser's storage for
@@ -50,7 +50,7 @@ page when mods say they cannot be played together (`web_js_ask`).
 
 The page asks the browser to keep the site's data. A browser that is short
 of space may delete it otherwise; **Settings and data** says which. The
-storage belongs to the site's address: `halocombatevolved.com` and the
+storage belongs to the site's address: a custom domain and the
 repository's `github.io` address do not share it.
 
 ## Playing
@@ -106,7 +106,7 @@ WebSockets (EMQX's, HiveMQ's and Mosquitto's: the native builds' first broker
 has none), with everything sealed as between native builds.
 
 **In a room**: under **Play together**, **Create a room** makes a room and
-its link (`https://halocombatevolved.com/?room=<secret>`): send it to your
+its link (`https://<the site>/?room=<secret>`): send it to your
 friends.
 Everyone who opens it is in the room, and the browsers of a room are as the
 machines of one local network to the game: host a game under Multiplayer and
@@ -376,7 +376,7 @@ The game's wasm, most of a build, does not come from GitHub Pages, which
 serves 100 GB a month: the `pages` job pushes it alone in a commit of the
 `web-wasm` branch (over the last one, so the repository keeps one copy),
 checks that jsDelivr serves that commit's file
-(`https://cdn.jsdelivr.net/gh/OpenCommunityEdition/OpenCE@<commit>/halo.wasm`,
+(`https://cdn.jsdelivr.net/gh/<owner>/<repository>@<commit>/halo.wasm`,
 with CORS, which GitHub's release downloads lack), and names it and its
 SHA-256 in `version.json` (`"wasm": {"url", "sha256"}`). The service worker
 fetches the wasm from there as it caches the build, checks its SHA-256, and
@@ -389,20 +389,17 @@ in `index.html`, which sets no cookies). The page being cross-origin
 isolated, the script is loaded with `crossorigin="anonymous"`: its host sends
 CORS headers, not `Cross-Origin-Resource-Policy`.
 
-Once, an owner of the organization sets it up:
+Once, an owner of the repository sets it up:
 
-1. Organization settings → Pages → **Add a verified domain**:
-   `halocombatevolved.com`. Add the TXT record GitHub shows
-   (`_github-pages-challenge-OpenCommunityEdition.halocombatevolved.com`)
-   at the DNS host (Cloudflare) and verify. This also frees the domain from
-   another account's site that still claims it.
-2. Repository settings → Pages → Build and deployment → Source: **GitHub
-   Actions**.
-3. Repository settings → Pages → Custom domain: `halocombatevolved.com`.
-   The DNS records are there already (the four apex `A` records of GitHub
-   Pages, `www` a `CNAME` to the apex), **DNS only** at Cloudflare, so that
-   GitHub can issue its certificate; then tick **Enforce HTTPS**.
-4. Nothing else: the deployment needs no secret, and the `github-pages`
+1. Repository settings → Pages → Build and deployment → Source: **GitHub
+   Actions**. The site is then the repository's `github.io` address.
+2. For a domain of its own (optional): organization settings → Pages →
+   **Add a verified domain**, with the TXT record GitHub shows at the DNS
+   host; then repository settings → Pages → Custom domain, with the four apex
+   `A` records of GitHub Pages (and `www` a `CNAME` to the apex) at the DNS
+   host, not proxied, so that GitHub can issue its certificate; then tick
+   **Enforce HTTPS**.
+3. Nothing else: the deployment needs no secret, and the `github-pages`
    environment appears with the first one (give it no required reviewer).
 
 Later, Cloudflare can serve the site (proxied, SSL *Full (strict)*) with a

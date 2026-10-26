@@ -50,7 +50,7 @@ update.h's: posix_update.c on Linux, win32_update.c on Windows.
 /* (the repository whose workflow made the build, whose releases its number
 counts: a fork's builds update from the fork) */
 #ifndef HALO_BUILD_REPOSITORY
-#define HALO_BUILD_REPOSITORY "OpenCommunityEdition/OpenCE"
+#define HALO_BUILD_REPOSITORY "mastercheese-dev/CoreCE"
 #endif
 
 #define UPDATE_REPOSITORY HALO_BUILD_REPOSITORY

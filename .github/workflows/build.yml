@@ -24,7 +24,7 @@ name: Build
 # newest marked latest, so that
 # https://github.com/<repository>/releases/latest/download/<file> always
 # gives the latest build; the last five are kept. Its web build is then the
-# site on GitHub Pages (https://halocombatevolved.com/, port/web/README.md).
+# site on the repository's GitHub Pages (port/web/README.md).
 on:
   push:
     paths-ignore:
@@ -456,8 +456,8 @@ jobs:
           done
 
   pages:
-    # The release's web build to GitHub Pages, which serves it at
-    # https://halocombatevolved.com/ (port/web/README.md, "Hosting"). Only
+    # The release's web build to the repository's GitHub Pages
+    # (port/web/README.md, "Hosting"). Only
     # main, only once every platform built and the release is out (the site
     # and the release are one build), and a deployment is never cancelled
     # halfway. The repository's Pages source must be GitHub Actions; a
@@ -479,6 +479,8 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -552,7 +554,7 @@ jobs:
           WINDOWS: ${{ needs.windows.result }}
           WEB: ${{ needs.web.result }}
           PAGES: ${{ needs.pages.result }}
-          SITE_URL: https://halocombatevolved.com/
+          SITE_URL: ${{ needs.pages.outputs.page_url }}
           RELEASE_TAG: ${{ needs.release.outputs.tag }}
           SERVER: ${{ github.server_url }}
           REPOSITORY: ${{ github.repository }}
@@ -581,6 +583,8 @@ jobs:
             *) title="Build failed"; color=15548997 ;;
           esac
           latest="$SERVER/$REPOSITORY/releases/latest"
+          # (no site deployed: the release's web build)
+          [ -n "$SITE_URL" ] || SITE_URL="$latest/download/halo-web-release.zip"
           downloads="[Linux]($latest/download/halo-linux-release.zip) · [Windows]($latest/download/halo-windows-release.zip) · [Android]($latest/download/halo-android-release.zip) · [Web]($SITE_URL) ([all builds]($latest))"
           if [ -n "$RELEASE_TAG" ]; then
             release="[$RELEASE_TAG]($SERVER/$REPOSITORY/releases/tag/$RELEASE_TAG)"

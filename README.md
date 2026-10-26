@@ -1,6 +1,6 @@
 # Halo: Combat Evolved for Linux, Windows, macOS, Android, iPhone and the web
 
-[![Join our Discord](https://invidget.switchblade.xyz/9gqcHyr5km)](https://discord.gg/9gqcHyr5km)
+[![Join our Discord](https://invidget.switchblade.xyz/4q7tpz7Gs)](https://discord.gg/4q7tpz7Gs)
 
 This project is a port of the Halo: Combat Evolved decompilation to Linux,
 Windows, macOS, Android and web browsers, with a developer build for the
@@ -12,9 +12,10 @@ iPhone. The decompilation is of the Xbox build 2342
 
 The port starts from the decompilation of [bnunu/halo-1](https://github.com/bnunu/halo-1).
 That project is a fork of [punpckhdq/halo](https://github.com/punpckhdq/halo).
-It is [OpenCE](https://github.com/OpenCommunityEdition/OpenCE), with the
-work of [CoreCE](https://github.com/mastercheese-dev/CoreCE), a fork of
-OpenCE: its iPhone app, PB Options and Match Options, and its fixes.
+This is [CoreCE](https://github.com/mastercheese-dev/CoreCE), a fork of
+[OpenCE](https://github.com/OpenCommunityEdition/OpenCE): OpenCE's work, with
+CoreCE's own (its iPhone app, Hardcore, PB Options and Match Options, and
+its fixes).
 High-res redraw artists are in [AUTHORS.md](AUTHORS.md).
 
 You can play with up to 128 players, run campaign co-op online, load Custom
@@ -30,10 +31,10 @@ builds of the latest release:
 
 | Platform | Release | Debug |
 | --- | --- | --- |
-| Linux | [halo-linux-release.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-release.zip) | [halo-linux-debug.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-debug.zip) |
-| Windows | [halo-windows-release.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-windows-release.zip) | [halo-windows-debug.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-windows-debug.zip) |
-| Android | [halo-android-release.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-android-release.zip) | [halo-android-debug.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-android-debug.zip) |
-| Web | [halocombatevolved.com](https://halocombatevolved.com/) (or [halo-web-release.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-web-release.zip) for your own server) | [halo-web-debug.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-web-debug.zip) |
+| Linux | [halo-linux-release.zip](https://github.com/mastercheese-dev/CoreCE/releases/latest/download/halo-linux-release.zip) | [halo-linux-debug.zip](https://github.com/mastercheese-dev/CoreCE/releases/latest/download/halo-linux-debug.zip) |
+| Windows | [halo-windows-release.zip](https://github.com/mastercheese-dev/CoreCE/releases/latest/download/halo-windows-release.zip) | [halo-windows-debug.zip](https://github.com/mastercheese-dev/CoreCE/releases/latest/download/halo-windows-debug.zip) |
+| Android | [halo-android-release.zip](https://github.com/mastercheese-dev/CoreCE/releases/latest/download/halo-android-release.zip) | [halo-android-debug.zip](https://github.com/mastercheese-dev/CoreCE/releases/latest/download/halo-android-debug.zip) |
+| Web | [halo-web-release.zip](https://github.com/mastercheese-dev/CoreCE/releases/latest/download/halo-web-release.zip), for your own server or the repository's GitHub Pages ([port/web/README.md](port/web/README.md)) | [halo-web-debug.zip](https://github.com/mastercheese-dev/CoreCE/releases/latest/download/halo-web-debug.zip) |
 
 Use the release build to play. The debug build stops at the first failed
 assertion and writes it to the log. Use the debug build to find and report
@@ -49,13 +50,13 @@ if you want to install it. Refer to "Updates" in
 each new build when it is out.
 
 Each build of the `main` branch that passes on all four platforms is a new
-release, and the web site then plays it. The [Releases](https://github.com/OpenCommunityEdition/OpenCE/releases)
+release, and the web site then plays it. The [Releases](https://github.com/mastercheese-dev/CoreCE/releases)
 page keeps the last five releases. If the latest build has a problem, get
 an older build from that page.
 
 ### Arch-based Linux Distributions
 
-The above Linux binary release is available on the [AUR](https://aur.archlinux.org/packages/opence-bin).
+The above Linux binary release is available on the [AUR](https://aur.archlinux.org/packages/CoreCE-bin).
 
 ### Steam Deck
 
@@ -86,7 +87,7 @@ instead (a Halo PC or Custom Edition install's `maps` folder), the game says
 so and stops: Custom Edition maps go in `custom_maps/`, beside `maps/`.
 
 On Linux and Windows, the game puts `maps/` next to the executable; on
-macOS, in `~/Library/Application Support/OpenCE`. On
+macOS, in `~/Library/Application Support/CoreCE`. On
 Android, copy the disc image to the phone first. The app puts `maps/` in its
 data folder. Refer to [port/android/README.md](port/android/README.md). On
 the web, the page copies `maps/` out of the disc image into the browser's
@@ -235,7 +236,7 @@ To build the game:
 | --- | --- |
 | `ninja linux` | `build/linux/halo` |
 | `ninja windows` (on Windows, or on Linux after `configure.py --windows-cross`) | `build/windows/halo.exe` and `SDL3.dll` |
-| `ninja macos` (on a Mac) | `build/macos/OpenCE.app` |
+| `ninja macos` (on a Mac) | `build/macos/CoreCE.app` |
 | `ninja android_apk` | `port/android/app/build/outputs/apk/debug/app-debug.apk` |
 | `ninja web` | `build/web/site/`, the web site (`python tools/web_serve.py` serves it) |
 | `python tools/ios_build.py` (on an Apple silicon Mac, not with ninja) | The iPhone app: refer to [port/ios/README.md](port/ios/README.md) |
@@ -346,7 +347,7 @@ value that differ. Refer to "Comparing two builds" in
 
 ## Licence
 
-OpenCE is free software: you can give it to others and change it under the
+CoreCE is free software: you can give it to others and change it under the
 terms of the GNU Affero General Public License as published by the Free
 Software Foundation, version 3 of the License or (at your option) any later
 version (`AGPL-3.0-or-later`). It comes with no warranty. The full text is in
@@ -356,7 +357,7 @@ version (`AGPL-3.0-or-later`). It comes with no warranty. The full text is in
   and to each release built from that commit or a later one. Earlier
   releases, and the source at every earlier commit, were released under
   [CC0 1.0](LICENSES/CC0-1.0.txt) and stay that way.
-- **What OpenCE builds on.** The decompilation of
+- **What CoreCE builds on.** OpenCE, under the same licence; the decompilation of
   [punpckhdq/halo](https://github.com/punpckhdq/halo) is under the AGPL 3.0
   from 17 October 2026, and under CC0 1.0 before that date.
   [bnunu/halo-1](https://github.com/bnunu/halo-1) is under CC0 1.0.
@@ -372,7 +373,7 @@ version (`AGPL-3.0-or-later`). It comes with no warranty. The full text is in
   next to them (`port/third_party`, `port/assets/fonts`,
   `port/assets/icons`, `port/assets/text_filter`). The release downloads and
   the web site's `licenses.txt` carry their notices.
-- **Halo is not covered.** The licence covers the work of OpenCE's authors.
+- **Halo is not covered.** The licence covers the work of CoreCE's and OpenCE's authors.
   It gives no rights in Halo, its maps or anything else that Microsoft owns.
 
 ## Disclaimer

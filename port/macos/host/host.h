@@ -1,7 +1,7 @@
 /*
 HOST.H
 
-Internals of the macOS port's host (the arm64 executable of OpenCE.app). See
+Internals of the macOS port's host (the arm64 executable of CoreCE.app). See
 port/macos/README.md for the overall design and
 port/android/include/halo_android_abi.h for the guest contract, which the
 two ports share.
@@ -131,7 +131,7 @@ void *host_resolve_import(const char *name);
 
 /* ---------- the app (host_main.m) */
 
-/* the folder the game's own files go in, ~/Library/Application Support/OpenCE */
+/* the folder the game's own files go in, ~/Library/Application Support/CoreCE */
 const char *host_support_directory(void);
 /* the guest image and the files the app carries (Contents/Resources) */
 const char *host_resource_directory(void);

@@ -2,10 +2,10 @@
    (port/assets/menus/svg): navy panels with a 2px blue edge, the selected
    one brighter and glowing, the settings screens' gradient between a bright
    rule and a button bar's, and the fonts the port draws the menus with
-   (OpenCE for titles, Overpass for the rest). */
+   (CoreCE for titles, Overpass for the rest). */
 
 @font-face {
-  font-family: "OpenCE";
+  font-family: "CoreCE";
   src: url("fonts/CoreCE-Regular.ttf") format("truetype");
   font-display: swap;
 }
@@ -41,7 +41,7 @@
   --bad-text: #ffd2a8;
   --bad-ground: #2a1404;
   --label-font: "Overpass", system-ui, sans-serif;
-  --title-font: "OpenCE", "Overpass", system-ui, sans-serif;
+  --title-font: "CoreCE", "Overpass", system-ui, sans-serif;
 }
 
 * { box-sizing: border-box; }

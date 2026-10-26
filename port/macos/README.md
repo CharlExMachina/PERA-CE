@@ -1,7 +1,7 @@
 # macOS
 
 `ninja macos` builds the game for Macs with Apple silicon:
-`build/macos/OpenCE.app`.
+`build/macos/CoreCE.app`.
 
 The game is native ARM code. It draws with Metal and plays sound and reads
 controllers through SDL3 (Core Audio, Game Controller). It needs macOS 13 or
@@ -35,32 +35,45 @@ the game's code.
 1. Go to the root folder of the repository.
 2. Enter `python configure.py`.
 3. Enter `ninja macos` (on a Mac, `ninja` alone builds it too).
-4. Open `build/macos/OpenCE.app`, or enter
-   `build/macos/OpenCE.app/Contents/MacOS/halo`.
+4. Open `build/macos/CoreCE.app`, or enter
+   `build/macos/CoreCE.app/Contents/MacOS/halo`.
 
 The app is signed ad hoc (without a developer identity). macOS runs it on
 the Mac that built it. A copy downloaded from elsewhere needs the right
 click, Open, at its first start (or `xattr -dr com.apple.quarantine
-OpenCE.app`).
+CoreCE.app`).
 
 ## Game data and files
 
 At the first start, the game asks for an Xbox disc image (`.xiso` or
 `.iso`) and extracts its `maps/` folder (refer to the README of the
 repository). The game keeps its files in `~/Library/Application
-Support/OpenCE`:
+Support/CoreCE`, as CoreCE's own Mac app did:
 
-| Item | Location in `~/Library/Application Support/OpenCE` |
+| Item | Location in `~/Library/Application Support/CoreCE` |
 | --- | --- |
 | Game data | `maps` |
-| Saved games (`z:\` and `u:\`) | `saves` |
+| Saved games (`z:\` and `u:\`) | `z` and `u` |
 | Settings | `config.toml` |
 | Log | `debug.txt` |
 | Mods | `mods` |
 | Screenshots | `screenshots` |
 
 Photo mode's photos (refer to "Photo mode" in
-[port/linux/README.md](../linux/README.md)) go in `~/Pictures/OpenCE`.
+[port/linux/README.md](../linux/README.md)) go in `~/Pictures/CoreCE`.
+
+At its first start, when that folder is not there yet, the app copies the
+folder of an earlier one into it: `~/Library/Application Support/OpenCE`
+(this app before it was named CoreCE, whose saves were in its `saves`
+folder; they go to the folder itself), else CoreCE's earlier `Halo OG`,
+else `Halo CE Universal`. The earlier folder stays as it was, and a file of
+the app's own `saves` is kept over a file of the same name that CoreCE's
+Mac app had there. Each file is a clone where the volume can make one
+(APFS), so the copy takes no room; it is written to `CoreCE.partial` and
+given its name once it is whole. When it cannot be copied whole, the app
+uses the earlier folder as it is that once (`host_main.m`, `support_migrate`).
+Photos already in `~/Pictures/OpenCE` stay there. The bundle identifier is
+still `org.opence.halo`, so that macOS keeps the permissions it gave.
 
 Started from a folder that holds `maps/` (or `assets/maps/`, as the root of
 the repository), the game plays those maps instead, as the Linux build does.
@@ -145,7 +158,7 @@ function's prototype: the host's functions take ordinary pointers, and
 return guest addresses or handles.
 
 To the guest, the folder its executable is in (`/proc/self/exe`,
-`SDL_GetBasePath`) is `~/Library/Application Support/OpenCE`, where the
+`SDL_GetBasePath`) is `~/Library/Application Support/CoreCE`, where the
 desktop ports keep their files beside the executable.
 
 ### Metal
@@ -197,7 +210,7 @@ The port's code tells apart, each its own macro (`tools/macos_build.py`):
 ## Find problems
 
 - The host's log and the game's go to standard error: start the app from a
-  terminal (`build/macos/OpenCE.app/Contents/MacOS/halo`). `debug.txt` is
+  terminal (`build/macos/CoreCE.app/Contents/MacOS/halo`). `debug.txt` is
   the game's log.
 - If the guest code stops, the log shows the registers and the guest's
   frames, as guest addresses. To find the functions, enter

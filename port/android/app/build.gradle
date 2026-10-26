@@ -15,7 +15,7 @@ def buildNumber = buildNumberText.isInteger() ? buildNumberText.toInteger() : 0
 // counts: a fork's builds update from the fork)
 def buildRepository = System.getenv("HALO_BUILD_REPOSITORY") ?: ""
 if (!(buildRepository ==~ /[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/)) {
-    buildRepository = "OpenCommunityEdition/OpenCE"
+    buildRepository = "mastercheese-dev/CoreCE"
 }
 // the install version (versionCode) increases with every CI run, of a
 // build that looks for updates or not, so that APKs signed with the same

@@ -988,9 +988,9 @@ static boolean photo_path(
 		FILE *existing;
 
 		if (collision)
-			snprintf(path, size, "%s/OpenCE %s %s (%d).png", root, level, stamp, collision + 1);
+			snprintf(path, size, "%s/CoreCE %s %s (%d).png", root, level, stamp, collision + 1);
 		else
-			snprintf(path, size, "%s/OpenCE %s %s.png", root, level, stamp);
+			snprintf(path, size, "%s/CoreCE %s %s.png", root, level, stamp);
 		existing = fopen(path, "rb");
 		if (!existing)
 			break;

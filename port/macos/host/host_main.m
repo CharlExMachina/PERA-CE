@@ -1,7 +1,7 @@
 /*
 HOST_MAIN.M
 
-Entry point of the macOS port (OpenCE.app's executable).
+Entry point of the macOS port (CoreCE.app's executable).
 
 It loads the guest image (the game, built as ILP32 code: tools/macos_build.py)
 from the app's resources, gives the game an environment and runs its
@@ -9,8 +9,10 @@ main() on the process's main thread, which SDL and Cocoa need for the
 window and its events, on a stack in guest memory (host_thread.c).
 
 The game's own files - config.toml, the maps folder it extracts from a disc
-image at the first start, the log - go in ~/Library/Application
-Support/OpenCE: to the guest, that is the folder its executable is in
+image at the first start, the saves, the log - go in ~/Library/Application
+Support/CoreCE, as CoreCE's own Mac app kept them (the first start copies
+an earlier app's folder there: support_migrate). To the guest, that is the
+folder its executable is in
 (/proc/self/exe, host_syscall.c; SDL_GetBasePath, host_sdl.c), which is where
 the desktop ports keep them (port/linux/src/port_config.c, xbox_files.c).
 Started from a folder holding maps (or assets/maps, as the repository's
@@ -22,9 +24,12 @@ root), the game plays those instead, as the Linux build does.
 #include "host.h"
 
 #include <SDL3/SDL.h>
+#include <copyfile.h>
+#include <dirent.h>
 #include <errno.h>
 #include <mach-o/dyld.h>
 #include <pthread.h>
+#include <removefile.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -99,22 +104,122 @@ const char *host_resource_directory(void)
 	return resource_directory;
 }
 
+/* the folders the earlier apps kept their files in, tried in this order:
+this app's before it was named CoreCE (with its saves in saves/), then
+CoreCE's own earlier names */
+static const char *const legacy_folders[] = { "OpenCE", "Halo OG", "Halo CE Universal" };
+
+/* copies the folder from into to, which is made if need be: regular files
+and folders only (a link is not followed), and a file already in to is
+kept. Each file is a clone where the volume can make one (APFS), which takes
+no room. skip names one entry of from not to copy. Returns nonzero if every
+file was copied */
+static int folder_copy(const char *from, const char *to, const char *skip)
+{
+	DIR *directory = opendir(from);
+	struct dirent *entry;
+	int succeeded = 1;
+
+	if (!directory)
+		return 0;
+	if (mkdir(to, 0755) != 0 && errno != EEXIST)
+	{
+		closedir(directory);
+		return 0;
+	}
+	while ((entry = readdir(directory)) != NULL)
+	{
+		char source[2048], destination[2048];
+		struct stat information;
+
+		if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..") || (skip && !strcmp(entry->d_name, skip)))
+			continue;
+		if (snprintf(source, sizeof(source), "%s/%s", from, entry->d_name) >= (int)sizeof(source) ||
+			snprintf(destination, sizeof(destination), "%s/%s", to, entry->d_name) >= (int)sizeof(destination) ||
+			lstat(source, &information) != 0)
+		{
+			succeeded = 0;
+			continue;
+		}
+		if (S_ISDIR(information.st_mode))
+			succeeded &= folder_copy(source, destination, NULL);
+		else if (S_ISREG(information.st_mode) && access(destination, F_OK) != 0 &&
+			copyfile(source, destination, NULL, COPYFILE_CLONE | COPYFILE_EXCL | COPYFILE_NOFOLLOW) != 0)
+		{
+			host_logf(HOST_LOG_WARN, "could not copy %s: %s", source, strerror(errno));
+			succeeded = 0;
+		}
+	}
+	closedir(directory);
+	return succeeded;
+}
+
+/* the first start of a CoreCE app: the files of the newest earlier folder
+there is are copied into the new one (as a folder of its own, given the
+name only once it is whole); the earlier folder stays as it was. Saves
+that were in its saves/ go to the folder itself, where CoreCE keeps them,
+before the rest, so a file the CoreCE app had there too is this app's.
+Returns the earlier folder when it could not be copied, for this start to
+go on using, else NULL */
+static const char *support_migrate(const char *parent)
+{
+	static char legacy[1024];
+	char partial[1100], saves[1100];
+	struct stat information;
+	int index;
+
+	for (index = 0; index < (int)(sizeof(legacy_folders) / sizeof(legacy_folders[0])); index++)
+	{
+		snprintf(legacy, sizeof(legacy), "%s/%s", parent, legacy_folders[index]);
+		if (lstat(legacy, &information) == 0 && S_ISDIR(information.st_mode))
+			break;
+	}
+	if (index == (int)(sizeof(legacy_folders) / sizeof(legacy_folders[0])))
+		return NULL;
+	snprintf(partial, sizeof(partial), "%s.partial", support_directory);
+	removefile(partial, NULL, REMOVEFILE_RECURSIVE);
+	host_logf(HOST_LOG_INFO, "copying %s to %s (it stays as it is)", legacy, support_directory);
+	snprintf(saves, sizeof(saves), "%s/saves", legacy);
+	if ((lstat(saves, &information) != 0 || !S_ISDIR(information.st_mode) || folder_copy(saves, partial, NULL)) &&
+		folder_copy(legacy, partial, "saves") && rename(partial, support_directory) == 0)
+	{
+		return NULL;
+	}
+	host_logf(HOST_LOG_WARN, "%s could not be copied whole; using it as it is (the next start tries again)", legacy);
+	removefile(partial, NULL, REMOVEFILE_RECURSIVE);
+	return legacy;
+}
+
 static void folders_find(void)
 {
 	char executable[1024];
+	char parent[1024];
 	uint32_t size = sizeof(executable);
 	char *slash;
 	const char *home = getenv("HOME");
+	const char *legacy = NULL;
+	struct stat information;
 
 	@autoreleasepool
 	{
 		NSArray *paths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
 
 		if (paths.count)
-			snprintf(support_directory, sizeof(support_directory), "%s/OpenCE", [paths[0] fileSystemRepresentation]);
+			snprintf(parent, sizeof(parent), "%s", [paths[0] fileSystemRepresentation]);
 		else
-			snprintf(support_directory, sizeof(support_directory), "%s/Library/Application Support/OpenCE",
-				home ? home : "");
+			snprintf(parent, sizeof(parent), "%s/Library/Application Support", home ? home : "");
+	}
+	snprintf(support_directory, sizeof(support_directory), "%s/CoreCE", parent);
+	if (lstat(support_directory, &information) != 0 && errno == ENOENT)
+		legacy = support_migrate(parent);
+	if (legacy)
+	{
+		char saves[1100];
+
+		/* (the earlier folder this once; its saves where that app had them) */
+		snprintf(support_directory, sizeof(support_directory), "%s", legacy);
+		snprintf(saves, sizeof(saves), "%s/saves", legacy);
+		setenv("HALO_SAVE_ROOT", lstat(saves, &information) == 0 ? saves : legacy, 0);
 	}
 	mkdir(support_directory, 0755);
 
@@ -284,6 +389,6 @@ int main(int argc, char *argv[])
 		if (getcwd(cwd, sizeof(cwd)) && !strcmp(cwd, "/"))
 			chdir(support_directory);
 	}
-	host_logf(HOST_LOG_INFO, "OpenCE for macOS: the game's files are in %s", support_directory);
+	host_logf(HOST_LOG_INFO, "CoreCE for macOS: the game's files are in %s", support_directory);
 	host_run_guest_main(make_boot(argc, argv));
 }

@@ -19,7 +19,7 @@ Path components are
 matched case-insensitively, like the Xbox's FATX volumes.
 
 Photo mode's photos (port/linux/game/photo_mode.c) go in the photos root:
-paths.photos, else the user's Pictures folder's OpenCE folder on the
+paths.photos, else the user's Pictures folder's CoreCE folder on the
 desktop, else the data root's photos folder (on Android, the app's own
 folder; in a browser, its private storage, where the page offers each photo
 as a download).
@@ -256,9 +256,10 @@ const char *platform_save_root(void)
 		}
 #endif
 #ifdef HALO_MACOS
-		/* the Mac app keeps them with its other files (port/macos/README.md) */
+		/* the Mac app keeps them with its other files, as CoreCE's did
+		(port/macos/README.md) */
 		else if (home && *home)
-			snprintf(root, sizeof(root), "%s/Library/Application Support/OpenCE/saves", home);
+			snprintf(root, sizeof(root), "%s/Library/Application Support/CoreCE", home);
 #endif
 		else if (data_home && *data_home)
 		{
@@ -333,11 +334,11 @@ const char *platform_photos_root(void)
 			snprintf(root, sizeof(root), "%s", setting);
 #ifdef PHOTOS_PICTURES_FOLDER
 		else if (pictures && *pictures)
-			snprintf(root, sizeof(root), "%sOpenCE", pictures);
+			snprintf(root, sizeof(root), "%sCoreCE", pictures);
 #endif
 #if defined(_WIN32) || defined(HALO_MACOS)
 		else if (home && *home)
-			snprintf(root, sizeof(root), "%s/Pictures/OpenCE", home);
+			snprintf(root, sizeof(root), "%s/Pictures/CoreCE", home);
 #endif
 		else
 			snprintf(root, sizeof(root), "%s/photos", platform_data_root());

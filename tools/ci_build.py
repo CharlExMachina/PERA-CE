@@ -134,7 +134,7 @@ def main() -> int:
         for pdb in [ROOT / "build/windows/halo.pdb", *sorted((ROOT / "build/windows/third_party").glob("SDL3-*/lib/x86/SDL3.pdb"))]:
             shutil.copy2(pdb, symbols)
             print(f"{pdb.relative_to(ROOT)} -> {symbols.relative_to(ROOT)}", flush=True)
-    # OpenCE's own licence, the AGPL, which asks each copy to carry its text
+    # CoreCE's own licence, the AGPL, which asks each copy to carry its text
     shutil.copy2(ROOT / "LICENSE", dist / "LICENSE.txt")
     if args.platform != "web":
         # internet play's DTLS with browsers, and the Linux self-updater's TLS

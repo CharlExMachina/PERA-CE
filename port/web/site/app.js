@@ -79,14 +79,14 @@ async function readStorageText(name) {
 }
 
 async function downloadLog() {
-  let text = `OpenCE web ${JSON.stringify(stamp)}\n${navigator.userAgent}\n\n` + log.join('\n') + '\n';
+  let text = `CoreCE web ${JSON.stringify(stamp)}\n${navigator.userAgent}\n\n` + log.join('\n') + '\n';
   // (debug.txt, which the game writes, when it is not open: before or after
   // a game)
   if (!gameStarted || gameStopped) {
     const debug = await readStorageText('debug.txt');
     if (debug) text += '\n---------- debug.txt\n' + debug.slice(-2000000);
   }
-  download('opence-web-log.txt', new Blob([text], { type: 'text/plain' }));
+  download('corece-web-log.txt', new Blob([text], { type: 'text/plain' }));
 }
 
 // ---------- errors: the game's own, not a browser extension's
@@ -509,7 +509,7 @@ $('export-saves').addEventListener('click', async () => {
     alert('There are no saved games yet.');
     return;
   }
-  download('opence-saves.zip', zip(entries));
+  download('corece-saves.zip', zip(entries));
 });
 
 $('download-log').addEventListener('click', downloadLog);
