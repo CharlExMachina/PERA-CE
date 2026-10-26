@@ -67,6 +67,7 @@ symbols in this file:
 #include "scenario/scenario.h"
 #include "tag_files/tag_groups.h"
 #include "units/units.h"
+#include "theater.h" /* port: port/linux/game/theater_film.c */
 
 /* ---------- constants */
 
@@ -184,7 +185,10 @@ void cheats_network_client_enforce(
 	rider_ejection = TRUE;
 	player_autoaim_flag = TRUE;
 	player_magnetism_flag = TRUE;
-	changed |= game_time_reset_speed();
+	/* port: but a saved film's playback, whose speed the viewer picks
+	(port/linux/game/theater.c) */
+	if (!theater_playing())
+		changed |= game_time_reset_speed();
 	changed |= cheats_network_client_rasterizer_enforce();
 	if (changed)
 	{

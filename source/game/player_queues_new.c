@@ -115,6 +115,7 @@ symbols in this file:
 #include "memory/data.h"
 #include "networking/network_game_globals.h"
 #include "units/units.h"
+#include "theater.h" /* port: port/linux/game/theater_film.c */
 
 /* ---------- constants */
 
@@ -703,6 +704,15 @@ static boolean update_client_dequeue_distributed(
 		if (local_player_index != NONE)
 		{
 			action = update_client_globals.saved_action_collection.actions[local_player_index];
+			/* port: a film's players take the input they had, not this
+			machine's controllers' (port/linux/game/theater_film.c) */
+			if (theater_playing() && !theater_film_action(local_player_index, &action))
+			{
+				csmemset(&action, 0, sizeof(action));
+				action.desired_weapon_index = NONE;
+				action.desired_grenade_index = NONE;
+				action.desired_zoom_level = NONE;
+			}
 			if (local_player_index < MAXIMUM_LOCAL_PLAYERS)
 			{
 				/* (for the host: network_distributed.c) */
@@ -746,7 +756,18 @@ boolean update_client_dequeue(
 		0x1AF,
 		update_client_globals.initialized);
 	if (game_connection() == _game_connection_network_client)
-		return update_client_dequeue_distributed(actions);
+	{
+		boolean dequeued;
+
+		/* port: a film's tick: the messages its client had before it, and
+		its players' input (port/linux/game/theater_film.c) */
+		if (theater_playing())
+			theater_film_tick();
+		dequeued = update_client_dequeue_distributed(actions);
+		/* port: and this tick into the game's film */
+		theater_record_tick(actions, update_client_globals.queues->count);
+		return dequeued;
+	}
 	update = update_client_get_update(update_client_globals.next_update_number_to_dequeue);
 	if (!update ||
 		update_client_globals.next_update_number_to_dequeue>update_client_globals.latest_update_number_received ||
@@ -810,6 +831,8 @@ boolean update_client_dequeue(
 			(NONE == actions[queue_index].desired_zoom_level) || (actions[queue_index].desired_zoom_level>=0));
 	}
 	update_client_globals.next_update_number_to_dequeue += 1;
+	/* port: this tick into the game's film, the host's (port/linux/game/theater_film.c) */
+	theater_record_tick(actions, update_client_globals.queues->count);
 
 	return TRUE;
 }

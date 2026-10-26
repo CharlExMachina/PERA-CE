@@ -234,6 +234,27 @@ const char *platform_photos_root(void)
 	return root;
 }
 
+/* where saved films go (port/linux/game/theater_film.c): paths.films, else
+the save root's films folder */
+const char *platform_films_root(void)
+{
+	static char root[MAX_PATH];
+
+	if (!root[0])
+	{
+		const char *setting = config_string("paths.films");
+
+		if (*setting)
+			snprintf(root, sizeof(root), "%s", setting);
+		else
+			snprintf(root, sizeof(root), "%s/films", platform_save_root());
+		trim_separators(root);
+		make_directories(root);
+		platform_log("films root: %s", root);
+	}
+	return root;
+}
+
 const char *platform_custom_edition_root(void)
 {
 	static char root[MAX_PATH];

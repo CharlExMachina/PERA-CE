@@ -52,12 +52,13 @@
 	<widget name="main_menu/main_menu_select_list" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child up_down_tabs_items" description="main_menu/main_menu_list_ext_desc">
 		<data input="main menu fake animate"/>
 		<on event="down"/>
-		<child widget="main_menu/main_menu_item_load_camp" x="194" y="247"/>
-		<child widget="main_menu/main_menu_item_multiplayer" x="192" y="283"/>
-		<child widget="main_menu/main_menu_item_profile" x="192" y="319"/>
-		<child widget="main_menu/main_menu_item_settings" x="192" y="355"/>
-		<child widget="main_menu/main_menu_item_mods" x="192" y="391"/>
-		<child widget="main_menu/main_menu_item_quit_game" x="192" y="427"/>
+		<child widget="main_menu/main_menu_item_load_camp" x="194" y="229"/>
+		<child widget="main_menu/main_menu_item_multiplayer" x="192" y="265"/>
+		<child widget="main_menu/main_menu_item_profile" x="192" y="301"/>
+		<child widget="main_menu/main_menu_item_settings" x="192" y="337"/>
+		<child widget="main_menu/main_menu_item_mods" x="192" y="373"/>
+		<child widget="main_menu/main_menu_item_theater" x="192" y="409"/>
+		<child widget="main_menu/main_menu_item_quit_game" x="192" y="445"/>
 	</widget>
 	<widget name="main_menu/new_campaign_creating_profile" width="640" height="480" flags="pass_unhandled_to_focused_child no_history" auto_close="1">
 		<on event="deleted" run="new campaign decision" open="main_menu/new_campaign_saving_profile"/>

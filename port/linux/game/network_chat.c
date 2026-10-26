@@ -82,6 +82,7 @@ mutes.
 #include "network_chat.h"
 #include "text_filter.h"
 #include "halo_keyboard.h"
+#include "theater.h"
 
 #include <stdio.h>
 
@@ -1783,8 +1784,9 @@ void network_chat_update(
 		pressed = held & ~chat_actions_held;
 		chat_actions_held = held;
 		/* (or the controller's D-pad Up, the touch controls' too, which opens
-		the on-screen keyboard) */
-		if ((pressed || TEST_FLAG(pad_pressed, HALO_CHAT_PAD_UP)) && !console_is_active())
+		the on-screen keyboard; not in a saved film, whose D-pad plays it:
+		theater.c) */
+		if ((pressed || TEST_FLAG(pad_pressed, HALO_CHAT_PAD_UP)) && !console_is_active() && !theater_playing())
 		{
 			/* (no typing where the host has the chat off: it says so, once a
 			while) */

@@ -51,6 +51,9 @@ boolean network_connection_connect(
 struct network_connection *network_connection_new(
 	unsigned long flags,
 	word well_known_port);
+/* port: a saved film's (port/linux/game/theater.c) */
+struct network_connection *network_connection_new_film(
+	void);
 boolean network_connection_last_read_was_unreliable(
 	void);
 boolean network_connection_read(

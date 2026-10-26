@@ -476,6 +476,7 @@ symbols in this file:
 #include "tag_files/tag_files.h"
 #include "map_share.h" /* port: port/linux/game/map_share.c */
 #include "bots.h" /* port: port/linux/game/bots.c */
+#include "theater.h" /* port: port/linux/game/theater_film.c */
 
 /* port: internet play's Discord presence (port/linux/src/p2p.c), and the
 server browser's listing of a public game (p2p_lobby.c) */
@@ -4635,7 +4636,10 @@ static boolean network_game_server_add_new_client(
 	{
 		for (i = 0; i < MAXIMUM_NETWORK_MACHINE_COUNT; i++)
 		{
-			if (server->client_machines[i].machine_index == NONE)
+			/* port: not the slot of the host's saved film's machine, while
+			it records films (port/linux/game/theater_film.c) */
+			if (server->client_machines[i].machine_index == NONE &&
+				(i != THEATER_FILM_MACHINE || !theater_film_machine_reserved()))
 			{
 				struct transport_address client_address = { 0 };
 

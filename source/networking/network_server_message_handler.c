@@ -262,6 +262,7 @@ symbols in this file:
 #include "networking/network_server_manager_internal.h"
 #include "networking/network_server_message_handler.h"
 #include "text/unicode.h"
+#include "theater.h" /* port: port/linux/game/theater_film.c */
 /* system_milliseconds(), for the settings update interval */
 #include "cseries/cseries_windows.h"
 
@@ -880,6 +881,12 @@ boolean network_distributed_server_send_to_machine(
 
 	if (!server || size > sizeof(buffer))
 		return FALSE;
+	/* port: the film's machine's, into the film (port/linux/game/theater_film.c) */
+	if (machine_index == THEATER_FILM_MACHINE && theater_film_machine_active())
+	{
+		theater_record_message(message, size, TRUE);
+		return TRUE;
+	}
 	/* (a machine's slot is its index, network_game_server_accept_client_machine_into_game) */
 	machine = network_game_server_client_machine_in_game(server, machine_index);
 	if (!machine)
@@ -915,6 +922,12 @@ boolean network_distributed_server_send_to_machine_reliably(
 
 	if (!server || size > sizeof(buffer))
 		return FALSE;
+	/* port: the film's machine's, into the film (port/linux/game/theater_film.c) */
+	if (machine_index == THEATER_FILM_MACHINE && theater_film_machine_active())
+	{
+		theater_record_message(message, size, FALSE);
+		return TRUE;
+	}
 	/* (machine_index is the game's machine, as the message handlers have
 	it: the client machine at that slot) */
 	machine = network_game_server_client_machine_in_game(server, machine_index);
@@ -939,6 +952,9 @@ boolean network_distributed_server_send_to_all_reliably(
 
 	if (!server)
 		return FALSE;
+	/* port: and to the film's machine, into the film (port/linux/game/theater_film.c) */
+	if (theater_film_machine_active() && size <= NETWORK_MESSAGE_BUFFER_SIZE)
+		theater_record_message(message, size, FALSE);
 	for (machine_index = 0; machine_index < MAXIMUM_NETWORK_MACHINE_COUNT; machine_index++)
 	{
 		struct network_game_server_client_machine *machine =

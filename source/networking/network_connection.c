@@ -213,6 +213,8 @@ symbols in this file:
 #include "memory/circular_queue.h"
 #include "network_connection.h"
 #include "networking/network_messages.h" /* port: NETWORK_GAME_CLIENT_PORT */
+#include "networking/network_game_protocol.h" /* port: NETWORK_GAME_SERVER_PORT */
+#include "theater.h" /* port: port/linux/game/theater_film.c */
 
 /* ---------- constants */
 
@@ -244,6 +246,8 @@ enum
 	/* a message of a size the stream cannot hold was read: what follows it
 	is not messages (the connection is closed too) */
 	_connection_reliable_stream_broken_bit,
+	/* port: a saved film's (network_connection_new_film) */
+	_connection_film_bit,
 };
 
 enum network_connection_traffic_event
@@ -360,6 +364,10 @@ boolean network_connection_connected(
 		"c:\\halo\\SOURCE\\networking\\network_connection.c",
 		0x15C,
 		connection);
+
+	/* port: a film's is its host's (network_connection_new_film) */
+	if (TEST_FLAG(connection->flags, _connection_film_bit))
+		return TRUE;
 
 	return ((connection->flags & FLAG(_connection_create_clientside_client_bit)) ||
 		(connection->flags & FLAG(_connection_create_serverside_client_bit))) &&
@@ -841,6 +849,9 @@ boolean network_connection_write(
 		0x174,
 		GET_MESSAGE_SIZE(*header) == buffer_size,
 		"bad message or buffer_size parameter");
+	/* port: what a film's client says goes nowhere */
+	if (TEST_FLAG(connection->flags, _connection_film_bit))
+		return TRUE;
 
 	byte_swap_message_header(header, _byte_order_network);
 
@@ -1261,6 +1272,34 @@ struct network_connection *network_connection_new(
 	return connection;
 }
 
+/* port: a saved film's connection (port/linux/game/theater.c): a client's
+whose host is the film, with no sockets. Its reads are the film's messages,
+from an address of its own (127.0.0.2, the host's); its writes go nowhere,
+and it is connected until deleted. */
+struct network_connection *network_connection_new_film(
+	void)
+{
+	struct network_connection *connection = debug_malloc(
+		sizeof(struct network_connection),
+		TRUE,
+		"c:\\halo\\SOURCE\\networking\\network_connection.c",
+		0xB6);
+
+	if (connection)
+	{
+		connection->flags = FLAG(_connection_create_clientside_client_bit) | FLAG(_connection_film_bit);
+		connection->reliable_address.address.long_words[0] = 0x7F000002;
+		connection->reliable_address.address_length = IPV4_ADDRESS_LENGTH;
+		connection->reliable_address.port = NETWORK_GAME_SERVER_PORT;
+		connection->reliable_address_valid = TRUE;
+		connection->unreliable_address = connection->reliable_address;
+		connection->unreliable_address_valid = TRUE;
+		connection->last_keep_alive_time = system_milliseconds();
+	}
+
+	return connection;
+}
+
 /* port: a client binds any free port when another game on this computer
 already has the client port. SO_REUSEADDR would let both bind it, and
 Windows would deliver the host's datagrams to only one of them. */
@@ -1378,6 +1417,16 @@ boolean network_connection_read(
 {
 	boolean result;
 
+	/* port: a film's messages, each before the tick the client read it
+	before (port/linux/game/theater_film.c), from its host's address */
+	if (TEST_FLAG(connection->flags, _connection_film_bit))
+	{
+		result = theater_film_read(buffer, buffer_size, &network_connection_last_read_unreliable);
+		if (result && source_address)
+			*source_address = connection->reliable_address;
+		return result;
+	}
+
 	if (TEST_FLAG(connection->flags, _connection_create_server_bit))
 	{
 		return network_client_unreliable_connection_read(connection, buffer, buffer_size, source_address);
@@ -1465,6 +1514,10 @@ boolean network_connection_disconnect(
 	struct network_connection *connection)
 {
 	boolean success = TRUE;
+
+	/* port: a film's has nothing to close */
+	if (TEST_FLAG(connection->flags, _connection_film_bit))
+		return TRUE;
 
 	if (network_connection_connected(connection))
 	{
@@ -1682,6 +1735,10 @@ boolean network_connection_idle(
 		connection);
 
 	SET_FLAG(connection->flags, _connection_going_stale_bit, FALSE);
+	/* port: a film's never goes quiet: its messages are read as its ticks
+	go (network_connection_read) */
+	if (TEST_FLAG(connection->flags, _connection_film_bit))
+		return TRUE;
 	if (timeout)
 	{
 		/* (differences, which the millisecond clock's wrap leaves right) */

@@ -39,6 +39,16 @@ boolean network_game_client_join_first_available_game(
 	void);
 boolean network_game_client_set_team(
 	char team_index);
+/* port: a saved film played by this machine's client, whose host is the
+film (port/linux/game/theater.c) */
+boolean network_game_client_port_play_film(
+	struct network_game const *game,
+	short machine_index,
+	long random_seed);
+boolean network_game_client_port_read_film_messages(
+	void);
+boolean network_game_client_port_in_game(
+	void);
 /* whether the advertised game's host has this machine's network version
 (else the player is told, and it is not to be joined) */
 /* port: whether the advertised game is under way, not in its lobby */

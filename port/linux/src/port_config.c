@@ -435,6 +435,9 @@ static const struct config_setting config_settings[] =
 		"gray, yellow, green, pink, purple, cyan, cobalt, orange, teal, sage,\n"
 		"brown, tan, maroon or salmon." },
 
+	{ "game.record_films", _config_boolean, "false", "HALO_RECORD_FILMS", _environment_value, _platform_all,
+		"Save a film of every network game this machine plays, to watch again in\n"
+		"the main menu's THEATER (in paths.films)." },
 	{ "game.unlock_all_levels", _config_boolean, "false", "HALO_UNLOCK_ALL_LEVELS", _environment_value, _platform_all,
 		"true: a profile made from now on starts with every campaign level\n"
 		"finished on every difficulty, so any level can be played. false: a new\n"
@@ -459,6 +462,9 @@ static const struct config_setting config_settings[] =
 	{ "paths.photos", _config_string, "\"\"", "HALO_PHOTOS_ROOT", _environment_value, _platform_desktop,
 		"Where photo mode's photos go; empty for the usual place (the Pictures\n"
 		"folder's OpenCE folder)." },
+	{ "paths.films", _config_string, "\"\"", "HALO_FILMS_ROOT", _environment_value, _platform_desktop,
+		"Where saved films of network games go (game.record_films); empty for\n"
+		"the saves folder's films folder." },
 	{ "paths.custom_edition", _config_string, "\"\"", "HALO_CUSTOM_EDITION_ROOT", _environment_value, _platform_desktop,
 		"A Halo Custom Edition install whose maps folder is looked in after the\n"
 		"custom_maps folder for Custom Edition maps and their bitmaps.map,\n"
@@ -749,6 +755,9 @@ static const struct config_setting config_settings[] =
 		"A game of this machine alone runs one tick a frame, whatever time has\n"
 		"passed, so that it plays the same every time (tests); game_speed has no\n"
 		"effect." },
+	{ "debug.film_playback", _config_string, "\"\"", "HALO_FILM_PLAYBACK", _environment_value, _platform_all,
+		"A saved film's path to play once the main menu has loaded (tests);\n"
+		"empty for none." },
 	{ "debug.exit_after", _config_real, "0.0", "HALO_EXIT_AFTER", _environment_value, _platform_all,
 		"Quit this many seconds after the window opens (without a window, after\n"
 		"the first frame); 0 never." },

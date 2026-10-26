@@ -395,6 +395,8 @@ static char const *const port_function_names[] =
 	/* (the main menu's Mods: menu_functions.c) */
 	"port mods init", "port mods close", "port mods toggle", "port mods move up", "port mods move down",
 	"port mods save",
+	/* (the main menu's THEATER: menu_functions.c) */
+	"port films init", "port films play",
 	/* (the SKULLS screens, the campaign's and Server Setup's: menu_functions.c) */
 	"port skulls init", "port skulls init network", "port skulls toggle", "port skulls clear",
 	"port skulls save",
@@ -426,6 +428,8 @@ static char const *const port_game_data_input_names[] =
 	"port mods update",
 	/* (the SKULLS screens) */
 	"port skulls update",
+	/* (the main menu's THEATER) */
+	"port films update",
 	/* (network co-op's pause menu's FRIENDLY FIRE: its text, ON or OFF) */
 	"port coop friendly fire text",
 };

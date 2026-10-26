@@ -78,6 +78,7 @@ machine (their datum identifiers need not be).
 #include "network_distributed.h"
 #include "network_spectator.h"
 #include "network_voice.h"
+#include "theater.h"
 #include "network_aim_assist.h"
 #include "map_share.h"
 #include "latency_meter.h"
@@ -1292,6 +1293,10 @@ boolean distributed_player_is_local(
 {
 	struct player_datum *player = player_index != NONE ? player_try_and_get(player_index) : NULL;
 
+	/* (a film the host made has every player as the host had them, none
+	this machine's own to predict: theater_film.c) */
+	if (theater_film_from_host())
+		return FALSE;
 	return player && player->local_player_index != NONE;
 }
 
@@ -1360,11 +1365,16 @@ short distributed_client_machines(
 		{
 			if (distributed_machines.indices[index] >= 0 &&
 				distributed_machines.indices[index] < HALO_PORT_MAXIMUM_NETWORK_MACHINES &&
+				distributed_machines.indices[index] != THEATER_FILM_MACHINE &&
 				!distributed_machine_is_local(distributed_machines.indices[index]))
 			{
 				distributed_machines.indices[distributed_machines.count++] = distributed_machines.indices[index];
 			}
 		}
+		/* (and the host's saved film's machine, which has no players, and
+		is sent what a spectator's is: theater_film.c) */
+		if (theater_film_machine_active() && distributed_machines.count < HALO_PORT_MAXIMUM_NETWORK_MACHINES)
+			distributed_machines.indices[distributed_machines.count++] = THEATER_FILM_MACHINE;
 		distributed_machines.valid = distributed_machines.in_tick;
 	}
 	for (index = 0; index < distributed_machines.count && index < maximum; index++)
@@ -2590,7 +2600,7 @@ static void distributed_handle_unit_state(
 	if (!player)
 		return;
 	player_index = DATUM_INDEX_NEW(state->player_index, player->identifier);
-	local = player->local_player_index != NONE;
+	local = distributed_player_is_local(player_index);
 	/* how it died, for when this machine's copy dies
 	(network_distributed_player_killed) */
 	if (state->player_index < MAXIMUM_TRACKED_PLAYERS)
@@ -3809,6 +3819,59 @@ void network_distributed_new_game(
 	network_aim_assist_reset();
 	network_votekick_new_game();
 	network_spectator_new_game();
+}
+
+/* (the host) its saved film's machine (theater_film.c) is in the game, as a
+machine that has loaded: told the game's objects, every player's statistics
+and the game type's state, who watches, and from now on sent what a client
+is (distributed_client_machines) */
+void network_distributed_film_machine_loaded(
+	void)
+{
+	long machine_index = THEATER_FILM_MACHINE;
+	short type;
+	short player_index;
+
+	if (game_connection() != _game_connection_network_server)
+		return;
+	for (type = 0; type < NUMBER_OF_DISTRIBUTED_MESSAGES; type++)
+		distributed_received_times[machine_index][type] = NONE;
+	distributed_sender_times[machine_index] = NONE;
+	csmemset(&distributed_round_trips[machine_index], 0, sizeof(distributed_round_trips[machine_index]));
+	csmemset(distributed_viewers[machine_index], 0, sizeof(distributed_viewers[machine_index]));
+	csmemset(&distributed_client_clocks[machine_index], 0, sizeof(distributed_client_clocks[machine_index]));
+	distributed_client_clocks[machine_index].window_tick = NONE;
+	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+		distributed_seen[machine_index][player_index] = FALSE;
+	distributed_machines.valid = FALSE;
+	network_aim_assist_send_policy(machine_index);
+	network_objects_client_asked(machine_index, FALSE);
+	distributed_send_all_statistics(machine_index);
+	distributed_send_game_state(machine_index);
+	network_spectator_machine_loaded(machine_index);
+}
+
+/* (the host) whether no machine in the game has the film machine's slot */
+boolean network_distributed_film_machine_free(
+	void)
+{
+	long machine_indices[HALO_PORT_MAXIMUM_NETWORK_MACHINES];
+	short count = network_distributed_server_machines(machine_indices, HALO_PORT_MAXIMUM_NETWORK_MACHINES);
+	short index;
+
+	for (index = 0; index < count; index++)
+	{
+		if (machine_indices[index] == THEATER_FILM_MACHINE)
+			return FALSE;
+	}
+	return TRUE;
+}
+
+/* ... and no longer */
+void network_distributed_film_machine_left(
+	void)
+{
+	distributed_machines.valid = FALSE;
 }
 
 /* after each tick (game_time.c) */

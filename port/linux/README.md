@@ -200,6 +200,9 @@ Photo mode's photos go in `paths.photos`, or if that setting is empty in
 the `OpenCE` folder of your Pictures folder (`~/Pictures/OpenCE`, or the
 folder that `XDG_PICTURES_DIR` names). Refer to "Photo mode".
 
+Saved films go in `paths.films`, or if that setting is empty in `films/` in
+the save root. Refer to "Theater".
+
 These files are in the data root:
 
 | File | Contents |
@@ -471,6 +474,7 @@ the setting for one start of the game. It has priority over the file.
 | `game.language` | `""` | `HALO_LANGUAGE` | The language of the menus: `ja`, `de`, `fr`, `es` or `it`. Empty: English. |
 | `game.enhanced_animations` | `true` | `HALO_ENHANCED_ANIMATIONS` | `true`: the player bipeds' grenade throws keep their legs moving, blended by speed and direction (crouched throws stay crouched, throws in the air use the jump's legs), Warthog and Scorpion riders stay seated to throw and let go of the grips to throw and reload, and a player turns with the aim while throwing, as while meleeing. `false`: the original animations, which freeze the legs during a throw and stand a rider up. Only in config.toml, not in the menus. |
 | `game.skulls` | `""` | `HALO_SKULLS` | The skulls that the campaign's SKULLS screen (New Game's difficulty's SKULLS) last kept, which New Game plays with and the screen shows on again: their names, separated by spaces (`iron mythic boom`). Refer to "Skulls". |
+| `game.record_films` | `false` | `HALO_RECORD_FILMS` | `true`: a film of every network game that this computer plays (system link or internet play, as the host or a client) is saved, to watch again in the main menu's THEATER. RECORD FILMS in Settings > Network Setup. Refer to "Theater". |
 | `game.unlock_all_levels` | `false` | `HALO_UNLOCK_ALL_LEVELS` | `true`: a profile created afterward starts with all the campaign levels finished on all the difficulties. `false`: a new profile starts at The Pillar of Autumn, and each level opens when you finish the level before it, as on the Xbox. Existing profiles keep their progress. To start a profile over, type `profile_reset_campaign` in the console. |
 | `bots.count` | `0` | `HALO_BOTS` | Computer players (bots) in a local (split screen) Slayer game: `0` to `15` join its lobby with the players, as far as the game has room. Not in system link or internet games. `0`: none, as in the stock game. Refer to "Bots". |
 | `bots.skill` | `"normal"` | `HALO_BOT_SKILL` | How well the bots play: `"easy"`, `"normal"`, `"heroic"` or `"legendary"`: how soon they react, how far and how wide they see, how large their aim error is and how fast it settles, how fast they turn. |
@@ -478,6 +482,7 @@ the setting for one start of the game. It has priority over the file.
 | `paths.data` | `""` | `HALO_DATA_ROOT` | The data root. Refer to "Start the game". |
 | `paths.saves` | `""` | `HALO_SAVE_ROOT` | The save root. Refer to "Files and folders". |
 | `paths.photos` | `""` | `HALO_PHOTOS_ROOT` | Where photo mode's photos go. Empty: the `OpenCE` folder of the Pictures folder. Refer to "Photo mode". |
+| `paths.films` | `""` | `HALO_FILMS_ROOT` | Where saved films go. Empty: `films/` in the save root. Refer to "Theater". |
 | `network.address` | `""` | `HALO_NET_ADDRESS` | The IPv4 address of this machine for system link. Refer to "Play on one computer". |
 | `network.broadcast` | `""` | `HALO_NET_BROADCAST` | IPv4 addresses, with commas between them, that get the broadcasts of the game. Empty: 255.255.255.255. |
 | `network.online` | `true` | `HALO_NET_ONLINE` | `true`: internet play. `false`: system link on the local network only. |
@@ -527,7 +532,8 @@ the setting for one start of the game. It has priority over the file.
 | `debug.gpu_stats`, `debug.gpu_trace_frame`, `debug.gpu_trace_constants`, `debug.gpu_dump_shaders`, `debug.texture_dump_directory`, `debug.texture_log`, `debug.gl_debug`, `debug.texture_no_cache` | off | `HALO_GPU_STATS`, `HALO_GPU_TRACE`, `HALO_GPU_TRACE_CONSTANTS`, `HALO_GPU_DUMP_SHADERS`, `HALO_TEXTURE_DUMP`, `HALO_TEXTURE_LOG`, `HALO_GL_DEBUG`, `HALO_TEXTURE_NO_CACHE` | Tools to find problems in the graphics: counts for each frame, all the GL state of one frame, the GLSL code, the textures. |
 | `debug.menu_open` | `""` | `HALO_MENU_OPEN` | Start on this screen of the menus (`main_menu/settings_select/...`, as `port/assets/menus` names it), a player profile being edited, to look at it. |
 | `debug.gpu_skip_vertex_shaders`, `debug.gpu_debug_expression`, `debug.gpu_debug_flat`, `debug.gpu_debug_texture0` | off | `HALO_GPU_SKIP_VS`, `HALO_GPU_DEBUG_EXPR`, `HALO_GPU_DEBUG_FLAT`, `HALO_GPU_DEBUG_T0` | Tools to find problems in the graphics: skip the draws of a vertex shader, or replace the output of all pixel shaders with a GLSL expression (for example `t0.rgb`). |
-| `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_chat`, `debug.network_test_name`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_CHAT`, `HALO_NETWORK_TEST_NAME`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link, or (`log`) a log of the game one machine plays (`game/network_test.c`). Refer to `NETCODE.md`. `debug.test_input = "menu:a down down a"` presses menu buttons one a second (`a`, `b`, `x`, `y`, `up`, `down`, `left`, `right`, `start`, `back` or `wait`), for testing the menus; `debug.test_input = "photo"` tests photo mode (refer to "Photo mode"). |
+| `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_chat`, `debug.network_test_name`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_CHAT`, `HALO_NETWORK_TEST_NAME`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link, or (`log`) a log of the game one machine plays (`game/network_test.c`). Refer to `NETCODE.md`. `debug.test_input = "menu:a down down a"` presses menu buttons one a second (`a`, `b`, `x`, `y`, `up`, `down`, `left`, `right`, `start`, `back` or `wait`), for testing the menus; `debug.test_input = "photo"` tests photo mode (refer to "Photo mode"); `debug.test_input = "theater"` plays a film's controls (refer to "Theater"). |
+| `debug.film_playback` | `""` | `HALO_FILM_PLAYBACK` | A saved film's path, played once the main menu has loaded (tests). With `debug.network_test = "log"`, the game the film plays is logged as a machine's game is. Refer to "Theater". |
 | `debug.network_test_cues`, `debug.network_test_cue_players` | none, `1` | `HALO_NETWORK_TEST_CUES`, `HALO_NETWORK_TEST_CUE_PLAYERS` | Console lines a test runs at their seconds, from the first tick that many players are in (`"<second> <line>\|..."`; not on the web). |
 | `debug.bot_trace` | `0` | `HALO_BOT_TRACE` | Every this many seconds, each bot's state is written to the log: where it is and where it goes, its path, its target and its weapon. `0`: never. |
 | `debug.touch_targets` | `false` | `HALO_TOUCH_TARGETS` | Outlines the tap targets of the menus (item green, value blue, list slot yellow, legend button red, the band beside the slots of a list orange, keys of the on-screen keyboard white), marks where the last finger went down and the last tap landed for 3 seconds, and logs each tap with the target that it hit (for a value, also where it splits into previous and next): to judge the accuracy of touch. |
@@ -1405,6 +1411,57 @@ stop there. `debug.test_input = "photo"` plays photo mode with controller 1
 (walking out of the a30 lifeboat first), and saves pictures of what it sees
 in the photos folder.
 
+## Theater
+
+With RECORD FILMS on (Settings > Network Setup, `game.record_films`; off at
+first), the game saves a film of every network game that this computer
+plays: system link or internet play, as the host or as a client. The main
+menu's THEATER lists the films, the newest first, with the map, the game
+type and the length of each. The panel on the right shows when the film
+was made, its players and whose it is. A, or PLAY, plays the film.
+
+A film holds what this computer's game received from the host, tick by
+tick, and the input of this computer's own players. The host's film holds
+what the host would send to a machine of its own with no players: every
+player in every tick, as a spectator gets. To play a film, the game
+becomes a client again, and the film is its host. It plays the game as a
+client of the distributed netcode does (refer to `NETCODE.md`). Its own
+players do what they did, and the camera is a spectator's. A client's film
+plays the game as that computer showed it. A host's film plays the host's
+game, with every player within 0.05 world units of where the host had them.
+
+The film starts in first person, on the player of this computer. The
+controls are those of a spectator (refer to "Spectators"), and these:
+
+| Control | In a film |
+| --- | --- |
+| Reload (keyboard), D-pad Up | Pause the film, or play it on. |
+| Zoom | The next speed: 0.25x, 0.5x, 1x, 2x and 4x, then 0.25x again. |
+| D-pad Left, D-pad Right | A slower speed, a faster speed. |
+| Start | The pause menu: LEAVE GAME goes back to the main menu. |
+
+On a controller, X is the action button, which changes the camera, so the
+D-pad pauses the film there. The text chat does not open in a film. Above
+the name of the player watched, the screen shows whether the film plays,
+its speed, and the time into the film and its length (`PLAYING 1x 0:19 /
+4:30`). At the end, the film stops at its last tick (`THE END`) until you
+leave it. You cannot yet go back in a film or play it backwards.
+
+The films are named for the map and the time (`bloodgulch 2026-10-25
+16.13.20.film`), in `paths.films` or else `films/` in the save root. A film
+of two players takes about 3.5 KB a second. A game cut short (the game
+stopped or crashed) keeps all but its last second. A film holds the network
+messages of its build, so only a build of the same network version plays it
+(refer to `NETCODE.md`, "Versions"). THEATER lists a film of another version
+as OLD and does not play it. A film is a file that anyone can send you, so
+the game checks everything in it, as it checks what other machines send.
+
+`debug.film_playback` plays a film when the main menu has loaded, and
+`debug.test_input = "theater"` plays the controls of a film with controller
+1. `tools/test_theater.py` plays a system link game in which both copies
+record, plays each film, and checks that every second is the game that
+copy logged.
+
 ## Streamer mode
 
 Streamer mode (Settings > Network Setup > Streamer Mode, `streamer.enabled`)
@@ -1649,6 +1706,7 @@ Other changes:
 | `game/players.c`, `networking/network_server_manager.c` | Bots (`game/bots.c`, `bots.count`): the lobby of a local Slayer game takes the bot players, each the one player of a machine of its own that no real machine is, and every tick their actions come from `game/bots.c` instead of their empty queues. Nothing changes in a system link or internet game. |
 | `input/input_xbox.c`, `physics/collision_usage.c` | The clock is read only for a button held, and for collision tests only when their times are shown: a read of the clock is slow in a browser. |
 | `main/main.c`, `camera/director.c`, `game/player_control.c`, `interface/interface.c`, `render/render.c` | Photo mode (`game/photo_mode.c`): it starts after the pause menu closes and keeps the game paused, its camera is one of the director's, the player's controls go to it while the camera turns with the game paused, the HUD and a paused cinematic's letterbox are not drawn, and its filter is drawn over the 3D view after the anti-aliasing. |
+| `networking/network_connection.c`, `networking/network_client_manager.c`, `networking/network_server_manager.c`, `networking/network_server_message_handler.c`, `game/player_queues_new.c`, `game/game_time.c`, `game/cheats.c`, `game/player_control.c`, `main/main.c` | Saved films (`game/theater.c`, `game/theater_film.c`): a client's connection can be a film, whose reads are the film's messages and whose writes go nowhere; a client records what it reads in a game and the host what it sends its film's machine, a slot that no machine that joins gets while the host records films; each tick records this computer's players' actions, and a film's players take theirs from it; a film's clock runs at the viewer's speed and waits for no update; leaving a film leaves it at once. |
 | `main/main.c`, `interface/hud.c`, `interface/hud_unit.c`, `interface/hud_draw.c`, `game/game_engine.c` | The text chat of network games (`game/network_chat.c`): its keys are read each frame, and the debug keys are not while a line is typed; each view's HUD draws its lines, above the motion sensor, whose place the HUD notes (the left of the last picture drawn); the scoreboard's menu has Mute voice and chat, and the host's Mute for everyone. |
 
 The x86 inline assembly of the game is replaced by C. Thus the compiler

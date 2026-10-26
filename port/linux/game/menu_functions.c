@@ -90,9 +90,11 @@ their handlers open opens.
 #include "text_filter.h"
 #include "skulls.h"
 #include "photo_mode.h"
+#include "theater.h"
 
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <xtl.h>
 
 /* the platform layer's (port/linux/src) */
@@ -2867,6 +2869,251 @@ static void skulls_update(struct widget_instance *list)
 		text_set(named(row, "mod_state", 0), TEST_FLAG(skulls_screen.skulls, skull) ? L"ON" : L"OFF");
 	}
 	skulls_details_show(list->parameters.list.extended_description, skulls_screen.chosen);
+}
+
+/* ---------- the main menu's THEATER (tools/port_settings.py's _theater):
+the saved films of network games (port/linux/game/theater_film.c), the
+newest first, laid out as the Mods screen is (its rows' and details' texts,
+so that mods_wrap measures their lines): a row for each film, its map and
+game type, and its length; in the frame, the film chosen: its map, when it
+was made, its game type, how long it is, its players, and whose it is (the
+host's, or one player's). A, or PLAY, plays it (theater.c); a film another
+build made is listed, and says so */
+
+#define FILM_ROWS 11
+
+static struct
+{
+	struct theater_film_entry films[THEATER_MAXIMUM_FILMS];
+	short count;
+	/* the film on the first row, and the one chosen */
+	short first;
+	short chosen;
+	/* what the details show (they are wrapped again when it changes) */
+	char shown[160];
+} films_screen;
+
+/* "port films init" (the list's created): the films folder's films */
+static boolean films_screen_initialize(void)
+{
+	short index;
+
+	/* (the Mods screen's texts' fonts and widths, not yet measured: until
+	they are drawn, mods_wrap counts characters) */
+	for (index = 0; index < NUMBER_OF_MOD_TEXT_BOXES; index++)
+	{
+		mods_screen.fonts[index] = NONE;
+		mods_screen.widths[index] = 0;
+	}
+	films_screen.count = theater_films_list(films_screen.films, THEATER_MAXIMUM_FILMS);
+	films_screen.first = 0;
+	films_screen.chosen = 0;
+	films_screen.shown[0] = 0;
+	return TRUE;
+}
+
+/* the row (op_film_<n>) a widget is or is in, else NULL */
+static struct widget_instance *film_row(struct widget_instance *widget)
+{
+	for (; widget; widget = widget->parent)
+	{
+		if (!strncmp(widget->name, "op_film_", 8))
+			return widget;
+	}
+	return NULL;
+}
+
+/* the film on a row, else NONE */
+static short film_row_film(struct widget_instance *row)
+{
+	short film = row ? (short)(films_screen.first + atoi(row->name + 8) - 1) : NONE;
+
+	return film >= 0 && film < films_screen.count ? film : NONE;
+}
+
+/* a wide text (a game type's, a player's name) as UTF-8, as mods_wrap takes */
+static void films_narrow_text(wchar_t const *wide, short wide_length, char *text, size_t size)
+{
+	size_t length = 0;
+	short index;
+
+	for (index = 0; index < wide_length && wide[index] && length + 4 < size; index++)
+	{
+		unsigned long character = (unsigned short)wide[index];
+
+		if (character < 0x80)
+			text[length++] = (char)character;
+		else if (character < 0x800)
+		{
+			text[length++] = (char)(0xC0 | (character >> 6));
+			text[length++] = (char)(0x80 | (character & 0x3F));
+		}
+		else
+		{
+			text[length++] = (char)(0xE0 | (character >> 12));
+			text[length++] = (char)(0x80 | ((character >> 6) & 0x3F));
+			text[length++] = (char)(0x80 | (character & 0x3F));
+		}
+	}
+	text[length] = 0;
+}
+
+/* a film's map, as the level's own name (bloodgulch, or a Custom Edition
+map's), its first letter a capital */
+static void films_map_name(struct theater_film_entry const *film, char *text, size_t size)
+{
+	char const *last = strrchr(film->map_name, '\\');
+
+	snprintf(text, size, "%s", last ? last + 1 : film->map_name);
+	if (text[0] >= 'a' && text[0] <= 'z')
+		text[0] = (char)(text[0] - 'a' + 'A');
+}
+
+/* "port films play" (A on a row, or PLAY): the film of the row, else the
+one chosen */
+static boolean films_play(struct widget_instance *widget)
+{
+	short film = film_row_film(film_row(widget));
+
+	if (film == NONE)
+		film = films_screen.chosen;
+	if (film < 0 || film >= films_screen.count || !films_screen.films[film].playable)
+		return FALSE;
+	theater_play_soon(films_screen.films[film].path);
+	return TRUE;
+}
+
+/* the details of a film, in the frame (the list's description) */
+static void films_details_show(struct widget_instance *details, short film)
+{
+	struct theater_film_entry const *entry;
+	char text[MOD_DETAILS_LENGTH];
+	char about[MOD_DETAILS_LENGTH];
+	char name[64];
+	char game_type[48];
+	char player[48];
+	char made[48];
+	wchar_t wide[MOD_DETAILS_LENGTH];
+	short line;
+	char shown[sizeof(films_screen.shown)];
+	time_t created;
+	struct tm const *local;
+
+	if (!details)
+		return;
+	/* (wrapped again only when what they show, or its fonts, change) */
+	snprintf(shown, sizeof(shown), "%d %d %ld %d %ld %d", film, films_screen.count,
+		mods_screen.fonts[_mod_details_name], mods_screen.widths[_mod_details_name],
+		mods_screen.fonts[_mod_details_text], mods_screen.widths[_mod_details_text]);
+	if (!strcmp(shown, films_screen.shown))
+		return;
+	strcpy(films_screen.shown, shown);
+	visible_set(named(details, "mod_details_status", 0), FALSE);
+	text[0] = 0;
+	if (film < 0 || film >= films_screen.count)
+	{
+		/* (no films: how one is made) */
+		mods_wide_text("No films", wide, NUMBEROF(wide));
+		text_set_length(named(details, "mod_details_name", 0), wide, NUMBEROF(wide));
+		mods_wrap("A film is saved of every network game played with Record Films on (Settings, Network Setup).",
+			text, sizeof(text), _mod_details_text, MOD_DETAILS_LINES, 0);
+		mods_wide_text(text, wide, NUMBEROF(wide));
+		text_set_length(named(details, "mod_details_text", 0), wide, NUMBEROF(wide));
+		return;
+	}
+	entry = &films_screen.films[film];
+	films_map_name(entry, name, sizeof(name));
+	mods_wrap(name, text, sizeof(text), _mod_details_name, 2, 0);
+	mods_wide_text(text, wide, NUMBEROF(wide));
+	text_set_length(named(details, "mod_details_name", 0), wide, NUMBEROF(wide));
+	text[0] = 0;
+	created = (time_t)entry->created;
+	local = localtime(&created);
+	if (local)
+		strftime(made, sizeof(made), "%Y-%m-%d %H:%M", local);
+	else
+		made[0] = 0;
+	if (!entry->playable)
+	{
+		line = mods_wrap(made, text, sizeof(text), _mod_details_text, MOD_DETAILS_LINES, 0);
+		line = mods_wrap(" ", text, sizeof(text), _mod_details_text, MOD_DETAILS_LINES, line);
+		mods_wrap("Made by another version of the game: this one cannot play it.", text, sizeof(text),
+			_mod_details_text, MOD_DETAILS_LINES, line);
+	}
+	else
+	{
+		films_narrow_text(entry->game_type, NUMBEROF(entry->game_type), game_type, sizeof(game_type));
+		films_narrow_text(entry->player_name, NUMBEROF(entry->player_name), player, sizeof(player));
+		snprintf(about, sizeof(about), "%s\n%s\n%ld:%02ld\n%d player%s\n \n%s%s", made, game_type,
+			entry->ticks / TICKS_PER_SECOND / 60, entry->ticks / TICKS_PER_SECOND % 60, entry->player_count,
+			entry->player_count == 1 ? "" : "s", entry->host ? "Recorded on the host: " : "Recorded by ", player);
+		mods_wrap(about, text, sizeof(text), _mod_details_text, MOD_DETAILS_LINES, 0);
+	}
+	mods_wide_text(text, wide, NUMBEROF(wide));
+	text_set_length(named(details, "mod_details_text", 0), wide, NUMBEROF(wide));
+}
+
+/* "port films update": the rows (the list moving on at its ends while
+there are more films past them), each film's map and game type, and its
+length, and the details of the film chosen */
+static void films_update(struct widget_instance *list)
+{
+	struct widget_instance *row;
+	struct widget_instance *focused = film_row(list->focused_child);
+	short focused_index = focused ? (short)(atoi(focused->name + 8) - 1) : NONE;
+
+	if (focused_index == FILM_ROWS - 1 && films_screen.first + FILM_ROWS < films_screen.count &&
+		list_scrolls_at_end())
+	{
+		films_screen.first++;
+		focus_row(list, --focused_index);
+	}
+	else if (focused_index == 0 && films_screen.first > 0 && list_scrolls_at_end())
+	{
+		films_screen.first--;
+		focus_row(list, ++focused_index);
+	}
+	films_screen.first = (short)PIN(films_screen.first, 0, MAX(0, films_screen.count - FILM_ROWS));
+	if (focused_index != NONE && films_screen.first + focused_index < films_screen.count)
+		films_screen.chosen = (short)(films_screen.first + focused_index);
+	for (row = list->child; row; row = row->next)
+	{
+		struct theater_film_entry const *entry;
+		short film;
+		char name[64];
+		char game_type[48];
+		char text[ROW_TEXT_LENGTH];
+		wchar_t wide[ROW_TEXT_LENGTH];
+
+		if (strncmp(row->name, "op_film_", 8))
+			continue;
+		/* (its background: the focused one's outlined frame, as the Mods
+		screen's) */
+		row->animation.current_frame_index = row == focused ? 1 : 0;
+		film = film_row_film(row);
+		row->visible = film != NONE;
+		if (film == NONE)
+		{
+			if (row == focused)
+				focus_row(list, films_screen.count ? (short)(films_screen.count - 1 - films_screen.first) : NONE);
+			continue;
+		}
+		entry = &films_screen.films[film];
+		films_map_name(entry, name, sizeof(name));
+		films_narrow_text(entry->game_type, NUMBEROF(entry->game_type), game_type, sizeof(game_type));
+		snprintf(text, sizeof(text), entry->playable ? "%s  %s" : "%s", name, game_type);
+		mods_wide_text(text, wide, ROW_TEXT_LENGTH);
+		text_set(named(row, "mod_name", 0), wide);
+		if (entry->playable)
+			usnprintf(wide, ROW_TEXT_LENGTH - 1, L"%ld:%02ld", entry->ticks / TICKS_PER_SECOND / 60,
+				entry->ticks / TICKS_PER_SECOND % 60);
+		else
+			usnprintf(wide, ROW_TEXT_LENGTH - 1, L"OLD");
+		wide[ROW_TEXT_LENGTH - 1] = 0;
+		text_set(named(row, "mod_state", 0), wide);
+	}
+	films_details_show(list->parameters.list.extended_description,
+		films_screen.count ? films_screen.chosen : NONE);
 }
 
 /* ---------- Multiplayer (port/assets/menus' PLAN: Create Game > Internet
@@ -6589,6 +6836,14 @@ boolean pc_menu_event_function_invoke(
 		{
 			return mods_save();
 		}
+		else if (!strcmp(name, "port films init"))
+		{
+			return films_screen_initialize();
+		}
+		else if (!strcmp(name, "port films play"))
+		{
+			return films_play(widget);
+		}
 		else if (!strcmp(name, "controls screen init") || !strcmp(name, "controls screen defaults"))
 		{
 			return controls_load(!strcmp(name, "controls screen defaults"));
@@ -6799,6 +7054,8 @@ void pc_menu_game_data_function_invoke(
 		mods_update(widget);
 	else if (!strcmp(name, "port skulls update"))
 		skulls_update(widget);
+	else if (!strcmp(name, "port films update"))
+		films_update(widget);
 	else if (!strcmp(name, "color picker update"))
 		color_list_update(widget);
 	else if (!strcmp(name, "3wide player profile list update"))

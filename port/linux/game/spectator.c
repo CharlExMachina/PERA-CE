@@ -95,6 +95,7 @@ the map's own placements: the host sends nothing for it.
 #include "network_distributed.h"
 #include "network_spectator.h"
 #include "spectator.h"
+#include "theater.h"
 
 /* game_engine.c's, port_config.c's */
 boolean game_engine_netgame_equipment_period(struct scenario_netgame_equipment const *equipment, long *period);
@@ -154,6 +155,9 @@ enum
 	_spectator_press_overlay,
 	_spectator_press_speed,
 	_spectator_press_help,
+	/* (a saved film's: theater.c) */
+	_spectator_press_pause,
+	_spectator_press_playback_speed,
 	NUMBER_OF_SPECTATOR_PRESSES
 };
 
@@ -214,7 +218,7 @@ enum
 	SPECTATOR_TEAM_SCORE_WIDTH = 230,
 	SPECTATOR_SCORE_WIDTH = 150,
 	MAXIMUM_SPECTATOR_SCORE_ROWS = 4,
-	MAXIMUM_SPECTATOR_CONTROLS = 10,
+	MAXIMUM_SPECTATOR_CONTROLS = 12,
 	SPECTATOR_CONTROL_TEXT_LENGTH = 48,
 };
 
@@ -331,7 +335,9 @@ static boolean spectator_player_watchable(
 {
 	struct player_datum *player = player_index != NONE ? player_try_and_get(player_index) : NULL;
 
-	return player && player_index != self && !player->quit_out_of_game && !network_spectator_player(player_index);
+	/* (a saved film's viewer watches its own player too: theater.c) */
+	return player && (player_index != self || theater_playing()) && !player->quit_out_of_game &&
+		!network_spectator_player(player_index);
 }
 
 /* ... and one the next player may be: with a team picked, of that team and
@@ -467,6 +473,12 @@ static void spectator_view_begin(
 		view->camera = _spectator_camera_third_person;
 		view->speed = 1;
 		view->watched_player_index = NONE;
+		/* (a saved film's viewer sees it first as its player did) */
+		if (theater_playing())
+		{
+			view->camera = _spectator_camera_first_person;
+			view->watched_player_index = local_player_get_player_index(local_player_index);
+		}
 		view->field_of_view = 0.0f;
 		/* (from where the player's own camera was) */
 		view->position = observer->position;
@@ -550,6 +562,10 @@ static void spectator_view_controls(
 		spectator_help_hidden[local_player_index] = !spectator_help_hidden[local_player_index];
 	if (TEST_FLAG(pressed, _spectator_press_speed))
 		view->speed = (short)((view->speed + 1) % NUMBER_OF_SPECTATOR_SPEEDS);
+	if (TEST_FLAG(pressed, _spectator_press_pause) && theater_playing())
+		theater_toggle_pause();
+	if (TEST_FLAG(pressed, _spectator_press_playback_speed) && theater_playing())
+		theater_change_speed(TRUE, TRUE);
 
 	/* (a player's camera needs a player: the one watched while they are in
 	the game, else the next; with none, the free camera) */
@@ -1313,6 +1329,12 @@ static void spectator_draw_controls(
 
 	if (row_height <= 1)
 		return;
+	if (theater_playing())
+	{
+		spectator_control_text("controls.reload", theater_paused() ? L"Play" : L"Pause", rows[count++]);
+		spectator_control_text("controls.zoom", L"Playback Speed", rows[count++]);
+		usnprintf(rows[count++], SPECTATOR_CONTROL_TEXT_LENGTH - 1, L"(D-PAD) Pause, Slower, Faster");
+	}
 	spectator_control_text("controls.fire", L"Next Player", rows[count++]);
 	spectator_control_text("controls.throw_grenade", L"Previous Player", rows[count++]);
 	spectator_control_text("controls.action", free_camera ? L"Third Person" :
@@ -1427,6 +1449,24 @@ static void spectator_draw_watched(
 	spectator_draw_text(bounds->x0, status_y, bounds->x1, 2, SPECTATOR_STATUS_SCALE, &color, text);
 }
 
+/* a saved film's playback (theater.c): whether it plays, its speed, and how
+far into it, over whom the viewer watches */
+static void spectator_draw_theater(
+	rectangle2d const *bounds)
+{
+	real_argb_color color = *global_real_argb_white;
+	short status_height = spectator_line_height(SPECTATOR_STATUS_SCALE);
+	short name_height = spectator_line_height(SPECTATOR_NAME_SCALE);
+	short y = (short)(bounds->y1 - 2 * status_height - 2 * SPECTATOR_BAR_HEIGHT - name_height - 18);
+	wchar_t text[64];
+
+	if (status_height <= 0)
+		return;
+	theater_status_text(text, NUMBEROF(text));
+	color.alpha = 0.9f;
+	spectator_draw_text(bounds->x0, y, bounds->x1, 2, SPECTATOR_STATUS_SCALE, &color, text);
+}
+
 /* ---------- public code */
 
 boolean spectator_local_player(
@@ -1435,6 +1475,9 @@ boolean spectator_local_player(
 	long player_index = local_player_index >= 0 && local_player_index < MAXIMUM_LOCAL_PLAYERS ?
 		local_player_get_player_index(local_player_index) : NONE;
 
+	/* (a saved film's viewer, whose player the film drives: theater.c) */
+	if (theater_playing())
+		return player_index != NONE;
 	return player_index != NONE && network_spectator_player(player_index);
 }
 
@@ -1476,6 +1519,11 @@ long local_player_get_view_unit_index(
 {
 	long player_index = local_player_get_view_player_index(local_player_index);
 
+	/* (a saved film's viewer sees no player's unit as its own but the one it
+	watches in first person: theater.c) */
+	if (theater_playing() && spectator_first_person_player(local_player_index) == NONE)
+		return NONE;
+
 	return player_index != NONE ? player_get(player_index)->unit_index : NONE;
 }
 
@@ -1486,6 +1534,13 @@ struct player_datum *local_player_get_view_player(
 	static struct player_datum view_players[MAXIMUM_LOCAL_PLAYERS];
 	long player_index = spectator_first_person_player(local_player_index);
 
+	if (player_index == NONE && theater_playing())
+	{
+		/* (... nor a HUD of it) */
+		view_players[local_player_index] = *player_get(local_player_get_player_index(local_player_index));
+		view_players[local_player_index].unit_index = NONE;
+		return &view_players[local_player_index];
+	}
 	if (player_index == NONE)
 		return player_get(local_player_get_player_index(local_player_index));
 	view_players[local_player_index] = *player_get(player_index);
@@ -1509,7 +1564,8 @@ void spectator_handle_input(
 	real_vector2d const *throttle,
 	unsigned long unit_control_flags,
 	boolean switch_weapon,
-	boolean switch_grenade)
+	boolean switch_grenade,
+	boolean zoom)
 {
 	struct spectator_view *view = spectator_view_get(local_player_index);
 	unsigned long down = 0;
@@ -1523,6 +1579,8 @@ void spectator_handle_input(
 	SET_FLAG(down, _spectator_press_overlay, switch_weapon);
 	SET_FLAG(down, _spectator_press_speed, switch_grenade);
 	SET_FLAG(down, _spectator_press_help, TEST_FLAG(unit_control_flags, _unit_control_integrated_light_bit));
+	SET_FLAG(down, _spectator_press_pause, TEST_FLAG(unit_control_flags, _unit_control_weapon_reload_bit));
+	SET_FLAG(down, _spectator_press_playback_speed, zoom);
 	/* (a press once, however long it is held; none carried into the scores
 	shown at a game's end) */
 	if (!game_engine_showing_postgame())
@@ -1602,6 +1660,8 @@ void spectator_draw(
 		spectator_draw_scores(self, &frame);
 	if (TEST_FLAG(parts, _spectator_part_watched_bit))
 		spectator_draw_watched(view, &bounds, first_person);
+	if (theater_playing())
+		spectator_draw_theater(&bounds);
 	if (TEST_FLAG(parts, _spectator_part_controls_bit) && !spectator_help_hidden[local_player_index])
 		spectator_draw_controls(view, &frame);
 }

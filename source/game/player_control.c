@@ -830,7 +830,8 @@ static void handle_one_player_input(
 			&input.throttle,
 			input.unit_control_flags,
 			TEST_FLAG(input.player_control_flags, _player_control_rotate_weapons_bit),
-			TEST_FLAG(input.player_control_flags, _player_control_rotate_grenades_bit));
+			TEST_FLAG(input.player_control_flags, _player_control_rotate_grenades_bit),
+			TEST_FLAG(input.player_control_flags, _player_control_input_zoom_bit));
 	}
 
 	player->control_flags = input.unit_control_flags;

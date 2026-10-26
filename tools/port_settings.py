@@ -19,13 +19,25 @@ from pathlib import Path
 from xml.sax.saxutils import quoteattr
 
 PE = "main_menu/settings_select/player_setup/player_profile_edit"
-# the mods' screen, and its rows (_mods); the main menu's items
-# (ce/main_menu.xml): MODS in Credits' place (Credits is left out:
-# tools/ce_menus.py's LEFT_OUT), Quit a row below it (its CHILD_OFFSETS)
+# the mods' screen, and its rows (_mods); the saved films' (_theater); the
+# main menu's items (ce/main_menu.xml): MODS in Credits' place (Credits is
+# left out: tools/ce_menus.py's LEFT_OUT), THEATER a row below it and Quit a
+# row below that (its CHILD_OFFSETS), and the PC version's items above them
+# half a row higher than its own, so that the seven fit above the screen's
+# foot (as the six did)
 MODS = "main_menu/mods"
 MOD_ROWS = 11
-MODS_ITEM_PLACE = (192, 391)
-QUIT_ITEM_PLACE = (192, 427)
+THEATER = "main_menu/theater"
+FILM_ROWS = 11
+MAIN_MENU_ITEM_PLACES = {
+    "main_menu_item_load_camp": (194, 229),
+    "main_menu_item_multiplayer": (192, 265),
+    "main_menu_item_profile": (192, 301),
+    "main_menu_item_settings": (192, 337),
+}
+MODS_ITEM_PLACE = (192, 373)
+THEATER_ITEM_PLACE = (192, 409)
+QUIT_ITEM_PLACE = (192, 445)
 YES_NO = [("YES", "true"), ("NO", "false")]
 ON_OFF = [("ON", "true"), ("OFF", "false")]
 # the multiplayer armor colors, in the profile's order (player_profile.c)
@@ -180,6 +192,8 @@ SCREENS = {
              "Join the game of an invite link copied before\nswitching to the game.", "desktop android"),
             ("CHECK FOR UPDATES:", "update.auto", ON_OFF,
              "Look for a new version when the game starts.", "desktop android"),
+            ("RECORD FILMS:", "game.record_films", ON_OFF,
+             "Save a film of every network game you play, to\nwatch again in the main menu's THEATER.", None),
             ("PLAYER NAMES:", "display.player_names",
              [("ALL", "all"), ("ALLIES", "allies"), ("ENEMIES", "enemies"), ("NONE", "none")],
              "In multiplayer, whose names are drawn above their\nheads.", None),
@@ -775,9 +789,10 @@ WIDGET_PATCHES = {
     f"{MT}/connected/connected_map_select_wrapper": {"set": {
         "flags": "pass_unhandled_to_focused_child pause_game main_menu_if_no_history tag_controller_index force_handle_mouse",
     }},
-    # (the main menu's MODS, before Quit: _mods)
+    # (the main menu's MODS and THEATER, before Quit: _mods, _theater)
     "main_menu/main_menu_select_list": {"insert_before": {"main_menu/main_menu_item_quit_game": [
-        f'<child widget="main_menu/main_menu_item_mods" x="{MODS_ITEM_PLACE[0]}" y="{MODS_ITEM_PLACE[1]}"/>']}},
+        f'<child widget="main_menu/main_menu_item_mods" x="{MODS_ITEM_PLACE[0]}" y="{MODS_ITEM_PLACE[1]}"/>',
+        f'<child widget="main_menu/main_menu_item_theater" x="{THEATER_ITEM_PLACE[0]}" y="{THEATER_ITEM_PLACE[1]}"/>']}},
     f"{PLAYER_EDIT}/player_options_menu": {"insert_before": {
         f"{PLAYER_EDIT}/player_button_bar": [
             f'<child widget="{PLAYER_EDIT}/op_aim_assist" x="54" y="313"/>']}},
@@ -885,6 +900,7 @@ BITMAP_FRAMES = {
 # are (port/assets/menus/port_svg): bitmap name, text
 TITLES = {
     "main_menu/mods/header_mods": "MODS",
+    f"{THEATER}/header_theater": "THEATER",
     f"{MT}/join_game/header_server_browser": "SERVER BROWSER",
     f"{MT}/join_game/header_direct_link": "DIRECT LINK",
     f"{MT}/join_game/header_password": "PASSWORD",
@@ -1698,6 +1714,8 @@ def multiplayer_files() -> dict:
         TEAMPLAY_EDIT.replace("/", ".") + ".port.xml": head + _teamplay_options_extras() + ["</menus>", ""],
         MODS.replace("/", ".") + ".xml": [head[0], "<!-- The port's Mods screen, in the PC version's style "
                                           "(tools/port_settings.py) -->", head[2]] + _mods() + ["</menus>", ""],
+        THEATER.replace("/", ".") + ".xml": [head[0], "<!-- The port's Theater screen, in the PC version's style "
+                                             "(tools/port_settings.py) -->", head[2]] + _theater() + ["</menus>", ""],
         SKULLS.replace("/", ".") + ".xml": [head[0], "<!-- The port's SKULLS screen, in the PC version's style "
                                             "(tools/port_settings.py) -->", head[2]] +
         _header(f"{SKULLS}/header_skulls", f"{SKULLS}/header_skulls") + _skulls(SKULLS) +
@@ -1722,8 +1740,12 @@ MENU_ITEM_TOP, MENU_ITEM_SCALE, MENU_ITEM_MIDDLE = 6.57, 0.9037, 130.0
 # capitals are 21.5 high), for the pairs the port's items have: no redraw has
 # these pairs, so each is the sum of a space after the first letter and one
 # before the second, fitted (least squares) to the 53 pairs the redraws' items
-# and headers have (D-I, of the main menu's Credits, gives D's right side)
-MENU_ITEM_SPACES = {"MO": 3.17, "OD": 2.8, "DS": 2.3}
+# and headers have (D-I, of the main menu's Credits, gives D's right side).
+# THEATER's: those the redraws draw, as they draw them (E-A, A-T, T-E and
+# E-R, the mean of each); T-H and H-E fitted so to the 110 pairs within words
+# the redraws' items and headers have now
+MENU_ITEM_SPACES = {"MO": 3.17, "OD": 2.8, "DS": 2.3,
+                    "TH": 2.39, "HE": 2.89, "EA": 1.18, "AT": -3.29, "TE": 0.87, "ER": 3.9}
 # the mods' status icons (port/assets/icons/lucide): a mod out of the order it
 # asks for, and one that cannot be played (another mod says it cannot be
 # played with it, or this build cannot play it): menu_functions.c's
@@ -1869,6 +1891,56 @@ def _mods() -> list:
                                                               '<on event="start" run="port mods move down"/>'])
     lines += _button(f"{base}/button_ok", 1, ['<on event="a" run="port mods save" back="true"/>',
                                               '<on event="start" run="port mods save" back="true"/>'])
+    return lines
+
+
+# ---------- the saved films (port/linux/game/theater.c, theater_film.c): the
+# main menu's THEATER, which opens the list of the films folder's films
+
+
+def _theater() -> list:
+    """the main menu's THEATER and its screen, laid out as the Mods screen is
+    (its rows' and details' texts, which menu_functions.c measures and wraps):
+    on the left a row for each film, the newest first, its map and game type,
+    and its length (FILM_ROWS of them, scrolling over the rest); on the right,
+    in the lobby's frame, the film chosen: its map, when it was made, its game
+    type, its length, its players and whose it is. A on a row, or PLAY, plays
+    it (theater.c); CANCEL goes back"""
+    base = THEATER
+    lines = _widget("main_menu/main_menu_item_theater",
+                    [("type", "text"), ("width", 256), ("height", 33), ("bitmap", "main_menu/menu_theater")],
+                    [f'<on event="a" open="{base}/theater_screen"/>', f'<on event="start" open="{base}/theater_screen"/>',
+                     '<on event="left_mouse" run="mouse emit accept event"/>'])
+    lines += _widget(f"{base}/theater_screen", [("width", 640), ("height", 480),
+                                                ("flags", "pass_unhandled_to_focused_child pause_game"),
+                                                ("bitmap", "bitmaps/gradient")],
+                     ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
+                      '<child widget="main_menu/new_select/sel_list_desc_bkd"/>',
+                      f'<child widget="{base}/films_list"/>',
+                      f'<child widget="{base}/header_theater"/>'])
+    lines += _header(f"{base}/header_theater", f"{base}/header_theater")
+    rows = [f'<child widget="{base}/op_film_{index + 1}" x="20" y="{73 + 30 * index}"/>' for index in range(FILM_ROWS)]
+    lines += _widget(f"{base}/films_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                            ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
+                                            ("description", f"{MODS}/mod_details")],
+                     ['<data input="port films update"/>', '<on event="created" run="port films init"/>', *rows,
+                      f'<child widget="{base}/button_bar" y="414"/>'])
+    for index in range(FILM_ROWS):
+        lines += _widget(f"{base}/op_film_{index + 1}",
+                         [("width", 390), ("height", 28), ("flags", "pass_unhandled_to_focused_child"),
+                          ("bitmap", "bitmaps/sel_list_item_bkd_top" if index == 0 else "bitmaps/sel_list_item_bkd"),
+                          ("color", "#FF2896FF")],
+                         ['<on event="a" run="port films play"/>', '<on event="start" run="port films play"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          f'<child widget="{MODS}/mod_name" x="14"/>',
+                          f'<child widget="{MODS}/mod_state" x="318"/>'])
+    lines += _widget(f"{base}/button_bar",
+                     [("type", "column_list"), ("width", 640), ("height", 28),
+                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     [f'<child widget="{base}/button_play" x="380" y="1"/>',
+                      '<child widget="common_button_cancel" x="510" y="1"/>'])
+    lines += _text_button(f"{base}/button_play", "PLAY", ['<on event="a" run="port films play"/>',
+                                                         '<on event="start" run="port films play"/>'])
     return lines
 
 

@@ -393,6 +393,7 @@ symbols in this file:
 #include "text/unicode.h"
 #include "map_share.h" /* port: port/linux/game/map_share.c */
 #include "custom_edition_cache.h" /* port: port/linux/game/custom_edition_cache.c */
+#include "theater.h" /* port: port/linux/game/theater_film.c */
 
 /* ---------- constants */
 
@@ -853,6 +854,11 @@ static boolean network_game_client_network_lost(
 {
 	unsigned long now = system_milliseconds();
 	boolean lost = FALSE;
+
+	/* port: a film's host is the film, which needs no network
+	(port/linux/game/theater.c) */
+	if (theater_playing())
+		return FALSE;
 
 	/* (a time down from before the last check a moment ago is not counted:
 	the network was not asked in between) */
@@ -1392,6 +1398,14 @@ boolean network_game_client_request_remove_player(
 		"requesting a player removal (controller index #%d)",
 		player->controller_index);
 
+	/* port: a film's host is the film, which removes no one: its player
+	leaving leaves it (port/linux/game/theater.c) */
+	if (theater_playing())
+	{
+		network_game_abort();
+		return TRUE;
+	}
+
 	/* (the controller's next join goes at once: network_game_client_add_player) */
 	if (player->controller_index >= 0 &&
 		player->controller_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS)
@@ -1760,6 +1774,9 @@ boolean network_game_client_game_has_started(
 					network_game_client_late_join_clock_pending =
 						game_connection() == _game_connection_network_client;
 					game_initial_pulse();
+					/* port: the game's film, from here (game.record_films:
+					port/linux/game/theater_film.c) */
+					theater_record_begin(&client->game, (short)client->machine_index, network_game_get_random_seed());
 				}
 				else
 				{
@@ -2621,6 +2638,14 @@ static boolean network_game_client_process_messages(
 		&message_packet_size,
 		&source_address))
 	{
+		/* port: the host's messages of a game into its film, as read
+		(port/linux/game/theater_film.c) */
+		if (theater_recording() && message_packet_size <= sizeof(message_packet) &&
+			(client->state == _network_game_client_state_ingame || client->state == _network_game_client_state_postgame) &&
+			network_game_client_address_matches_server(client, &source_address))
+		{
+			theater_record_read(message_packet, message_packet_size, network_connection_last_read_was_unreliable());
+		}
 		if (!(success = network_game_client_handle_message(
 			client,
 			message_packet,
@@ -3279,3 +3304,78 @@ boolean network_game_client_set_team(
 	return success;
 }
 
+
+/* ---------- port: saved films (port/linux/game/theater.c) */
+
+/* plays a saved film: this machine's client, whose host is the film (a
+connection of network_connection_new_film), in the film's game as the
+machine that made it was (its slot, the game's random seed), and started as
+it was; the film's messages then come over the connection. FALSE for a game
+record no host could send, a map this machine has not, or a map that does
+not load. */
+boolean network_game_client_port_play_film(
+	struct network_game const *game,
+	short machine_index,
+	long random_seed)
+{
+	struct network_game_client *client;
+	struct network_connection *connection;
+
+	dispose_global_network_game_client();
+	dispose_global_network_game_server();
+	if (machine_index < 0 || machine_index >= MAXIMUM_NETWORK_MACHINE_COUNT || !create_global_network_game_client())
+		return FALSE;
+	client = global_network_game_client_get();
+	connection = network_connection_new_film();
+	if (!connection)
+	{
+		dispose_global_network_game_client();
+		return FALSE;
+	}
+	network_connection_delete(client->connection);
+	client->connection = connection;
+	client->game = *game;
+	csmemset(&client->game.local_data, 0, sizeof(client->game.local_data));
+	client->game.map.name[NUMBEROF(client->game.map.name) - 1] = 0;
+	if (!network_game_client_game_record_is_valid(&client->game) ||
+		!network_game_client_map_name_is_valid(client->game.map.name, sizeof(client->game.map.name)))
+	{
+		network_event("the film's game is not one a host could send");
+		dispose_global_network_game_client();
+		return FALSE;
+	}
+	if (!cache_files_map_present(client->game.map.name, (unsigned long)client->game.map.version))
+	{
+		dispose_global_network_game_client();
+		return FALSE;
+	}
+	client->machine_index = machine_index;
+	client->game.machines[machine_index].machine_index = (char)machine_index;
+	client->state = _network_game_client_state_pregame;
+	SET_FLAG(client->flags, _network_game_client_connection_established_bit, TRUE);
+	network_game_set_random_seed(random_seed);
+	network_game_client_late_join_time = 0;
+	game_connection_set(_game_connection_network_client);
+	network_event("playing a film as machine #%d", machine_index);
+	return network_game_client_game_has_started(client);
+}
+
+/* the messages the film's client has before its next tick, all of them
+(theater_film_tick: a frame that runs more than one tick) */
+boolean network_game_client_port_read_film_messages(
+	void)
+{
+	struct network_game_client *client = global_network_game_client_get();
+
+	return client && network_game_client_process_messages(client, FALSE);
+}
+
+/* whether this machine's client is in a game, or at its end */
+boolean network_game_client_port_in_game(
+	void)
+{
+	struct network_game_client *client = global_network_game_client_get();
+
+	return client && (client->state == _network_game_client_state_ingame ||
+		client->state == _network_game_client_state_postgame);
+}

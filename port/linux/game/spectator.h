@@ -20,14 +20,16 @@ boolean spectator_local_player(
 
 /* a spectator's input this frame (player_control.c), which moves its camera
 and picks whom it watches: how far it turned, its throttle, its unit control
-flags, and whether it pressed switch weapon and switch grenade */
+flags, and whether it pressed switch weapon, switch grenade and zoom (a saved
+film's viewer: reload pauses it, zoom changes its speed, theater.c) */
 void spectator_handle_input(
 	short local_player_index,
 	real_euler_angles2d const *facing_delta,
 	real_vector2d const *throttle,
 	unsigned long unit_control_flags,
 	boolean switch_weapon,
-	boolean switch_grenade);
+	boolean switch_grenade,
+	boolean zoom);
 
 /* the spectator's camera (a director_camera_update_proc: director.c) */
 void spectator_camera_update(

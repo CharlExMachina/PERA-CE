@@ -137,6 +137,7 @@ int platform_ask(const char *title, const char *text, const char *const *labels,
 const char *platform_save_root(void);
 /* where photo mode's photos go (paths.photos; xbox_files.c) */
 const char *platform_photos_root(void);
+const char *platform_films_root(void);
 
 /* ---------- contiguous ("physical") memory
 

@@ -811,7 +811,11 @@ whether they stand); "spectate:<seed>" plays a spectator
 ten seconds, a team game's teams every seventeen, puts the controls' names
 away or back every thirteen, changes what is shown every nine, and of every
 forty seconds watches in first person for ten and flies the free camera for
-ten */
+ten; "theater" plays a saved film's viewer (port/linux/game/theater.c) by
+the clock from the film's start, which its pauses do not stop: the free
+camera at 4 seconds, flown back and up, third person at 8, the next player at
+10, paused at 12 and played on at 15, faster at 16, slower twice at 19 and
+20, faster at 23 and first person at 25 */
 static int test_input_holding_action;
 static double test_input_holding_action_since;
 
@@ -939,6 +943,8 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 	static int seed = -1;
 	static int looking;
 	static int spectating;
+	static int theater;
+	static double theater_since = -1.0;
 	double t;
 	int index;
 
@@ -1000,6 +1006,11 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 			seed = atoi(setting + 9);
 			spectating = 1;
 		}
+		else if (!strcmp(setting, "theater"))
+		{
+			seed = 0;
+			theater = 1;
+		}
 	}
 	if (test_input_menu[0])
 	{
@@ -1013,6 +1024,52 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 		/* (standing still, the button held from a second on) */
 		if (test_input_seconds() - test_input_holding_action_since >= 1.0)
 			pad->bAnalogButtons[XINPUT_GAMEPAD_X] = 255;
+		return;
+	}
+	if (theater)
+	{
+		/* (by real time from the film's first tick: its clock stops) */
+		static const struct
+		{
+			double second;
+			WORD digital;
+			int analog;
+		} presses[] =
+		{
+			{ 4.0, 0, XINPUT_GAMEPAD_X },
+			{ 8.0, 0, XINPUT_GAMEPAD_X },
+			{ 10.0, 0, XINPUT_GAMEPAD_RIGHT_TRIGGER },
+			{ 12.0, XINPUT_GAMEPAD_DPAD_UP, -1 },
+			{ 15.0, XINPUT_GAMEPAD_DPAD_UP, -1 },
+			{ 16.0, XINPUT_GAMEPAD_DPAD_RIGHT, -1 },
+			{ 19.0, XINPUT_GAMEPAD_DPAD_LEFT, -1 },
+			{ 20.0, XINPUT_GAMEPAD_DPAD_LEFT, -1 },
+			{ 23.0, XINPUT_GAMEPAD_DPAD_RIGHT, -1 },
+			{ 25.0, 0, XINPUT_GAMEPAD_X },
+		};
+		double now = (double)SDL_GetTicks() / 1000.0;
+
+		if (network_test_game_seconds() < 0.0)
+			return;
+		if (theater_since < 0.0)
+			theater_since = now;
+		t = now - theater_since;
+		for (index = 0; index < (int)(sizeof(presses) / sizeof(presses[0])); index++)
+		{
+			if (t >= presses[index].second && t < presses[index].second + 0.2)
+			{
+				pad->wButtons |= presses[index].digital;
+				if (presses[index].analog >= 0)
+					pad->bAnalogButtons[presses[index].analog] = 255;
+			}
+		}
+		/* (back and up, over the players, clear of the walls the free
+		camera flies through) */
+		if (t >= 4.5 && t < 7.0)
+		{
+			pad->sThumbLY = -24000;
+			pad->bAnalogButtons[XINPUT_GAMEPAD_A] = 255;
+		}
 		return;
 	}
 	t = test_input_seconds() + seed * 1.7;

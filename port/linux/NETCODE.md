@@ -477,6 +477,41 @@ machine in the pregame refuses, and which the others no longer need), only
 a pregame keep-alive every five seconds from the host
 (`network_server_manager.c`, `network_server_message_handler.c`).
 
+## Saved films
+
+A machine with `game.record_films` on saves a film of each game
+(`port/linux/game/theater_film.c`; the main menu's THEATER plays them:
+`port/linux/README.md`, "Theater"). Nothing is sent for it, and nothing the
+machines agree on changes, so the network version is the same:
+
+- A client writes every message of the host's that it reads in the game, as
+  it read it, and at each tick's start its own players' actions. The records
+  are in the client's order: a tick's record after the messages read before
+  the tick ran.
+- The host's own client hears none of the distributed netcode's messages,
+  so the host writes what it would send a machine of its own that has no
+  players, in the last slot of its machine table (`THEATER_FILM_MACHINE`,
+  127), which no machine that joins is given while the host records films
+  (it then takes 127 machines, not 128; a machine that joined into the slot
+  before films were recorded leaves the host's game without a film). The film machine is in
+  `distributed_client_machines` while the film is written: it is sent every
+  player in every tick, as a spectator's machine is, and at the start the
+  game's objects, statistics and game type state, as a machine that has
+  loaded is. It never sends anything, so nothing that counts machines that
+  are heard from (votes, a co-op skip vote) counts it.
+
+To play a film, a client's connection is the film (`network_connection.c`):
+its reads are the film's messages, and its writes go nowhere. The client
+starts the film's game as the machine that made it did, at the same slot
+with the same random seed, and plays it as any client: each tick it takes
+the film's messages before that tick, and its players take the actions they
+had. A film of the host has every player as the host's (none predicted:
+`distributed_player_is_local` is false), so each is corrected to where the
+host had them, as a client's copies of other machines' players are. A
+client's clock waits for the host's first update, but a film's runs where
+the film ran ticks (the host's ran before its first update). A film plays
+only on a build of its network version: it is the messages of that version.
+
 ## Map sharing
 
 A client may join a game on a Custom Edition map it does not have

@@ -78,6 +78,7 @@ symbols in this file:
 #include "scenario/scenario.h" /* port: game_time_menu_scene */
 #include "scenario/scenario_definitions.h"
 #include "profile_sections.h" /* port: port/linux/include/profile_sections.h */
+#include "theater.h" /* port: port/linux/game/theater_film.c */
 /* port/linux/game/network_distributed.c's */
 void network_distributed_tick(void);
 
@@ -294,7 +295,9 @@ real game_time_get_speed(
 
 	/* port: a client of another's game runs at the host's speed (its own
 	set before it joined too: cheats_network_client_enforce) */
-	if (network_game_distributed_client())
+	/* (port: but a saved film's playback, at the viewer's speed:
+	port/linux/game/theater.c) */
+	if (network_game_distributed_client() && !theater_playing())
 		return 1.0f;
 	return game_time_globals->speed;
 }
@@ -338,6 +341,10 @@ boolean game_time_held(
 	struct network_game_client *client;
 
 	if (game_connection() != _game_connection_network_client)
+		return FALSE;
+	/* port: a saved film's client ticks where the machine that made it did
+	(the host's did before its first update: port/linux/game/theater_film.c) */
+	if (theater_film_tick_next())
 		return FALSE;
 	client = global_network_game_client_get();
 	return client && !network_game_client_server_has_started_game(client);
