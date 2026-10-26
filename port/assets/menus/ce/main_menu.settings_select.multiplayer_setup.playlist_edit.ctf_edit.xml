@@ -32,7 +32,6 @@
 		<child widget="main_menu/settings_select/multiplayer_setup/playlist_edit/ctf_edit/op_flag_at_home" x="54" y="163"/>
 		<child widget="main_menu/settings_select/multiplayer_setup/playlist_edit/ctf_edit/op_captures_to_win" x="54" y="193"/>
 		<child widget="main_menu/settings_select/multiplayer_setup/playlist_edit/ctf_edit/op_time_limit" x="54" y="223"/>
-		<child widget="main_menu/settings_select/multiplayer_setup/match_options/op_fov" x="54" y="253"/>
 		<child widget="main_menu/settings_select/multiplayer_setup/playlist_edit/ctf_edit/ctf_button_bar" y="414"/>
 	</widget>
 	<widget name="main_menu/settings_select/multiplayer_setup/playlist_edit/ctf_edit/ctf_options_screen" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/gradient">

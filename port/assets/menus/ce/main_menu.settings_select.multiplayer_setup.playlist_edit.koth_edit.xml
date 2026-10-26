@@ -25,7 +25,6 @@
 		<child widget="main_menu/settings_select/multiplayer_setup/playlist_edit/koth_edit/op_score_to_win" x="54" y="103"/>
 		<child widget="main_menu/settings_select/multiplayer_setup/playlist_edit/koth_edit/op_team_play" x="54" y="133"/>
 		<child widget="main_menu/settings_select/multiplayer_setup/playlist_edit/ctf_edit/op_time_limit" x="54" y="163"/>
-		<child widget="main_menu/settings_select/multiplayer_setup/match_options/op_fov" x="54" y="193"/>
 		<child widget="main_menu/settings_select/multiplayer_setup/playlist_edit/koth_edit/koth_button_bar" y="414"/>
 	</widget>
 	<widget name="main_menu/settings_select/multiplayer_setup/playlist_edit/koth_edit/koth_options_screen" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/gradient">

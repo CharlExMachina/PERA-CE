@@ -39,7 +39,7 @@ struct hardcore_rules
 	unsigned char trig_delay;
 	unsigned char pistol_spread;    /* 0 the tag, 1 tight, 2 wide, 3 double */
 	unsigned char shotgun_spread;
-	unsigned char forced_fov;       /* 0 each player keeps display.fov; else 80 to 150, step 5 */
+	unsigned char forced_fov;       /* 0 keeps display.fov; else 80 to 150, step 5, on this machine */
 	unsigned char random_areas;     /* training mode, with spawns_visible */
 };
 
@@ -90,6 +90,9 @@ void hardcore_rules_host_variant(struct game_variant *variant);
 boolean hardcore_rules_active(void);
 boolean hardcore_rules_random_areas(void);
 const struct hardcore_rules *hardcore_rules_live(void);
+/* The host's field of view on this machine, or 0. A joined player keeps
+display.fov, and the sheet sent to other machines carries 0 here. */
+unsigned char hardcore_rules_local_fov(void);
 
 void hardcore_rules_begin_map(void);
 void hardcore_rules_tick(void);

@@ -163,7 +163,7 @@ void hardcore_rules_store(long profile_index)
 	if (!file_reference_create_from_path(&file, path, FALSE) || !file_create(&file) ||
 		!file_open(&file, FLAG(_permission_write_bit)) || !file_set_position(&file, 0))
 		return;
-	/* The file keeps the six rules and the host field of view. A removed row must not come back on load. */
+	/* The file keeps the six rules and this machine's field of view. A removed row must not come back on load. */
 	hardcore_rules_kept_only(&hardcore_edit);
 	file_write(&file, sizeof(hardcore_edit), &hardcore_edit);
 	file_close(&file);
@@ -294,8 +294,8 @@ static void hardcore_training_pair(struct hardcore_rules *rules)
 /* The rows that left the menu. Their bytes stay in the message so its
    layout does not move, and they are the retail sheet: a zero used to
    mean manual pickup and ordered hills, which a match option must not
-   turn on. The six kept rules and the host field of view are the only
-   ones a host enforces. */
+   turn on. The six kept rules are the ones a host enforces. The field of
+   view stays on this machine. */
 static void hardcore_rules_kept_only(struct hardcore_rules *rules)
 {
 	struct hardcore_rules stock;
@@ -406,6 +406,18 @@ boolean hardcore_rules_random_areas(void)
 const struct hardcore_rules *hardcore_rules_live(void)
 {
 	return &hardcore_live;
+}
+
+unsigned char hardcore_rules_local_fov(void)
+{
+	unsigned char fov;
+
+	if (!hardcore_rules_active() || hardcore_remote_client())
+		return 0;
+	fov = hardcore_live.forced_fov;
+	if (fov != 0 && (fov < 80 || fov > 150 || ((fov - 80) % 5) != 0))
+		return 0;
+	return fov;
 }
 
 static void hardcore_camo_write(int refraction, int falloff, int red, int green, int blue)
@@ -1118,7 +1130,13 @@ boolean hardcore_rules_write_message(void *buffer, long buffer_size)
 	bytes[5] = 'L';
 	bytes[6] = HARDCORE_RULES_VERSION;
 	hardcore_rules_kept_only(&hardcore_live);
-	csmemcpy(bytes + 7, &hardcore_live, sizeof(hardcore_live));
+	{
+		struct hardcore_rules sent = hardcore_live;
+
+		/* A joined player keeps display.fov. This machine still uses its own. */
+		sent.forced_fov = 0;
+		csmemcpy(bytes + 7, &sent, sizeof(sent));
+	}
 	return TRUE;
 }
 
@@ -1136,6 +1154,7 @@ boolean hardcore_rules_take_message(void const *message, long size)
 		return FALSE;
 	csmemcpy(&hardcore_live, bytes + 7, sizeof(hardcore_live));
 	hardcore_rules_kept_only(&hardcore_live);
+	hardcore_live.forced_fov = 0;
 	/* port: the loaded variant may not have the bit yet. the session is
 	   what makes this match apply the sheet, as it does on the host.
 	   these bytes are the host's. the local editor does not replace them. */

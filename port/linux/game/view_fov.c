@@ -2,10 +2,11 @@
 VIEW_FOV.C
 
 The first-person view's field of view (display.fov) and whether the weapon
-is drawn (display.viewmodel_visible). The weapon keeps the default view. A
-match can force one horizontal angle for every player; that does not write
-display.fov. The local render view only: the observer, its transitions and
-what the network sends keep the game's own camera. Each angle is horizontal
+is drawn (display.viewmodel_visible). The weapon keeps the default view. The
+host's field of view changes this machine's view and does not write
+display.fov. A player who joined keeps display.fov. The local render view
+only: the observer, its transitions and what the network sends keep the
+game's own camera. Each angle is horizontal
 at 16:9 (the vertical angle is kept, so other shapes of window widen or
 narrow as the stock view does), and 0 keeps the stock view. Called from the
 game's camera (main.c's set_window_camera_values), its HUD (hud_draw.c) and the passes
@@ -45,16 +46,12 @@ unsigned long config_changes(void);
 static real reticle_scales[MAXIMUM_LOCAL_PLAYERS];
 static real authored_vertical[MAXIMUM_LOCAL_PLAYERS];
 
-/* 0 keeps each player's video setting. A host value is 80 to 150, step 5. */
+/* 0 keeps this machine's video setting. The host's value is 80 to 150,
+step 5, and a player who joined does not take it. */
 static double host_fov_degrees(void)
 {
-	const struct hardcore_rules *rules;
-	unsigned char fov;
+	unsigned char fov = hardcore_rules_local_fov();
 
-	if (!hardcore_rules_active())
-		return 0.0;
-	rules = hardcore_rules_live();
-	fov = rules ? rules->forced_fov : 0;
 	if (fov < 80 || fov > 150 || ((fov - 80) % 5) != 0)
 		return 0.0;
 	return (double)fov;
