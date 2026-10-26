@@ -86,10 +86,12 @@ static unsigned long opening_shown_ms;
 static unsigned long opening_fade_ms;
 static unsigned long opening_fade_shown;
 
-/* The ring stays up for 3 seconds even when the map is already loaded.
-   A spawn that is still arming holds it longer. A stuck spawn does not.
-   Once it is done, the picture fades off the match instead of cutting.
-   A slow frame only moves that fade a short step, so it cannot skip it. */
+/* The film plays out, and its last moment fades off the match. A spawn
+   that is still arming holds the picture until that player is ready. A
+   stuck spawn does not. Without the film, the ring stays up for 3
+   seconds. Once it is done, the picture fades off the match instead of
+   cutting. A slow frame only moves that fade a short step, so it cannot
+   skip it. */
 #define OPENING_RING_MS 3000UL
 #define OPENING_FADE_MS 400UL
 #define OPENING_FADE_STEP_MS 48UL
@@ -659,6 +661,8 @@ void hardcore_rules_opening_frame(void)
 {
 	unsigned long now;
 	unsigned long shown;
+	unsigned long film_ms;
+	unsigned long hold_ms;
 	real progress;
 
 	if (!opening_hold || opening_fading)
@@ -672,9 +676,10 @@ void hardcore_rules_opening_frame(void)
 	if (opening_shown_ms == 0)
 		opening_shown_ms = now;
 	shown = now - opening_shown_ms;
-	/* The film is the original loading animation. It plays at its own
-	   length and the last frame stays up when a player is still drawing.
-	   Without the film, the sweep is the stand-in ring. */
+	/* The film is the original loading animation. Its last moment plays
+	   while the picture fades. A player still drawing holds the frame
+	   that is up. Without the film, the sweep is the stand-in ring. */
+	film_ms = opening_film_duration_ms();
 	if (!opening_film_show(shown, 1.f))
 	{
 		progress = (real)shown / (real)OPENING_RING_MS;
@@ -683,10 +688,17 @@ void hardcore_rules_opening_frame(void)
 		if (progress > 1.f)
 			progress = 0.72f;
 		progress_bar_show_ring(progress);
+		film_ms = 0;
 	}
 	if (!opening_players_ready())
 		return;
-	if (shown < OPENING_RING_MS)
+	if (film_ms > OPENING_FADE_MS)
+		hold_ms = film_ms - OPENING_FADE_MS;
+	else if (film_ms > 0)
+		hold_ms = 0;
+	else
+		hold_ms = OPENING_RING_MS;
+	if (shown < hold_ms)
 		return;
 	opening_fading = TRUE;
 	opening_fade_ms = 0;

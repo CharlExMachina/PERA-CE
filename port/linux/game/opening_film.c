@@ -153,6 +153,15 @@ static int film_decode(long index)
 	return 1;
 }
 
+unsigned long opening_film_duration_ms(void)
+{
+	if (film_state == 0)
+		film_state = film_load() ? 1 : 2;
+	if (film_state != 1)
+		return 0;
+	return film_duration_ms;
+}
+
 boolean opening_film_show(unsigned long shown_ms, real opacity)
 {
 	unsigned long t;
@@ -258,7 +267,8 @@ void opening_film_load_overlay(void)
 	load_advance();
 	if (load_state == 1)
 	{
-		if (film_state != 1 || load_shown_ms < film_duration_ms)
+		/* The last moment of the film plays while it fades off the level. */
+		if (film_state != 1 || load_shown_ms + LOAD_FADE_MS < film_duration_ms)
 		{
 			if (opening_film_show(load_shown_ms, 1.f))
 				return;
