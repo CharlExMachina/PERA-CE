@@ -1559,7 +1559,10 @@ static void network_game_server_port_bots(
 
 		if (!network_player_is_valid(player))
 			continue;
-		if (bots_machine_is_bot(player->machine_index))
+		/* (only in a split screen game, whose one machine is this one: in a
+		game others join, a machine of those slots is a real one, whose
+		players are not bots to send away) */
+		if (network_game_is_splitscreen_local() && bots_machine_is_bot(player->machine_index))
 			slot_of_bot[player->machine_index - BOTS_FIRST_MACHINE] = slot;
 		else if (VALID_INDEX(player->team_index, NUMBER_OF_MULTIPLAYER_TEAMS))
 		{
