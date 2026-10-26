@@ -78,6 +78,12 @@ symbols in this file:
 #include "bink_playback.h"
 #include "game.h"
 #include "game_engine.h"
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+#include "../../port/linux/game/performance_options.h"
+#include "hardcore_views.h" /* port: a teammate pane is a world view */
+#include "hardcore_rules.h" /* port: the opening ring covers the first frames */
+#include "opening_film.h" /* port: a campaign load plays the film */
+#endif
 #include "interface/first_person_weapons.h"
 #include "interface/interface.h"
 #include "editor_stubs.h"
@@ -262,17 +268,27 @@ void render_frame_pregame(
 	rasterizer_parameters.rasterizer_target = 0;
 	rasterizer_window_begin(&rasterizer_parameters);
 
-	halo_screen_ui_offset(TRUE);
-	render_ui_widgets(0, &window->rasterizer_camera.viewport_bounds);
-	halo_screen_ui_offset(FALSE);
+	/* port: the match opening is this loading screen, not the lobby.
+	   The widgets would draw the lobby under it. */
+	if (!hardcore_rules_opening_hold())
+	{
+		halo_screen_ui_offset(TRUE);
+		render_ui_widgets(0, &window->rasterizer_camera.viewport_bounds);
+		halo_screen_ui_offset(FALSE);
+	}
 	bink_playback_render();
 
 	{
 		real progress;
-		if (game_map_loading_in_progress(&progress))
+		if (hardcore_rules_opening_hold())
+			hardcore_rules_opening_frame();
+		else if (game_map_loading_in_progress(&progress))
 		{
-			progress_bar_display(progress);
+			if (!opening_film_load_frame())
+				progress_bar_display(progress);
 		}
+		else if (opening_film_load_active())
+			opening_film_load_overlay();
 	}
 
 	rasterizer_window_end();
@@ -325,6 +341,7 @@ static void render_window(
 	render.local_player_index = local_player_index;
 	render.camera = *camera;
 	render.frustum = *frustum;
+	object_functions_set_for_render(TRUE);
 	parameters.camera = *rasterizer_camera;
 	parameters.frustum = *rasterizer_frustum;
 	parameters.rasterizer_target = rasterizer_target;
@@ -395,6 +412,12 @@ static void render_window(
 		structure_render_transparent_geometry();
 		structure_render_fog();
 		game_engine_post_rasterize_objects();
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		/* port: the hardcore spawn pads join this frame's transparent
+		   models. a classic map has no pad scenery, so the model is drawn
+		   at its player starts. */
+		performance_options_render_world();
+#endif
 		weather_particle_systems_render();
 		render_particles();
 		particle_systems_render();
@@ -438,9 +461,14 @@ static void render_window(
 		}
 		interface_draw_screen();
 		rasterizer_screen_flash();
-		halo_screen_ui_offset(TRUE);
-		render_ui_widgets(local_player_index, &rasterizer_camera->viewport_bounds);
-		halo_screen_ui_offset(FALSE);
+		/* port: a teammate pane is their view, not a second copy of this
+		player's menus */
+		if (!hardcore_views_is_teammate_window((short)render.window_index))
+		{
+			halo_screen_ui_offset(TRUE);
+			render_ui_widgets(local_player_index, &rasterizer_camera->viewport_bounds);
+			halo_screen_ui_offset(FALSE);
+		}
 	}
 
 	bink_playback_render();
@@ -450,6 +478,7 @@ static void render_window(
 	rasterizer_debug_draw();
 	rasterizer_window_end();
 	profile_render_window_end();
+	object_functions_set_for_render(FALSE);
 
 	return;
 }
@@ -636,6 +665,18 @@ void render_frame(
 		{
 			window_type = 0;
 		}
+		else if (hardcore_views_is_teammate_window((short)window_index) &&
+			window->local_player_index != NONE)
+		{
+			/* port: before the local-player branch. the pane borrows a HUD
+			slot, so local_player_index is set, and this still has to run.
+			a player who has left, or the single postgame window, has none:
+			that pane stays clear. a dead teammate keeps the death camera */
+			hardcore_views_begin((short)window_index);
+			render_player_frame(window, NULL);
+			hardcore_views_end();
+			continue;
+		}
 		else if (window->local_player_index != NONE)
 		{
 			if (screenshot_index != NULL && screenshot_page_index != NULL)
@@ -662,6 +703,11 @@ void render_frame(
 	halo_screen_ui_offset(TRUE);
 	progress_bar_eachframe();
 	halo_screen_ui_offset(FALSE);
+	/* port: the opening film leaves over this frame, after the world and HUD */
+	if (hardcore_rules_opening_fading())
+		hardcore_rules_opening_overlay();
+	else if (opening_film_load_active())
+		opening_film_load_overlay();
 	rasterizer_windows_end();
 	rasterizer_frame_end();
 

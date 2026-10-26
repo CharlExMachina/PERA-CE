@@ -30,5 +30,9 @@ void hud_update_weapon(
 	void);
 void hud_render_weapon_interface(
 	struct player_datum *player);
+/* port: fill one local slot's reticle from that slot's player. the weapon
+update otherwise walks only the real local players */
+void hud_weapon_port_update_player(
+	short local_player_index);
 
 #endif // __HUD_WEAPON_H

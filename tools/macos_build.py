@@ -505,13 +505,17 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
                  + f" && iconutil -c icns {iconset} -o $out"),
         description="MACOS ICON $out",
     )
-    n.build(outputs=icon, rule="macos_icon", inputs=Path("port/assets/icon/opence-icon.png"))
+    n.build(outputs=icon, rule="macos_icon", inputs=Path("port/assets/icon/corece-icon.png"))
     staged = [contents / "MacOS" / "halo", contents / "Resources" / "halo_guest.elf",
-              contents / "Resources" / "brokers.txt", contents / "Info.plist", icon]
+              contents / "Resources" / "brokers.txt", contents / "Info.plist", icon,
+              contents / "Resources" / "opening_frames.bin"]
     n.build(outputs=staged[0], rule="macos_copy", inputs=host_executable)
     n.build(outputs=staged[1], rule="macos_copy", inputs=image)
     n.build(outputs=staged[2], rule="macos_copy", inputs=Path("port/assets/network/brokers.txt"))
     n.build(outputs=staged[3], rule="macos_plist", inputs=PORT_DIR / "app" / "Info.plist")
+    # the match and campaign loading film (port/linux/game/opening_film.c),
+    # which the host names to the game (host_main.m)
+    n.build(outputs=staged[5], rule="macos_copy", inputs=Path("port/assets/opening/opening_frames.bin"))
     # (signed as a whole, ad hoc: Apple silicon runs only signed code; the
     # signature does not use the hardened runtime, which would refuse the
     # guest's code its executable pages without an entitlement)

@@ -30,8 +30,8 @@ Mouse aim does not go through the right stick: the game's look code asks
 halo_linux_mouse_look for the motion since its last call and adds it to the
 stick's facing change, so aiming is direct rather than rate based.
 
-The game's debug keyboard exists only for the console. Backquote (which
-opens it) always reaches the keystroke queue, everything else only while
+The game's debug keyboard exists only for the console. Its configured key
+is translated into Xbox backquote and always reaches the queue; everything else only while
 the console is open, since the game also polls a few keys directly (escape
 returns to the main menu). While the console is open the keyboard does not
 drive the controller.
@@ -398,7 +398,7 @@ static void mouse_poll(const struct platform_input_state *input)
 		mouse_pending_x = 0.0f;
 		mouse_pending_y = 0.0f;
 	}
-	if (!input->mouse_released)
+	if (!input->mouse_released && !input->ui_pointer)
 	{
 		mouse_pending_x += input->mouse_dx;
 		mouse_pending_y += input->mouse_dy;
@@ -407,6 +407,11 @@ static void mouse_poll(const struct platform_input_state *input)
 		mouse_wheel_accumulated += input->mouse_wheel;
 		if (input->mouse_wheel != 0.0f)
 			wheel_moved_ms = SDL_GetTicks();
+	}
+	else
+	{
+		mouse_pending_x = mouse_pending_y = mouse_wheel_accumulated = 0.0f;
+		wheel_press_until_ms = 0;
 	}
 	pthread_mutex_unlock(&mouse_lock);
 }
@@ -473,8 +478,7 @@ static void typing_gamepad(const struct platform_input_state *input, XINPUT_GAME
 static void keyboard_gamepad(const struct platform_input_state *input, XINPUT_GAMEPAD *pad)
 {
 	const unsigned char *k = input->keys;
-	BOOL mouse = !input->mouse_released;
-	const unsigned char *m = input->mouse_buttons;
+	const unsigned char *m = input->mouse_released ? NULL : input->mouse_buttons;
 	int x = 0, y = 0;
 
 	if (text_typing)
@@ -507,7 +511,7 @@ static void keyboard_gamepad(const struct platform_input_state *input, XINPUT_GA
 	pad->bAnalogButtons[XINPUT_GAMEPAD_A] |= analog(k[SDL_SCANCODE_SPACE] || k[SDL_SCANCODE_RETURN] ||
 		k[SDL_SCANCODE_KP_ENTER]);
 	pad->bAnalogButtons[XINPUT_GAMEPAD_B] |= analog(k[SDL_SCANCODE_ESCAPE] || k[SDL_SCANCODE_BACKSPACE] ||
-		(mouse && m[SDL_BUTTON_X1]));
+		(m && m[SDL_BUTTON_X1]));
 #ifdef HALO_ANDROID
 	/* the system back key (gesture or button) backs out of menus */
 	pad->bAnalogButtons[XINPUT_GAMEPAD_B] |= analog(k[SDL_SCANCODE_AC_BACK]);
@@ -804,7 +808,8 @@ pixels, which SDL counts as a notch per 100, and some send fewer for one
 /* debug.test_input "bot:<seed>": a scripted player for the automated
 network tests (port/linux/game/network_test.c), different for each seed:
 it walks and strafes in circles, turns, fires every few seconds, jumps now
-and then and throws a grenade every seven seconds; "look:<seed>" stands
+and then and throws a grenade every seven seconds; "sound:<seed>" adds
+ordinary switch/reload presses for sound-rule validation; "look:<seed>" stands
 still, only turning and looking up and down (where remote players aim and
 whether they stand); "spectate:<seed>" plays a spectator
 (port/linux/game/spectator.c): it looks about, takes the next player every
@@ -939,6 +944,7 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 	static int seed = -1;
 	static int looking;
 	static int spectating;
+	static int sound_events;
 	double t;
 	int index;
 
@@ -990,6 +996,11 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 			seed = atoi(setting + 4);
 		else if (!strcmp(setting, "bot"))
 			seed = 0;
+		else if (!strncmp(setting, "sound:", 6))
+		{
+			seed = atoi(setting + 6);
+			sound_events = 1;
+		}
 		else if (!strncmp(setting, "look:", 5))
 		{
 			seed = atoi(setting + 5);
@@ -1058,6 +1069,13 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 		pad->bAnalogButtons[XINPUT_GAMEPAD_A] = 255;
 	if (fmod(t, 7.0) < 0.2)
 		pad->bAnalogButtons[XINPUT_GAMEPAD_LEFT_TRIGGER] = 255;
+	if (sound_events)
+	{
+		if (fmod(t, 11.0) < 0.2)
+			pad->bAnalogButtons[XINPUT_GAMEPAD_Y] = 255;
+		if (fmod(t, 13.0) < 0.2)
+			pad->bAnalogButtons[XINPUT_GAMEPAD_X] = 255;
+	}
 }
 
 static void wheel_update(void)

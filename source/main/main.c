@@ -394,6 +394,8 @@ symbols in this file:
 #endif
 #include "camera/director.h"
 #include "camera/observer.h"
+#include "hardcore_views.h" /* port: teammate panes in a hardcore team game */
+#include "hardcore_rules.h" /* port: the opening loading screen */
 #include "cutscene/cinematics.h"
 #include "effects/player_effects.h"
 #include "physics/collision_usage.h"
@@ -1461,7 +1463,22 @@ short main_get_window_count(
 {
 	boolean single_window = game_engine_force_single_screen() || cinematic_in_progress();
 
-	return single_window ? 1 : PIN(local_player_count(), 1, MAXIMUM_WINDOWS);
+	if (!single_window)
+	{
+		short count = (short)PIN(hardcore_views_local_count(), 1, MAXIMUM_WINDOWS);
+
+		/* port: one local player on this team, and that team's mates.
+		   the other team's local player is not a pane */
+		if (count == 1)
+		{
+			short views = hardcore_views_window_count();
+
+			if (views > 1)
+				return views;
+		}
+		return count;
+	}
+	return 1;
 }
 
 #ifdef HALO_PROFILE
@@ -1491,6 +1508,8 @@ static void main_new_map(
 	{
 		create_local_players();
 		game_time_start();
+		if (debug_game_save)
+			console_printf(FALSE, "\nloaded map %s\n", options->map_name);
 	}
 	else
 	{
@@ -1779,10 +1798,10 @@ static void main_native_build_label(char *label, size_t capacity)
 	platform = "Linux";
 	#endif
 	if (HALO_BUILD_NUMBER > 0)
-		_snprintf(label, capacity - 1, "OpenCE %s | build %d (%s)",
+		_snprintf(label, capacity - 1, "CoreCE %s | build %d (%s)",
 			platform, HALO_BUILD_NUMBER, HALO_BUILD_FLAVOR);
 	else
-		_snprintf(label, capacity - 1, "OpenCE %s | local build (%s)",
+		_snprintf(label, capacity - 1, "CoreCE %s | local build (%s)",
 			platform, HALO_BUILD_FLAVOR);
 	label[capacity - 1] = 0;
 }
@@ -3353,16 +3372,28 @@ static void main_game_render(
 	force_single_screen = game_engine_force_single_screen();
 	last_local_player_index = NONE;
 
-	window_count = PIN(local_player_count(), 1, MAXIMUM_LOCAL_PLAYERS);
+	/* port: a hardcore team game draws one team. the other team's local
+	   player is not on this split */
+	window_count = PIN(hardcore_views_local_count(), 1, MAXIMUM_LOCAL_PLAYERS);
 	player_window_count = window_count;
 	if (force_single_screen || cinematic_in_progress())
 	{
 		window_count = 1;
 		player_window_count = 1;
 	}
+	/* port: teammate panes share this screen. they are not local players */
+	else if (window_count == 1)
+	{
+		short views = hardcore_views_window_count();
+
+		if (views > 1)
+			player_window_count = views;
+	}
 
 	for (window_index = 0; window_index < player_window_count; window_index++)
 	{
+		struct observer_result teammate_view;
+
 		window = &global_screenshot_count.windows[window_index];
 		observer = NULL;
 
@@ -3375,7 +3406,20 @@ static void main_game_render(
 		{
 			window->local_player_index = NONE;
 		}
-		else if (window_index < window_count)
+		else if (hardcore_views_is_teammate_window((short)window_index))
+		{
+			/* port: a dead teammate keeps the pane on the death camera, so
+			   the split and this machine's choice of pane stay for the match */
+			if (hardcore_views_camera((short)window_index, &teammate_view))
+			{
+				window->local_player_index = hardcore_views_hud_slot((short)window_index);
+				observer = &teammate_view;
+			}
+			else
+				window->local_player_index = NONE;
+		}
+		else if (hardcore_views_is_local_window((short)window_index) ||
+			window_index < window_count)
 		{
 			if (!rasterizer_debug_options.force_all_player_views_to_default_player ||
 				last_local_player_index == NONE)
@@ -3386,7 +3430,7 @@ static void main_game_render(
 				}
 				else
 				{
-					last_local_player_index = local_player_get_next(last_local_player_index);
+					last_local_player_index = hardcore_views_next_local(last_local_player_index);
 				}
 			}
 
@@ -3705,7 +3749,13 @@ static boolean main_loop_iteration(
 					/* frames between ticks too (render_interpolation.c) */
 					if (halo_interpolation_enabled())
 						render_frame = main_globals.main_menu_scenario_loaded || main_globals.halt_time_scale;
-					render_frame &= !game_engine_running() || game_time_get()>=3;
+					/* port: the match clock stays at 0 while the loading screen is
+					   up, so the 3-tick gate would keep the lobby on screen.
+					   Present the film, and the match under it while it fades. */
+					if (hardcore_rules_opening_hold())
+						render_frame = TRUE;
+					else
+						render_frame &= !game_engine_running() || game_time_get()>=3;
 
 					profile_scope_enter(main_non_deterministic_update_section)
 					collision_log_continue_period(1);
@@ -3724,9 +3774,14 @@ static boolean main_loop_iteration(
 				if (render_frame && !debug_no_drawing)
 				{
 					profile_render_start();
-					render_interpolation_frame_begin();
-					main_game_render((double)main_globals.seconds_elapsed);
-					render_interpolation_frame_end();
+					if (hardcore_rules_opening_hold() && !hardcore_rules_opening_fading())
+						main_pregame_render();
+					else
+					{
+						render_interpolation_frame_begin();
+						main_game_render((double)main_globals.seconds_elapsed);
+						render_interpolation_frame_end();
+					}
 					profile_render_end();
 				}
 			}

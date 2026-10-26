@@ -84,6 +84,8 @@ SCREENS = {
             ("BUTTON STYLE:", "display.hud_button_style",
              [("CLASSIC", "classic"), ("GEMS", "gems"), ("DARK GEMS", "menu_gems")],
              "Classic: plain Xbox buttons. Gems: shaded Xbox\nbuttons. Dark Gems: the menu's button artwork.", None),
+            ("CAMPAIGN HUD:", "display.campaign_hud", ON_OFF,
+             "On a custom map, draw the campaign HUD. The reticle\nstays the map's. The next map uses the choice.", None),
             ("HIGH-RES TEXT:", "display.high_res_text", ON_OFF,
              "Draw text and titles with high-res fonts; off\ndraws the game's own.", None),
             ("ANTI-ALIASING:", "display.anti_aliasing",
@@ -112,8 +114,9 @@ SCREENS = {
              "Shields light their surroundings as they flare,\nin the shield's own color.", None),
             ("GLOW INTENSITY:", "display.shield_glow_intensity", [("DEFAULT", "default"), ("LIGHT SHOW", "light_show")],
              "Light Show: the shield glow three times as far,\nat full from a third of the flare.", None),
-            ("MATCH TIMER:", "display.match_timer", ON_OFF,
-             "Draw a clock at the bottom right in multiplayer,\ncounting up from the start of the game.", None),
+            ("MATCH TIMER:", "display.match_timer",
+             [("OFF", "off"), ("ON", "on"), ("ON WITH VOICE", "voice")],
+             "A clock at the bottom right in multiplayer.\nOn with Voice also plays the map's timer voice.", None),
             ("HDR:", "display.hdr", ON_OFF,
              "Keep the light of explosions, plasma and the sun\npast white, and roll it off instead of clipping.", None),
             ("HDR DISPLAY:", "display.hdr_output", ON_OFF,
@@ -220,16 +223,25 @@ SCREENS = {
 # Video Setup's categories open ordinary settings screens. Each has the same
 # pending edits, Defaults, OK and Cancel as the other settings screens.
 _video = SCREENS["video_settings"]
-_graphics = {"display.high_res_hud", "display.hud_button_style", "display.high_res_text", "display.anti_aliasing",
-             "display.anisotropic_filtering", "display.shadow_resolution", "display.per_pixel_lighting", "display.match_timer",
-             "display.model_detail"}
+_graphics = {"display.high_res_hud", "display.hud_button_style", "display.campaign_hud", "display.high_res_text",
+             "display.anti_aliasing", "display.anisotropic_filtering", "display.shadow_resolution",
+             "display.per_pixel_lighting", "display.match_timer", "display.model_detail"}
 # (the visual modifiers: a screen of their own, Extra Effects)
 _extra_effects = {"display.shield_glow", "display.shield_glow_intensity",
                   "display.overshield_effect", "display.hdr", "display.hdr_output"}
+# (and the split screen of teammates' views, port/linux/game/hardcore_views.c:
+# twelve places, closer together, in shorter rows: _row_metrics)
 SCREENS["video_settings/graphics"] = {
-    "screen": "graphics_settings_screen", "header": _video["header"], "spacing": 30,
+    "screen": "graphics_settings_screen", "header": _video["header"], "spacing": 22,
     "same_place": ["anti_aliasing_android"],
-    "rows": [row for row in _video["rows"] if row[1] in _graphics],
+    "rows": [row for row in _video["rows"] if row[1] in _graphics] + [
+        ("SPLIT SCREEN:", "display.teammate_views", ON_OFF,
+         "In a team game, one player sees teammates from\ntheir own eyes, up to four panes.", None),
+        ("YOUR VIEW:", "display.teammate_view_slot",
+         [("TOP", "top"), ("BOTTOM", "bottom"), ("TOP LEFT", "top_left"), ("TOP RIGHT", "top_right"),
+          ("BOTTOM LEFT", "bottom_left"), ("BOTTOM RIGHT", "bottom_right")],
+         "Which pane is yours when split screen is on.\nTwo panes are top and bottom.", None),
+    ],
 }
 SCREENS["video_settings/extra_effects"] = {
     "screen": "extra_effects_settings_screen", "header": _video["header"], "spacing": 30,
@@ -364,7 +376,7 @@ CONTROL_ROWS = 7
 
 # the settings whose rows have the wider spinner (a device's name)
 WIDE_SETTINGS = {"audio.output_device", "audio.input_device", "streamer.slurs", "streamer.swearing",
-                 "streamer.insults"}
+                 "streamer.insults", "display.match_timer", "display.teammate_view_slot"}
 
 # the host's voice chat and vote kicks, on Teamplay Options
 # (_teamplay_options_extras): each row's key, its label, its choices' words
@@ -438,6 +450,20 @@ def _button(name: str, caption: int, handlers: list) -> list:
     return _widget(name, pairs, handlers + ['<on event="left_mouse" run="mouse emit accept event"/>'])
 
 
+def _row_metrics(spacing: int) -> dict:
+    """Retail settings rows are 28 tall on a step of 30, a gap of 2. A shorter
+    step keeps that gap by shortening the row, its label and its spinner."""
+    if spacing >= 30:
+        return {"row": 28, "label": 22, "label_y": 4, "spin": 20, "spin_top": 2, "arrow_y": 7, "arrow_b": 19,
+                "font": "ui\\large_ui", "spin_y": None, "bitmap": "bitmaps/option_bkds"}
+    # A short row uses ui\small_ui (ascent 14, capitals about 11). text_y 1
+    # puts those capitals between the short bar's lines. The spinner is placed
+    # one down, so its text_y is 0 and the two baselines meet.
+    row = spacing - 2
+    return {"row": row, "label": row, "label_y": 1, "spin": 18, "spin_top": 0, "arrow_y": 3, "arrow_b": 15,
+            "font": "ui\\small_ui", "spin_y": 0, "bitmap": "bitmaps/option_bkds_short"}
+
+
 def _screen(folder: str, spec: dict, rows: list, list_inputs: list, list_handlers: list, extra: list) -> list:
     """a screen: its header, the list of rows (with the help line as its
     description), and the buttons"""
@@ -454,14 +480,14 @@ def _screen(folder: str, spec: dict, rows: list, list_inputs: list, list_handler
                                           ("bitmap", header_bitmap)], [])
     lines += _widget(f"{base}/help", [("type", "text"), ("controller", 1), ("left", 68),
                                       ("top", spec.get("help_top", 350)), ("width", 482),
-                                      ("height", 60), ("string_list", f"{base}/help_strings"),
+                                      ("height", spec.get("help_height", 60)), ("string_list", f"{base}/help_strings"),
                                       ("font", "ui\\large_ui"), ("color", "#FFFFFFFF")], [])
     children = [f'<data input="{name}"/>' for name in list_inputs] + list_handlers
     # (each row: its widget, platform, and the place it is in, else the next)
     for index, (row, platform, *place) in enumerate(rows):
         y = 73 + (place[0] if place else index) * spec["spacing"]
         children.append(f'<child{attributes([("widget", row), ("x", 54), ("y", y), ("platform", platform)])}/>')
-    children.append(f'<child{attributes([("widget", f"{base}/button_bar"), ("y", 414)])}/>')
+    children.append(f'<child{attributes([("widget", f"{base}/button_bar"), ("y", spec.get("button_y", 414))])}/>')
     lines += _widget(f"{base}/options_menu",
                      [("type", "column_list"), ("width", 640), ("height", 480),
                       ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
@@ -492,6 +518,7 @@ def _setting_screen(folder: str, spec: dict) -> list:
     base = f"{PE}/{folder}"
     rows, extra = [], []
     place = -1
+    metrics = _row_metrics(spec["spacing"])
     # (platform_places: each platform's rows in places of their own, with
     # no gap where the others' are; a row in one place for all its
     # platforms, else a child for each place)
@@ -513,23 +540,27 @@ def _setting_screen(folder: str, spec: dict) -> list:
         # (a device's name wants the wider spinner Server Setup's co-op rows
         # have: WIDE_SETTINGS)
         wide = setting in WIDE_SETTINGS
-        extra += _widget(row, [("width", 512), ("height", 28), ("flags", "pass_unhandled_to_focused_child"),
-                               ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF"), ("platform", platform)],
+        extra += _widget(row, [("width", 512), ("height", metrics["row"]), ("flags", "pass_unhandled_to_focused_child"),
+                               ("bitmap", metrics["bitmap"]), ("color", "#FF2896FF"), ("platform", platform)],
                          [f'<child{attributes([("widget", f"{base}/{key}_label")])}/>',
                           f'<child{attributes([("widget", f"{base}/{key}_spinner"), ("x", 286 if wide else 320), ("y", 1)])}/>'])
         extra += _widget(f"{base}/{key}_label",
-                         [("type", "text"), ("controller", 1), ("width", 300), ("height", 22),
-                          ("string_list", f"{base}/labels"), ("string_index", index), ("font", "ui\\large_ui"),
-                          ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 4)], [])
+                         [("type", "text"), ("controller", 1), ("width", 300), ("height", metrics["label"]),
+                          ("string_list", f"{base}/labels"), ("string_index", index), ("font", metrics["font"]),
+                          ("color", "#FF2896FF"), ("text_x", 13), ("text_y", metrics["label_y"])], [])
         extra += _widget(f"{base}/{key}_spinner",
-                         [("type", "spinner"), ("left", None if wide else 3), ("top", 2), ("width", 206 if wide else 147),
-                          ("height", 20), ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
+                         [("type", "spinner"), ("left", None if wide else 3), ("top", metrics["spin_top"]),
+                          ("width", 206 if wide else 147),
+                          ("height", metrics["spin"]), ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
                           ("strings", "|".join(shown for shown, _ in choices)), ("setting", setting),
-                          ("values", "|".join(value for _, value in choices)), ("font", "ui\\large_ui"),
-                          ("color", "#FF2896FF"), ("align", "center"), ("text_y", 4 if wide else 1),
+                          ("values", "|".join(value for _, value in choices)), ("font", metrics["font"]),
+                          ("color", "#FF2896FF"), ("align", "center"),
+                          ("text_y", metrics["spin_y"] if metrics["spin_y"] is not None else (4 if wide else 1)),
                           ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
-                          ("header_bounds", "7 -13 19 -7" if wide else "7 -6 19 0"),
-                          ("footer_bounds", "7 208 19 214" if wide else "7 150 19 156")],
+                          ("header_bounds", f"{metrics['arrow_y']} -13 {metrics['arrow_b']} -7" if wide
+                           else f"{metrics['arrow_y']} -6 {metrics['arrow_b']} 0"),
+                          ("footer_bounds", f"{metrics['arrow_y']} 208 {metrics['arrow_b']} 214" if wide
+                           else f"{metrics['arrow_y']} 150 {metrics['arrow_b']} 156")],
                          ['<on event="created" run="port setting load"/>'])
     # (each category's row: its label, the screen it opens, its help, and the
     # platforms it is for, as a row's: every one's when it names none)
@@ -545,15 +576,16 @@ def _setting_screen(folder: str, spec: dict) -> list:
             rows += _placed(row, platform, members, places)
         else:
             rows.append((row, platform, place + 1 + index))
-        extra += _widget(row, [("width", 512), ("height", 28), ("flags", "pass_unhandled_to_focused_child"),
+        extra += _widget(row, [("width", 512), ("height", metrics["row"]), ("flags", "pass_unhandled_to_focused_child"),
                                ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF"), ("platform", platform)],
                          [f'<on event="a" open="{target}"/>', f'<on event="start" open="{target}"/>',
                           '<on event="left_mouse" run="mouse emit accept event"/>',
                           f'<child widget="{base}/{key}_label"/>'])
         extra += _widget(f"{base}/{key}_label",
-                         [("type", "text"), ("controller", 1), ("width", 512), ("height", 22),
+                         [("type", "text"), ("controller", 1), ("width", 512), ("height", metrics["label"]),
                           ("string_list", f"{base}/labels"), ("string_index", len(spec["rows"]) + index),
-                          ("font", "ui\\large_ui"), ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 4)], [])
+                          ("font", "ui\\large_ui"), ("color", "#FF2896FF"), ("text_x", 13),
+                          ("text_y", metrics["label_y"])], [])
     extra += _button(f"{base}/button_defaults", 3, ['<on event="a" run="port settings defaults"/>',
                                                     '<on event="start" run="port settings defaults"/>'])
     extra += _button(f"{base}/button_ok", 1, ['<on event="a" run="port settings save" back="true"/>',
@@ -653,6 +685,10 @@ AIM_ASSIST_HELP = [
 ]
 
 STRING_INSERTS = {
+    # (MATCH OPTIONS' description, its row's after Teamplay Options':
+    # WIDGET_PATCHES)
+    "main_menu/settings_select/multiplayer_setup/playlist_edit/playlist_edit_list_extended_dsc_text": [
+        (7, ["Choose movement sounds, training,\\ncamouflage, team scores and\\nweapon spread.\\nThis gametype:"])],
     f"{PLAYER_EDIT}/player_options_labels": [(8, ["AIM ASSIST:"])],
     f"{PLAYER_EDIT}/cap_player_options": [(28, AIM_ASSIST_HELP)],
     # (Teamplay Options' voice chat and vote kick rows, after its own:
@@ -782,6 +818,11 @@ WIDGET_PATCHES = {
         f"{PLAYER_EDIT}/player_button_bar": [
             f'<child widget="{PLAYER_EDIT}/op_aim_assist" x="54" y="313"/>']}},
     f"{PLAYER_EDIT}/player_options_help": {"set": {"top": 345, "height": 60}},
+    # (the gametype editor's MATCH OPTIONS, after Teamplay Options: its
+    # screen, main_menu.settings_select.multiplayer_setup.match_options.xml,
+    # sets the match rules of port/linux/game/hardcore_rules.c)
+    "main_menu/settings_select/multiplayer_setup/playlist_edit/edit_playlist_select_list": {"children": [
+        '<child widget="main_menu/settings_select/multiplayer_setup/playlist_edit/playlist_edit_match_item"/>']},
     # (the profile settings' picture: on Gamepad Setup's row, the profile's
     # button settings, BITMAP_FRAMES; menu_functions.c's
     # profile_gamepad_layout)
@@ -878,7 +919,63 @@ WIDGET_PATCHES = {
 # picture's 279 by 202
 XBOX_CONTROLLER_PICTURES = f"ui\\shell\\{PE.replace('/', chr(92))}\\controller_edit\\config_controller"
 BITMAP_FRAMES = {
-    f"{PE}/profile_options": [(XBOX_CONTROLLER_PICTURES, 4 + preset, 279, 279, 0, 34) for preset in range(5)],
+    # (frame 9 the Halo logo, a card for a tenth row; the five button layouts
+    # after it: menu_functions.c's PROFILE_FIRST_LAYOUT_FRAME)
+    f"{PE}/profile_options": [
+        ("ui\\shell\\main_menu\\halo_logo", 0, 279, 70, 0, 132),
+        *[(XBOX_CONTROLLER_PICTURES, 4 + preset, 279, 279, 0, 34) for preset in range(5)],
+    ],
+}
+
+# placeholder frames drawn from a settings card the menus already load
+# (the Xbox bitmap, its frame, and, when set, the size and place in the widget).
+# ce_menus.py writes these in place of the placeholder PNG.
+PORT_CARD_FRAMES = {
+    "shell/main_menu/multiplayer_type_select/mp_options__0":
+        ("ui\\shell\\main_menu\\multiplayer_type_select\\mp_options", 2, 0, 0, 0, 0),
+    "shell/main_menu/multiplayer_type_select/mp_options__1":
+        ("ui\\shell\\main_menu\\multiplayer_type_select\\mp_options", 2, 0, 0, 0, 0),
+    "shell/main_menu/multiplayer_type_select/mp_options__2":
+        ("ui\\shell\\main_menu\\multiplayer_type_select\\mp_options", 2, 0, 0, 0, 0),
+    "shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__0":
+        ("ui\\shell\\main_menu\\settings_select\\multiplayer_setup\\playlist_edit\\gametype_options", 0, 0, 0, 0, 0),
+    "shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__3":
+        ("ui\\shell\\main_menu\\settings_select\\multiplayer_setup\\playlist_edit\\gametype_options", 3, 0, 0, 0, 0),
+    "shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__4":
+        ("ui\\shell\\main_menu\\settings_select\\multiplayer_setup\\playlist_edit\\gametype_options", 4, 0, 0, 0, 0),
+    "shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__6":
+        ("ui\\shell\\main_menu\\settings_select\\multiplayer_setup\\playlist_edit\\gametype_options", 1, 0, 0, 0, 0),
+    "shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__7":
+        ("ui\\shell\\main_menu\\multiplayer_type_select\\mp_options", 3, 0, 0, 0, 0),
+    "shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__1":
+        (XBOX_CONTROLLER_PICTURES, 0, 279, 279, 0, 34),
+    # the mouse picture is 512 by 256 and its art runs a little past the 279
+    # box, so the whole picture is drawn into that box
+    "shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__3":
+        ("ui\\shell\\main_menu\\settings_select\\player_setup\\player_profile_edit\\profile_options", 2, 500, 250, 0, 0),
+    "shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__5":
+        ("ui\\shell\\main_menu\\multiplayer_type_select\\mp_options", 0, 0, 0, 0, 0),
+    # the network picture likewise: its right-hand screen sits past 279
+    "shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__6":
+        ("ui\\shell\\main_menu\\multiplayer_type_select\\mp_options", 2, 483, 241, 0, 0),
+    "shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__8":
+        ("ui\\shell\\main_menu\\settings_select\\player_setup\\player_profile_edit\\profile_options", 4, 0, 0, 0, 0),
+}
+# the audio card is the voice speaker, composed into this frame. A later
+# ce_menus.py run keeps the file instead of writing the placeholder back.
+PRESERVE_FRAMES = {
+    "shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__4",
+}
+# frames after the PC bitmap's own, before BITMAP_FRAMES. Multiplayer's card
+# has one picture per row; the PC bitmap had three.
+PORT_EXTRA_FRAMES = {
+    "main_menu/multiplayer_type_select/mp_options": [
+        ("map", "ui\\shell\\main_menu\\multiplayer_type_select\\mp_options", 2, 0, 0, 0, 0),
+        ("map", "ui\\shell\\main_menu\\multiplayer_type_select\\mp_options", 2, 0, 0, 0, 0),
+        ("map", "ui\\shell\\main_menu\\multiplayer_type_select\\mp_options", 0, 0, 0, 0, 0),
+        ("png", "ce/shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__1.png",
+         512, 256, 0, 0, 0),
+    ],
 }
 
 # the titles this port has that the PC version has not, set as its headers
@@ -892,12 +989,18 @@ TITLES = {
     f"{MT}/coop/header_player_2": "PLAYER 2 PROFILE",
     f"{MT}/lobby/header_add_player": "ADD PLAYER",
     f"{SKULLS}/header_skulls": "SKULLS",
+    "main_menu/settings_select/multiplayer_setup/hardcore_options_edit/header_hardcore": "HARDCORE",
+    "main_menu/settings_select/multiplayer_setup/hardcore_options_edit/header_extras": "HARDCORE RULES",
+    "main_menu/settings_select/multiplayer_setup/hardcore_options_edit/header_match": "MATCH RULES",
+    "main_menu/settings_select/multiplayer_setup/hardcore_options_edit/header_world": "WORLD",
+    "main_menu/settings_select/multiplayer_setup/hardcore_options_edit/header_tuning": "WEAPON TUNING",
+    "main_menu/settings_select/multiplayer_setup/hardcore_options_edit/header_server": "SERVER SETUP",
 }
 
 
 def title_backdrop(width: float) -> str:
     """a header's dark backdrop, as the PC headers' redraws have it, for text
-    width units wide (the text is set over it in OpenCE: ce_menus.py)"""
+    width units wide (the text is set over it in CoreCE: ce_menus.py)"""
     return "\n".join([
         '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="64" viewBox="0 0 512 64">',
         "  <defs>",
@@ -985,8 +1088,8 @@ TITLE_LEFT, TITLE_TOP, TITLE_CAP = 30.68, 33.5, 21.5
 TITLE_COLOR = (0x29, 0x95, 0xFD, 255)
 
 
-def _header(name: str, bitmap: str, platform=None) -> list:
-    return _widget(name, [("controller", 1), ("left", 35), ("top", 11), ("width", 363), ("height", 59),
+def _header(name: str, bitmap: str, platform=None, width=363) -> list:
+    return _widget(name, [("controller", 1), ("left", 35), ("top", 11), ("width", width), ("height", 59),
                           ("bitmap", bitmap), ("platform", platform)], [])
 
 
@@ -1222,7 +1325,8 @@ def _server_settings() -> list:
     return lines + _skulls(f"{base}/skulls", network=True)
 
 
-MAXIMUM_PLAYERS = [2, 4, 8, 12, 16, 24, 32, 48, 64, 96, 128]
+MAXIMUM_PLAYERS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                   20, 24, 32, 40, 48, 64, 80, 96, 112, 128]
 # CO-OP OPTIONS' amounts of PER PLAYER (network.coop_enemies, percentages)
 # and STATIC MULTIPLIER (network.coop_enemies_multiplier), as menu_functions.c's
 # gametype_options have their values
@@ -1682,9 +1786,516 @@ def _map_kind() -> list:
     return lines
 
 
+def _choice_wide(strings: str) -> bool:
+    """a spinner wider than the gametype rows', for a value those rows' box
+    cannot hold (YOUR VIEW's corners)"""
+    return any(len(piece) > 10 for piece in strings.split("|"))
+
+
+def _hardcore_spinner(base: str, row: str, spin: str, label: str, strings: str) -> list:
+    wide = _choice_wide(strings)
+    lines = _widget(f"{base}/{row}", [("width", 512), ("height", 28),
+                                      ("flags", "pass_unhandled_to_focused_child"),
+                                      ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF")],
+                    [f'<child widget="{base}/{row}_label"/>',
+                     f'<child widget="{base}/{spin}" x="{286 if wide else 320}" y="1"/>'])
+    lines += _widget(f"{base}/{row}_label", [("type", "text"), ("controller", 1), ("width", 300),
+                                             ("height", 22), ("text", label), ("font", "ui\\large_ui"),
+                                             ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 4)], [])
+    lines += _widget(f"{base}/{spin}", [("type", "spinner"), ("left", None if wide else 3), ("top", 2),
+                                        ("width", 206 if wide else 147), ("height", 20),
+                                        ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
+                                        ("strings", strings), ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
+                                        ("align", "center"), ("text_y", 4 if wide else 1),
+                                        ("header_bitmap", "bitmaps/arrow_sm_left"),
+                                        ("footer_bitmap", "bitmaps/arrow_sm_right"),
+                                        ("header_bounds", "7 -13 19 -7" if wide else "7 -6 19 0"),
+                                        ("footer_bounds", "7 208 19 214" if wide else "7 150 19 156")],
+                     ['<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    return lines
+
+
+def _hardcore_local_setting(base: str, row: str, label: str, setting: str, strings: str, values: str) -> list:
+    """A spinner of this machine's config, not a networked hardcore rule."""
+    wide = _choice_wide(strings)
+    lines = _widget(f"{base}/op_{row}", [("width", 512), ("height", 28),
+                                         ("flags", "pass_unhandled_to_focused_child"),
+                                         ("bitmap", "bitmaps/option_bkds_short"), ("color", "#FF2896FF")],
+                    [f'<child widget="{base}/op_{row}_label"/>',
+                     f'<child widget="{base}/hardcore_{row}" x="{286 if wide else 320}" y="1"/>'])
+    lines += _widget(f"{base}/op_{row}_label", [("type", "text"), ("controller", 1), ("width", 300),
+                                                ("height", 22), ("text", label), ("font", "ui\\large_ui"),
+                                                ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 1)], [])
+    lines += _widget(f"{base}/hardcore_{row}", [("type", "spinner"), ("left", None if wide else 3), ("top", 2),
+                                            ("width", 206 if wide else 147), ("height", 20),
+                                            ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
+                                            ("strings", strings), ("setting", setting), ("values", values),
+                                            ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
+                                            ("align", "center"), ("text_y", 4 if wide else 1),
+                                            ("header_bitmap", "bitmaps/arrow_sm_left"),
+                                            ("footer_bitmap", "bitmaps/arrow_sm_right"),
+                                            ("header_bounds", "7 -13 19 -7" if wide else "7 -6 19 0"),
+                                            ("footer_bounds", "7 208 19 214" if wide else "7 150 19 156")],
+                     ['<on event="created" run="port setting load"/>',
+                      '<on event="deleted" run="port setting save"/>',
+                      '<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    return lines
+
+
+def _hardcore_rule_page(base: str, key: str, title: str, rows: list, step: int, local_rows=None) -> list:
+    """One hardcore sheet. Its rows are not on the shared Xbox screens.
+    local_rows are this machine's settings, not bytes of the networked rules."""
+    local_rows = local_rows or []
+    children = [f'<child widget="{base}/op_{row[0]}" x="54" y="{73 + step * index}"/>'
+                for index, row in enumerate(rows)]
+    children += [f'<child widget="{base}/op_{row[0]}" x="54" y="{73 + step * (len(rows) + index)}"/>'
+                 for index, row in enumerate(local_rows)]
+    lines = _widget(f"{base}/hardcore_{key}_screen", [("width", 640), ("height", 480),
+                                                         ("flags", "pass_unhandled_to_focused_child pause_game"),
+                                                         ("bitmap", "bitmaps/gradient")],
+                    [f'<child widget="{base}/header_{key}"/>',
+                     f'<child widget="{base}/{key}_list"/>'])
+    lines += _header(f"{base}/header_{key}", f"{base}/header_{key}", width=605)
+    lines += _widget(f"{base}/{key}_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                            ("flags", "pass_unhandled_to_focused_child up_down_tabs_children")],
+                     ['<on event="created" run="mp profile init player opts"/>',
+                      '<on event="b" back="true"/>',
+                      '<on event="back" back="true"/>'] + children +
+                     [f'<child widget="{base}/{key}_buttons" y="{414 if 73 + step * (len(rows) + len(local_rows)) < 414 else 73 + step * (len(rows) + len(local_rows))}"/>'])
+    lines += _widget(f"{base}/{key}_buttons", [("type", "column_list"), ("width", 640), ("height", 28),
+                                               ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     ['<data input="common button bar update"/>',
+                      f'<child widget="{base}/{key}_ok" x="380" y="1"/>',
+                      '<child widget="common_button_cancel" x="510" y="1"/>'])
+    lines += _widget(f"{base}/{key}_ok", [("type", "text"), ("width", 128), ("height", 24),
+                                          ("bitmap", "bitmaps/text_button_background"),
+                                          ("string_list", "strings/common_button_captions"), ("string_index", 1),
+                                          ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
+                                          ("text_y", 2)],
+                     ['<on event="a" run="mp profile set player options" back="true"/>',
+                      '<on event="start" run="mp profile set player options" back="true"/>',
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    for row, label, strings in rows:
+        lines += _hardcore_spinner(base, f"op_{row}", f"hardcore_{row}", label, strings)
+    for row, label, setting, strings, values in local_rows:
+        lines += _hardcore_local_setting(base, row, label, setting, strings, values)
+    return lines
+
+
+def _hardcore_rule_pages(base: str) -> list:
+    match = [
+        ("flag_pickup", "FLAG PICKUP", "MANUAL|AUTOMATIC"),
+        ("ball_pickup", "BALL PICKUP", "MANUAL|AUTOMATIC"),
+        ("hill_order", "HILL ORDER", "ORDERED|RANDOM"),
+        ("hill_move", "HILL MOVE TIME", "15 S|30 S|45 S|60 S|90 S|120 S|180 S"),
+        ("fireteams", "FIRETEAMS", "NO|YES"),
+        ("infinite_ammo", "INFINITE AMMO", "NO|AMMO|MAGAZINES"),
+        ("kill_restore", "KILL RESTORES", "NO|YES"),
+        ("skip_draw", "SKIP FIRST DRAW", "NO|YES"),
+        ("move_sounds", "MOVEMENT SOUNDS", "YES|NO"),
+    ]
+    world = [
+        ("random_areas", "TRAINING MODE", "NO|YES"),
+        ("omit_first", "OMIT FIRST SPAWN", "NO|YES|POWER"),
+        ("item_spawn", "ITEM SPAWN", "OFF|15 S|30 S|45 S|60 S|90 S|120 S"),
+        ("camo", "CAMO VARIANT", "XBOX|MCC|CUSTOM"),
+        ("outlines", "TEAMMATE OUTLINES", "NO|YES"),
+        ("os_visible", "OVERSHIELD VISIBLE", "NO|YES"),
+        ("os_type", "OVERSHIELD TYPE", "CONSTANT|FADING"),
+        ("team_scores", "TEAM SCORES", "NO|YES"),
+    ]
+    tuning = [
+        ("friction", "FRICTION", "TAG|NONE|HALF|FULL|STRONG"),
+        ("adhesion", "ADHESION", "TAG|NONE|HALF|FULL|STRONG"),
+        ("aim_delay", "AIM DELAY", "OFF|33 MS|66 MS|100 MS|166 MS|266 MS"),
+        ("trig_delay", "TRIGGER DELAY", "OFF|33 MS|66 MS|100 MS|166 MS|266 MS"),
+        ("pistol_spread", "PISTOL SPREAD", "TAG|TIGHT|WIDE|DOUBLE"),
+        ("shotgun_spread", "SHOTGUN SPREAD", "TAG|TIGHT|WIDE|DOUBLE"),
+    ]
+    links = [("op_match", "MATCH RULES", "hardcore_match_screen"),
+             ("op_world", "WORLD", "hardcore_world_screen"),
+             ("op_tuning", "WEAPON TUNING", "hardcore_tuning_screen")]
+    lines = _widget(f"{base}/op_extras", [("width", 512), ("height", 28),
+                                          ("flags", "pass_unhandled_to_focused_child"),
+                                          ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF")],
+                    [f'<on event="a" run="port hardcore prepare" open="{base}/hardcore_extras_screen"/>',
+                     f'<on event="start" run="port hardcore prepare" open="{base}/hardcore_extras_screen"/>',
+                     '<on event="left_mouse" run="mouse emit accept event"/>',
+                     f'<child widget="{base}/op_extras_label"/>'])
+    lines += _widget(f"{base}/op_extras_label", [("type", "text"), ("controller", 1), ("width", 300),
+                                                 ("height", 22), ("text", "HARDCORE RULES"),
+                                                 ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
+                                                 ("text_x", 13), ("text_y", 4)], [])
+    lines += _widget(f"{base}/hardcore_extras_screen", [("width", 640), ("height", 480),
+                                                           ("flags", "pass_unhandled_to_focused_child pause_game"),
+                                                           ("bitmap", "bitmaps/gradient")],
+                     [f'<child widget="{base}/header_extras"/>',
+                      f'<child widget="{base}/extras_list"/>'])
+    lines += _header(f"{base}/header_extras", f"{base}/header_extras", width=605)
+    lines += _widget(f"{base}/extras_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                             ("flags", "pass_unhandled_to_focused_child up_down_tabs_children")],
+                     ['<on event="b" back="true"/>',
+                      '<on event="back" back="true"/>'] +
+                     [f'<child widget="{base}/{key}" x="54" y="{73 + 30 * index}"/>'
+                      for index, (key, _label, _target) in enumerate(links)] +
+                     [f'<child widget="{base}/extras_buttons" y="414"/>'])
+    lines += _widget(f"{base}/extras_buttons", [("type", "column_list"), ("width", 640), ("height", 28),
+                                                ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     ['<data input="common button bar update"/>',
+                      '<child widget="common_button_cancel" x="510" y="1"/>'])
+    for key, label, target in links:
+        lines += _widget(f"{base}/{key}", [("width", 512), ("height", 28),
+                                           ("flags", "pass_unhandled_to_focused_child"),
+                                           ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF")],
+                         [f'<on event="a" run="port hardcore prepare" open="{base}/{target}"/>',
+                          f'<on event="start" run="port hardcore prepare" open="{base}/{target}"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          f'<child widget="{base}/{key}_label"/>'])
+        lines += _widget(f"{base}/{key}_label", [("type", "text"), ("controller", 1), ("width", 300),
+                                                 ("height", 22), ("text", label), ("font", "ui\\large_ui"),
+                                                 ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 4)], [])
+    lines += _hardcore_rule_page(base, "match", "MATCH RULES", match, 30)
+    lines += _hardcore_rule_page(base, "world", "WORLD", world, 30, [
+        ("views", "TEAMMATE VIEWS", "display.teammate_views", "OFF|ON", "false|true"),
+        ("view_slot", "YOUR VIEW", "display.teammate_view_slot",
+         "TOP|BOTTOM|TOP LEFT|TOP RIGHT|BOTTOM LEFT|BOTTOM RIGHT",
+         "top|bottom|top_left|top_right|bottom_left|bottom_right"),
+    ])
+    lines += _hardcore_rule_page(base, "tuning", "WEAPON TUNING", tuning, 30)
+    return lines
+
+
+def _hardcore_field(base: str, key: str, label: str, run: str) -> list:
+    """a server row whose value is typed (the screen's back ends the edit)"""
+    lines = _widget(f"{base}/op_{key}", [("width", 512), ("height", 28),
+                                         ("flags", "pass_unhandled_to_focused_child"),
+                                         ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF")],
+                    [f'<on event="a" run="{run}"/>', f'<on event="start" run="{run}"/>', *FIELD_BACK,
+                     '<on event="left_mouse" run="mouse emit accept event"/>',
+                     f'<child widget="{base}/{key}_label"/>',
+                     f'<child widget="{base}/{key}_value" x="230" y="1"/>'])
+    lines += _widget(f"{base}/{key}_label", [("type", "text"), ("controller", 1), ("width", 220),
+                                             ("height", 22), ("text", label), ("font", "ui\\large_ui"),
+                                             ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 4)], [])
+    lines += _widget(f"{base}/{key}_value", [("type", "text"), ("controller", 1), ("width", 270),
+                                             ("height", 22), ("font", "ui\\small_ui"), ("color", "#FF2896FF"),
+                                             ("align", "center"), ("text_y", 5), ("text_flags", "no_focus_test")], [])
+    return lines
+
+
+def _hardcore_screen() -> list:
+    """Hardcore, its own game. The list is multiplayer or custom
+    multiplayer, then the server page (name, players, listing). Classic
+    gametypes are not this screen."""
+    base = "main_menu/settings_select/multiplayer_setup/hardcore_options_edit"
+    lobby = f"{MT}/lobby/lobby_screen"
+    server = f"{base}/hardcore_server_screen"
+    lines = _widget(f"{base}/hardcore_screen", [("width", 640), ("height", 480),
+                                                   ("flags", "pass_unhandled_to_focused_child pause_game"),
+                                                   ("bitmap", "bitmaps/gradient")],
+                    ['<child widget="main_menu/new_select/sel_list_desc_bkd"/>',
+                     f'<child widget="{base}/hardcore_list"/>',
+                     f'<child widget="{base}/header_hardcore"/>'])
+    lines += _header(f"{base}/header_hardcore", f"{base}/header_hardcore", width=605)
+    rows = [f'<child widget="{base}/hardcore_kind" x="82" y="73"/>']
+    rows += [f'<child widget="{base}/list_item_{index}" x="20" y="{103 + 30 * index}"/>' for index in range(10)]
+    lines += _widget(f"{base}/hardcore_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                                  ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
+                                                  ("description", f"{base}/hardcore_desc")],
+                     ['<data input="port hardcore maps"/>',
+                      '<on event="created" run="port hardcore open"/>',
+                      f'<on event="custom_activation" run="port hardcore choose" open="{server}"/>',
+                      '<on event="b" run="port hardcore leave" back="true"/>',
+                      '<on event="back" run="port hardcore leave" back="true"/>'] + rows +
+                     [f'<child widget="{base}/map_button_bar" y="414"/>'])
+    lines += _widget(f"{base}/hardcore_kind", [("width", 256), ("height", 28),
+                                                  ("flags", "pass_unhandled_to_focused_child"),
+                                                  ("bitmap", "bitmaps/option_bkds_sm"), ("color", "#FF2896FF")],
+                     [f'<child widget="{base}/hardcore_kind_spinner" x="9" y="2"/>'])
+    lines += _widget(f"{base}/hardcore_kind_spinner",
+                     [("type", "spinner"), ("width", 238), ("height", 22), ("flags", "left_right_tabs_items"),
+                      ("strings", "MULTIPLAYER|CUSTOM MULTIPLAYER"), ("font", "ui\\large_ui"),
+                      ("color", "#FF2896FF"), ("align", "center"), ("text_y", 1),
+                      ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
+                      ("header_bounds", "7 -6 19 0"), ("footer_bounds", "7 238 19 244")],
+                     ['<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    for index in range(10):
+        lines += _widget(f"{base}/list_item_{index}", [("controller", 1), ("width", 390), ("height", 28),
+                                                       ("bitmap", "bitmaps/sel_list_item_bkd_top" if index == 0
+                                                        else "bitmaps/sel_list_item_bkd"),
+                                                       ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
+                                                       ("align", "center"), ("text_y", 3)],
+                         [f'<on event="a" run="port hardcore choose" open="{server}"/>',
+                          f'<on event="start" run="port hardcore choose" open="{server}"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          '<child widget="main_menu/new_select/list_item_text" x="25"/>',
+                          '<child widget="main_menu/new_select/list_item_arrows"/>',
+                          '<child widget="main_menu/new_select/scroll_up_button" x="40"/>',
+                          '<child widget="main_menu/new_select/scroll_down_button" x="40"/>'])
+    lines += _widget(f"{base}/hardcore_desc", [("width", 640), ("height", 480)],
+                     ['<child widget="main_menu/current_profile_name"/>',
+                      '<child widget="main_menu/gametype_select/gametype_right_item" x="22" y="2"/>',
+                      '<child widget="main_menu/multiplayer_type_select/mp_map_select/mp_map_right_item" x="22" y="2"/>'])
+    lines += _widget(f"{base}/map_button_bar", [("type", "column_list"), ("width", 640), ("height", 28),
+                                                ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     ['<data input="common button bar update"/>',
+                      f'<child widget="{base}/map_ok" x="380" y="1"/>',
+                      '<child widget="common_button_back" x="510" y="1"/>'])
+    lines += _widget(f"{base}/map_ok", [("type", "text"), ("width", 128), ("height", 24),
+                                        ("bitmap", "bitmaps/text_button_background"),
+                                        ("string_list", "strings/common_button_captions"), ("string_index", 1),
+                                        ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
+                                        ("text_y", 2)],
+                     ['<on event="a" run="emit custom activation event"/>',
+                      '<on event="start" run="emit custom activation event"/>',
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    lines += _widget(f"{base}/hardcore_setup_screen", [("width", 640), ("height", 480),
+                                                          ("flags", "pass_unhandled_to_focused_child pause_game"),
+                                                          ("bitmap", "bitmaps/gradient")],
+                     [f'<child widget="{base}/header_setup"/>',
+                      f'<child widget="{base}/setup_list"/>'])
+    lines += _header(f"{base}/header_setup", f"{base}/header_hardcore", width=605)
+    lines += _widget(f"{base}/setup_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                            ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
+                                            ("description", f"{base}/setup_desc")],
+                     ['<data input="port hardcore setup"/>',
+                      '<on event="created" run="port hardcore setup open"/>',
+                      '<on event="b" back="true"/>',
+                      '<on event="back" back="true"/>',
+                      f'<child widget="{base}/rules_row" x="54" y="73"/>',
+                      f'<child widget="{base}/teams_row" x="54" y="103"/>',
+                      f'<child widget="{base}/op_slayer_rules" x="54" y="133"/>',
+                      f'<child widget="{base}/op_ctf_rules" x="54" y="133"/>',
+                      f'<child widget="{base}/op_hill_rules" x="54" y="133"/>',
+                      f'<child widget="{base}/op_ball_rules" x="54" y="133"/>',
+                      f'<child widget="{base}/op_player" x="54" y="163"/>',
+                      f'<child widget="{base}/op_items" x="54" y="193"/>',
+                      f'<child widget="{base}/op_indicators" x="54" y="223"/>',
+                      f'<child widget="{base}/op_vehicles" x="54" y="253"/>',
+                      f'<child widget="{base}/op_teamplay" x="54" y="283"/>',
+                      f'<child widget="{base}/op_extras" x="54" y="313"/>',
+                      f'<child widget="{base}/setup_button_bar" y="414"/>'])
+    setup = "main_menu/settings_select/multiplayer_setup"
+    pages = [
+        ("op_slayer_rules", "SLAYER RULES", f"{setup}/playlist_edit/slayer_edit/slayer_options_screen"),
+        ("op_ctf_rules", "CTF RULES", f"{setup}/playlist_edit/ctf_edit/ctf_options_screen"),
+        ("op_hill_rules", "HILL RULES", f"{setup}/playlist_edit/koth_edit/koth_options_screen"),
+        ("op_ball_rules", "ODDBALL RULES", f"{setup}/playlist_edit/oddball_edit/oddball_options_screen"),
+        ("op_player", "PLAYER OPTIONS", f"{setup}/player_options_edit/player_options_screen"),
+        ("op_items", "ITEM OPTIONS", f"{setup}/item_options_edit/item_options_screen"),
+        ("op_indicators", "INDICATOR OPTIONS", f"{setup}/indicator_options_edit/indicator_options_screen"),
+        ("op_vehicles", "VEHICLE OPTIONS", f"{setup}/vehicle_options_edit/vehicle_options_screen"),
+        ("op_teamplay", "TEAMPLAY OPTIONS", f"{setup}/teamplay_options_edit/teamplay_options_screen"),
+    ]
+    for key, label, target in pages:
+        lines += _widget(f"{base}/{key}", [("width", 512), ("height", 28),
+                                           ("flags", "pass_unhandled_to_focused_child"),
+                                           ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF")],
+                         [f'<on event="a" run="port hardcore prepare" open="{target}"/>',
+                          f'<on event="start" run="port hardcore prepare" open="{target}"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          f'<child widget="{base}/{key}_label"/>'])
+        lines += _widget(f"{base}/{key}_label", [("type", "text"), ("controller", 1), ("width", 300),
+                                                 ("height", 22), ("text", label), ("font", "ui\\large_ui"),
+                                                 ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 4)], [])
+    lines += _widget(f"{base}/rules_row", [("width", 512), ("height", 28),
+                                           ("flags", "pass_unhandled_to_focused_child"),
+                                           ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF")],
+                     [f'<child widget="{base}/rules_label"/>',
+                      f'<child widget="{base}/hardcore_rules_spinner" x="320" y="1"/>'])
+    lines += _widget(f"{base}/rules_label", [("type", "text"), ("controller", 1), ("width", 300), ("height", 22),
+                                             ("text", "GAME RULES"), ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
+                                             ("text_x", 13), ("text_y", 4)], [])
+    lines += _widget(f"{base}/hardcore_rules_spinner", [("type", "spinner"), ("left", 3), ("top", 2), ("width", 147),
+                                                           ("height", 20),
+                                                           ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
+                                                           ("strings", "SLAYER|CTF|ODDBALL|CRAZY KING"),
+                                                           ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
+                                                           ("align", "center"), ("text_y", 1),
+                                                           ("header_bitmap", "bitmaps/arrow_sm_left"),
+                                                           ("footer_bitmap", "bitmaps/arrow_sm_right"),
+                                                           ("header_bounds", "7 -6 19 0"),
+                                                           ("footer_bounds", "7 150 19 156")],
+                     ['<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    lines += _widget(f"{base}/teams_row", [("width", 512), ("height", 28),
+                                           ("flags", "pass_unhandled_to_focused_child"),
+                                           ("bitmap", "bitmaps/option_bkds_short"), ("color", "#FF2896FF")],
+                     [f'<child widget="{base}/teams_label"/>',
+                      f'<child widget="{base}/hardcore_teams_spinner" x="320" y="1"/>'])
+    lines += _widget(f"{base}/teams_label", [("type", "text"), ("controller", 1), ("width", 300), ("height", 22),
+                                             ("text", "TEAMS"), ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
+                                             ("text_x", 13), ("text_y", 1)], [])
+    lines += _widget(f"{base}/hardcore_teams_spinner", [("type", "spinner"), ("left", 3), ("top", 2), ("width", 147),
+                                                           ("height", 20),
+                                                           ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
+                                                           ("strings", "YES|NO"),
+                                                           ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
+                                                           ("align", "center"), ("text_y", 1),
+                                                           ("header_bitmap", "bitmaps/arrow_sm_left"),
+                                                           ("footer_bitmap", "bitmaps/arrow_sm_right"),
+                                                           ("header_bounds", "7 -6 19 0"),
+                                                           ("footer_bounds", "7 150 19 156")],
+                     ['<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    lines += _widget(f"{base}/setup_desc", [("width", 640), ("height", 480)],
+                     [f'<child widget="{base}/setup_help" x="68" y="345"/>'])
+    lines += _widget(f"{base}/setup_help", [("type", "text"), ("controller", 1), ("width", 482), ("height", 60),
+                                            ("string_list", f"{base}/setup_help_strings"),
+                                            ("font", "ui\\large_ui"), ("color", "#FFFFFFFF")], [])
+    lines += _strings(f"{base}/setup_help_strings", [
+        "Player, items, indicators,\\nvehicles, teamplay, and the\\nhardcore rules.",
+    ])
+    lines += _widget(f"{base}/setup_button_bar", [("type", "column_list"), ("width", 640), ("height", 28),
+                                                  ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     ['<data input="common button bar update"/>',
+                      f'<child widget="{base}/setup_ok" x="380" y="1"/>',
+                      '<child widget="common_button_cancel" x="510" y="1"/>'])
+    lines += _widget(f"{base}/setup_ok", [("type", "text"), ("width", 128), ("height", 24),
+                                          ("bitmap", "bitmaps/text_button_background"),
+                                          ("string_list", "strings/common_button_captions"), ("string_index", 1),
+                                          ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
+                                          ("text_y", 2)],
+                     [f'<on event="a" run="port hardcore start" open="{lobby}"/>',
+                      f'<on event="start" run="port hardcore start" open="{lobby}"/>',
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    lines += _hardcore_rule_pages(base)
+    share = f"{MT}/server_settings/map_share_options/map_share_options_screen"
+    lines += _widget(f"{base}/hardcore_server_screen", [("width", 640), ("height", 480),
+                                                           ("flags", "pass_unhandled_to_focused_child pause_game"),
+                                                           ("bitmap", "bitmaps/gradient")],
+                     [f'<child widget="{base}/header_server"/>',
+                      f'<child widget="{base}/server_list"/>'])
+    lines += _header(f"{base}/header_server", f"{base}/header_server", width=605)
+    lines += _widget(f"{base}/server_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                             ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
+                                             ("description", f"{base}/server_desc")],
+                     ['<data input="port hardcore server"/>',
+                      '<on event="created" run="port hardcore server open"/>',
+                      '<on event="b" run="gamespy back handler"/>',
+                      '<on event="back" run="gamespy back handler"/>',
+                      f'<child widget="{base}/op_server_name" x="54" y="73"/>',
+                      f'<child widget="{base}/op_max_players" x="54" y="103"/>',
+                      f'<child widget="{base}/op_invite" x="54" y="133"/>',
+                      f'<child widget="{base}/op_listing" x="54" y="163"/>',
+                      f'<child widget="{base}/op_text_chat" x="54" y="193"/>',
+                      f'<child widget="{base}/op_password" x="54" y="223"/>',
+                      f'<child widget="{base}/op_map_share" x="54" y="253"/>',
+                      f'<child widget="{base}/op_game_rules" x="54" y="283"/>',
+                      f'<child widget="{base}/server_button_bar" y="414"/>'])
+    lines += _hardcore_field(base, "server_name", "GAME NAME", "ss edit server name")
+    lines += _widget(f"{base}/op_max_players", [("width", 512), ("height", 28),
+                                                ("flags", "pass_unhandled_to_focused_child"),
+                                                ("bitmap", "bitmaps/option_bkds_short"), ("color", "#FF2896FF")],
+                     [f'<child widget="{base}/max_players_label"/>',
+                      f'<child widget="{base}/max_players_spinner" x="320" y="1"/>'])
+    lines += _widget(f"{base}/max_players_label", [("type", "text"), ("controller", 1), ("width", 300),
+                                                   ("height", 22), ("text", "MAXIMUM PLAYERS"),
+                                                   ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
+                                                   ("text_x", 13), ("text_y", 1)], [])
+    lines += _widget(f"{base}/max_players_spinner",
+                     [("type", "spinner"), ("left", 3), ("top", 2), ("width", 147), ("height", 20),
+                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
+                      ("strings", "|".join(str(count) for count in MAXIMUM_PLAYERS)),
+                      ("font", "ui\\large_ui"), ("color", "#FF2896FF"), ("align", "center"), ("text_y", 1),
+                      ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
+                      ("header_bounds", "7 -6 19 0"), ("footer_bounds", "7 150 19 156")],
+                     ['<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    lines += _hardcore_field(base, "invite", "INVITE LINK", "ss copy invite")
+    lines += _widget(f"{base}/op_listing", [("width", 512), ("height", 28),
+                                            ("flags", "pass_unhandled_to_focused_child"),
+                                            ("bitmap", "bitmaps/option_bkds_short"), ("color", "#FF2896FF")],
+                     [f'<child widget="{base}/listing_label"/>',
+                      f'<child widget="{base}/listing_spinner" x="320" y="1"/>'])
+    lines += _widget(f"{base}/listing_label", [("type", "text"), ("controller", 1), ("width", 300),
+                                               ("height", 22), ("text", "LISTING"), ("font", "ui\\large_ui"),
+                                               ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 1)], [])
+    lines += _widget(f"{base}/listing_spinner",
+                     [("type", "spinner"), ("left", 3), ("top", 2), ("width", 147), ("height", 20),
+                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
+                      ("strings", "PUBLIC|PRIVATE"), ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
+                      ("align", "center"), ("text_y", 1),
+                      ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
+                      ("header_bounds", "7 -6 19 0"), ("footer_bounds", "7 150 19 156")],
+                     ['<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    lines += _widget(f"{base}/op_text_chat", [("width", 512), ("height", 28),
+                                              ("flags", "pass_unhandled_to_focused_child"),
+                                              ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF")],
+                     [f'<child widget="{base}/text_chat_label"/>',
+                      f'<child widget="{base}/server_text_chat_spinner" x="320" y="1"/>'])
+    lines += _widget(f"{base}/text_chat_label", [("type", "text"), ("controller", 1), ("width", 300),
+                                                 ("height", 22), ("text", "TEXT CHAT"), ("font", "ui\\large_ui"),
+                                                 ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 4)], [])
+    lines += _widget(f"{base}/server_text_chat_spinner",
+                     [("type", "spinner"), ("left", 3), ("top", 2), ("width", 147), ("height", 20),
+                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
+                      ("strings", "ON|OFF"), ("setting", "network.text_chat"), ("values", "on|off"),
+                      ("font", "ui\\large_ui"), ("color", "#FF2896FF"), ("align", "center"), ("text_y", 1),
+                      ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
+                      ("header_bounds", "7 -6 19 0"), ("footer_bounds", "7 150 19 156")],
+                     ['<on event="created" run="port setting load"/>',
+                      '<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    lines += _hardcore_field(base, "password", "PASSWORD", "ss edit server password")
+    lines += _widget(f"{base}/op_map_share", [("width", 512), ("height", 28),
+                                              ("flags", "pass_unhandled_to_focused_child"),
+                                              ("bitmap", "bitmaps/option_bkds_short"), ("color", "#FF2896FF")],
+                     [f'<on event="a" open="{share}"/>', f'<on event="start" open="{share}"/>',
+                      '<on event="left_mouse" run="mouse emit accept event"/>',
+                      f'<child widget="{base}/map_share_label"/>'])
+    lines += _widget(f"{base}/map_share_label", [("type", "text"), ("controller", 1), ("width", 300),
+                                                 ("height", 22), ("text", "MAP SHARING"), ("font", "ui\\large_ui"),
+                                                 ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 1)], [])
+    lines += _widget(f"{base}/op_game_rules", [("width", 512), ("height", 28),
+                                               ("flags", "pass_unhandled_to_focused_child"),
+                                               ("bitmap", "bitmaps/option_bkds_short"), ("color", "#FF2896FF")],
+                     [f'<on event="a" run="port hardcore prepare" open="{base}/hardcore_setup_screen"/>',
+                      f'<on event="start" run="port hardcore prepare" open="{base}/hardcore_setup_screen"/>',
+                      '<on event="left_mouse" run="mouse emit accept event"/>',
+                      f'<child widget="{base}/game_rules_label"/>'])
+    lines += _widget(f"{base}/game_rules_label", [("type", "text"), ("controller", 1), ("width", 300),
+                                                  ("height", 22), ("text", "GAME RULES"), ("font", "ui\\large_ui"),
+                                                  ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 1)], [])
+    lines += _widget(f"{base}/server_desc", [("width", 640), ("height", 480)],
+                     [f'<child widget="{base}/server_help" x="68" y="345"/>'])
+    lines += _widget(f"{base}/server_help", [("type", "text"), ("controller", 1), ("width", 482), ("height", 60),
+                                             ("string_list", f"{base}/server_help_strings"),
+                                             ("font", "ui\\large_ui"), ("color", "#FFFFFFFF")], [])
+    lines += _strings(f"{base}/server_help_strings", [
+        "",
+        "The name the game shows in the lists of games.\\nEnter changes it.",
+        "The most players the game takes (up to 128).",
+        "Players join this game by its invite link.\\nEnter copies the link.",
+        "Anyone can see and join your game: it is listed\\nin everyone's Server Browser.",
+        "Only players with your invite link can join.",
+        "Players from the Server Browser must type it to\\njoin. Enter sets it.",
+        "Sending players who join without the map the map.",
+        "Slayer, CTF, oddball or crazy king, and the\\nhardcore rules.",
+        "Text chat for this game. A public listed game stays off.",
+        "Text chat is off while this game is public.",
+    ])
+    lines += _widget(f"{base}/server_button_bar", [("type", "column_list"), ("width", 640), ("height", 28),
+                                                   ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     ['<data input="common button bar update"/>',
+                      f'<child widget="{base}/server_ok" x="380" y="1"/>',
+                      '<child widget="common_button_cancel" x="510" y="1"/>'])
+    lines += _widget(f"{base}/server_ok", [("type", "text"), ("width", 128), ("height", 24),
+                                           ("bitmap", "bitmaps/text_button_background"), ("text", "START GAME"),
+                                           ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
+                                           ("text_y", 2)],
+                     [f'<on event="a" run="port hardcore start" open="{lobby}"/>',
+                      f'<on event="start" run="port hardcore start" open="{lobby}"/>',
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    lines += _widget(f"{MT}/multiplayer_type_hardcore_item", [("type", "text"), ("left", 51), ("width", 226),
+                                                                 ("height", 32), ("bitmap", "bitmaps/list_item_bkd"),
+                                                                 ("text", "HARDCORE"), ("font", "ui\\large_ui"),
+                                                                 ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 5)],
+                     [f'<on event="a" open="{base}/hardcore_screen"/>',
+                      f'<on event="start" open="{base}/hardcore_screen"/>',
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    return lines
+
+
 def multiplayer_files() -> dict:
     """the port's multiplayer widgets: the browser's additions, the server
-    settings, the lobby; and the Mods and campaign's SKULLS screens"""
+    settings, the lobby, Hardcore; and the Mods and campaign's SKULLS screens"""
     head = ['<?xml version="1.0" encoding="UTF-8"?>',
             "<!-- The port's multiplayer screens, in the PC version's style (tools/port_settings.py) -->", "<menus>"]
     return {
@@ -1696,6 +2307,8 @@ def multiplayer_files() -> dict:
         "main_menu/settings_select/multiplayer_setup/item_options_edit".replace("/", ".") + ".port.xml": head + _item_options_extras() + ["</menus>", ""],
         PLAYER_EDIT.replace("/", ".") + ".port.xml": head + _player_options_extras() + ["</menus>", ""],
         TEAMPLAY_EDIT.replace("/", ".") + ".port.xml": head + _teamplay_options_extras() + ["</menus>", ""],
+        "main_menu/settings_select/multiplayer_setup/hardcore_options_edit".replace("/", ".") + ".xml":
+            head + _hardcore_screen() + ["</menus>", ""],
         MODS.replace("/", ".") + ".xml": [head[0], "<!-- The port's Mods screen, in the PC version's style "
                                           "(tools/port_settings.py) -->", head[2]] + _mods() + ["</menus>", ""],
         SKULLS.replace("/", ".") + ".xml": [head[0], "<!-- The port's SKULLS screen, in the PC version's style "

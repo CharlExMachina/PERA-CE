@@ -51,6 +51,7 @@ Called from the main loop every frame (main.c).
 */
 
 #include "cseries.h"
+#include "halo_custom_maps.h"
 #include "main/main.h"
 #include "bink/bink_playback.h"
 #include "interface/player_ui.h"
@@ -1509,8 +1510,10 @@ void network_test_update(
 				char variant_name[64];
 				struct game_variant variant;
 
-				/* (a level of its own path, else a multiplayer map's name) */
-				if (strchr(network_test.map_name, '\\'))
+				/* (a level of its own path, or a custom cache by its own name,
+				which fits the network's 64-byte scenario name; else a
+				multiplayer map's name under levels\test) */
+				if (native_map_is_custom(network_test.map_name) || strchr(network_test.map_name, '\\'))
 					snprintf(path, sizeof(path), "%s", network_test.map_name);
 				else
 					snprintf(path, sizeof(path), "levels\\test\\%s\\%s", network_test.map_name, network_test.map_name);

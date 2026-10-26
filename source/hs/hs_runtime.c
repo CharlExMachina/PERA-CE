@@ -1365,12 +1365,9 @@ static boolean hs_stack_push(
 	struct hs_stack_frame *new_frame = (struct hs_stack_frame *)
 		((byte *)thread->stack+thread->stack->size+sizeof(struct hs_stack_frame));
 
-	match_hs_assert("c:\\halo\\SOURCE\\hs\\hs_runtime.c", 0x35e, thread_index,
-		(byte *) (new_frame+1)<thread->stack_data+HS_THREAD_STACK_SIZE,
-		"stack overflow.");
-
 	/* port: a frame past the thread's stack isn't pushed (it would be
-	written over the next thread's datum): the thread is ended instead */
+	written over the next thread's datum). The check used to halt the
+	game; the thread is ended instead. */
 	if ((byte *)(new_frame+1)>=thread->stack_data+HS_THREAD_STACK_SIZE ||
 		TEST_FLAG(thread->flags, _hs_thread_stack_overflow_bit))
 	{
@@ -2107,24 +2104,46 @@ void hs_evaluate_if(
 	}
 	else if (*expression_index==NONE)
 	{
-		if ((boolean)*condition)
+		boolean taken = (boolean)*condition;
+		long branch;
+		long *destination;
+
+		if (taken)
 		{
-			*expression_index = hs_syntax_get(hs_syntax_get(hs_syntax_get(
+			branch = hs_syntax_get(hs_syntax_get(hs_syntax_get(
 				thread->stack->expression_index)->data)->next_node_index)->next_node_index;
 		}
 		else
 		{
-			*expression_index = hs_syntax_get(hs_syntax_get(hs_syntax_get(hs_syntax_get(
+			branch = hs_syntax_get(hs_syntax_get(hs_syntax_get(hs_syntax_get(
 				thread->stack->expression_index)->data)->next_node_index)->
 				next_node_index)->next_node_index;
-			if (*expression_index==NONE)
-			{
-				hs_return(thread_index, 0);
-
-				return;
-			}
 		}
 
+		/* port: the branch is the last thing an if does, so it runs in the
+		if's place. a chain of else-ifs, which is how a match clock announces
+		each minute, is deeper than a thread's stack when every if stays
+		until its branch returns */
+		if (thread->stack->previous)
+		{
+			destination = thread->stack->previous->result;
+			thread->stack = thread->stack->previous;
+			if (branch==NONE)
+				*(long *)destination = 0;
+			else
+				hs_evaluate(thread_index, branch, destination);
+
+			return;
+		}
+
+		if (branch==NONE)
+		{
+			hs_return(thread_index, 0);
+
+			return;
+		}
+
+		*expression_index = branch;
 		hs_evaluate(thread_index, *expression_index, result);
 	}
 	else
@@ -2397,8 +2416,9 @@ void hs_evaluate_begin_random(
 			*argument_count += 1;
 		}
 
-		/* port: one long holds LONG_BITS choices, so a list of that
-		many fits the mask this function already allocates */
+		/* port: a long holds LONG_BITS choices, so a list of that many
+		fits. The check was <, which halted a map whose begin_random
+		uses every bit of that word. */
 		match_assert("c:\\halo\\source\\hs\\hs_library_internal_runtime.h", 0x50,
 			*argument_count<=LONG_BITS);
 
@@ -2838,12 +2858,9 @@ static void *hs_stack_allocate(
 		valid_thread(thread), "corrupted stack.");
 	match_hs_assert("c:\\halo\\SOURCE\\hs\\hs_runtime.c", 0x37e, thread_index,
 		size, "attempt to allocate zero space from the stack.");
-	match_hs_assert("c:\\halo\\SOURCE\\hs\\hs_runtime.c", 0x37f, thread_index,
-		frame->data+frame->size+size<=thread->stack_data+HS_THREAD_STACK_SIZE,
-		"stack overflow.");
 
-	/* port: none past the thread's stack (hs_stack_overflow); the caller
-	returns on NULL */
+	/* port: none past the thread's stack (hs_stack_overflow). The check
+	used to halt the game; the caller returns on NULL */
 	if (size<0 ||
 		size>thread->stack_data+HS_THREAD_STACK_SIZE-(frame->data+frame->size) ||
 		TEST_FLAG(thread->flags, _hs_thread_stack_overflow_bit))

@@ -79,7 +79,8 @@ answered it in a while.
 
 enum
 {
-	MAXIMUM_BROKERS = 4,
+	/* (brokers.txt's: CoreCE's, OpenCE's and the three public ones) */
+	MAXIMUM_BROKERS = 5,
 	/* the joiners a host made sessions for, so a repeated request gets the
 	same session: as many as it takes */
 	MAXIMUM_JOINERS = P2P_MAXIMUM_PEERS + 1,
@@ -159,6 +160,10 @@ enum
 	tunnels a flood of them would otherwise starve */
 	MAXIMUM_BROKER_READS = 8,
 };
+
+/* the slot is the prefix plus the key hash in hex */
+typedef char lobby_slot_topic_fits[
+	sizeof(P2P_LOBBY_SLOT_PREFIX) - 1 + 2 * P2P_KEY_HASH_SIZE + 1 <= TOPIC_SIZE ? 1 : -1];
 
 enum
 {
@@ -381,8 +386,8 @@ static struct
 
 static int elapsed(unsigned long since, unsigned long time)
 {
-	/* (unsigned, as the clock wraps) */
-	return (unsigned int)(p2p_now() - since) >= (unsigned int)time;
+	/* (0 is never; unsigned, as the clock wraps) */
+	return !since || (unsigned int)(p2p_now() - since) >= (unsigned int)time;
 }
 
 static unsigned short network_short(unsigned short value)
@@ -1759,7 +1764,7 @@ static void broker_readable(struct broker *broker)
 /* port/assets/network/brokers.txt's brokers, for a game with no such file
 beside its config.toml (one run from somewhere the builds did not put it).
 Keep it the same as that file (test_linux_port.py checks) */
-#define DEFAULT_BROKERS "opence.milenko.org:1883,broker.emqx.io:1883,broker.hivemq.com:1883,test.mosquitto.org:1883"
+#define DEFAULT_BROKERS "net.corece.org:1883,opence.milenko.org:1883,broker.emqx.io:1883,broker.hivemq.com:1883,test.mosquitto.org:1883"
 
 /* the brokers in network.brokers_file (beside config.toml, unless a full
 path: port/assets/network/brokers.txt, which the builds put there), one on

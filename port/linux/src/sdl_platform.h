@@ -25,6 +25,8 @@ struct platform_input_state
 	/* the mouse drives the menus' pointer (platform_ui_pointer_set_active)
 	instead of the controller */
 	BOOL ui_pointer;
+	/* One-shot native Escape actions, independent of configurable gameplay bindings. */
+	BOOL pause_pressed, menu_back_pressed;
 	/* a menu is up (platform_menus_set_active): the keys drive the first
 	controller, to move about it, instead of the player's actions */
 	BOOL menus;
@@ -98,6 +100,8 @@ void platform_video_swap(void);
 display.interpolation is false (port/linux/game/render_interpolation.c) */
 int halo_interpolation_enabled(void);
 void platform_mouse_capture(BOOL capture);
+void platform_mouse_release_gameplay(void);
+void platform_mouse_resume_gameplay(void);
 
 /* handles the window's and input devices' events; main thread only, a no-op
 elsewhere; on Android this is where finger events reach touch_input.c, which

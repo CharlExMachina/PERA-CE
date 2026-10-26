@@ -15,6 +15,8 @@ struct real_matrix4x3;
 int halo_interpolation_enabled(void);
 float game_time_get_tick_fraction(void);
 void render_interpolation_tick(void);
+/* after the tick's netcode moves, so the picture blends the pose it left */
+void render_interpolation_pose_tick(void);
 void render_interpolation_reset(void);
 void render_interpolation_frame_begin(void);
 void render_interpolation_frame_end(void);
@@ -51,6 +53,8 @@ this build's order; forgotten together when the map goes
 (port/linux/src/xbox_textures.c) */
 void halo_custom_edition_texels_channels(const void *texels, unsigned char channel_order);
 void halo_custom_edition_texels_forget(void);
+/* A HUD meter draw is in progress (hud_draw.c, xbox_textures.c). */
+void halo_custom_edition_hud_meter(int active);
 /* whether a Halo Custom Edition map's multiplayer vehicles are chosen by
 their placements' spawn flags, as in retail Halo, and whether a vehicle
 placement is placed in the running game

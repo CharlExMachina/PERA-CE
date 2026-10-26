@@ -491,19 +491,6 @@ void voice_audio_forget_all(void)
 	pthread_mutex_unlock(&voice_lock);
 }
 
-int voice_audio_speaking(int speaker)
-{
-	struct voice_slot *slot;
-	BOOL speaking = FALSE;
-
-	pthread_mutex_lock(&voice_lock);
-	slot = voice_slot_for(speaker, FALSE);
-	if (slot)
-		speaking = slot->playing || slot->count >= VOICE_FRAME_SAMPLES;
-	pthread_mutex_unlock(&voice_lock);
-	return speaking;
-}
-
 void voice_audio_set_volume(float volume)
 {
 	voice_volume = volume < 0.0f ? 0.0f : volume > 2.0f ? 2.0f : volume;

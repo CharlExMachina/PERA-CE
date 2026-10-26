@@ -1443,6 +1443,15 @@ static byte files_wanted(
 	return wanted;
 }
 
+/* the next map_share_download_begin may run when network.map_download is off */
+static boolean download_button_allow;
+
+void map_share_download_permit(
+	void)
+{
+	download_button_allow = TRUE;
+}
+
 boolean map_share_download_begin(
 	char const *level_name,
 	unsigned long version,
@@ -1451,9 +1460,11 @@ boolean map_share_download_begin(
 	struct download *download = &map_share_globals.download;
 	char const *name;
 	byte wanted;
+	boolean allowed = config_boolean("network.map_download") != 0 || download_button_allow;
 
+	download_button_allow = FALSE;
 	if (!level_name || !custom_edition_level_name(level_name) || csstrlen(level_name) >= LEVEL_NAME_BYTES ||
-		!config_boolean("network.map_download") || map_share_host() || !global_network_game_client_get() ||
+		!allowed || map_share_host() || !global_network_game_client_get() ||
 		!halo_custom_edition_tag_cache())
 	{
 		return FALSE;

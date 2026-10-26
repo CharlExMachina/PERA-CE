@@ -653,6 +653,8 @@ struct custom_edition_texels
 static struct custom_edition_texels *custom_edition_texels;
 static unsigned long custom_edition_texel_count;
 static unsigned long custom_edition_texel_capacity;
+/* set around one HUD meter draw (hud_draw.c) */
+static int custom_edition_hud_meter_active;
 
 /* the order of the texels at address */
 static unsigned char custom_edition_texels_order(unsigned long address)
@@ -712,6 +714,18 @@ void halo_custom_edition_texels_forget(void)
 	custom_edition_texels = NULL;
 	custom_edition_texel_count = 0;
 	custom_edition_texel_capacity = 0;
+	custom_edition_hud_meter_active = 0;
+}
+
+void halo_custom_edition_hud_meter(int active)
+{
+	custom_edition_hud_meter_active = active != 0;
+}
+
+int halo_custom_edition_meter_channels(const void *texels)
+{
+	return custom_edition_hud_meter_active &&
+		custom_edition_texels_order((unsigned long)texels) == _custom_edition_channels_xbox;
 }
 
 #ifdef HALO_METAL
@@ -1124,6 +1138,11 @@ static GLuint texture_entry_result(struct texture_entry *entry, GLenum *target,
 			return entry->hud_upscale;
 		}
 	}
+	/* Mixed-use sheets stay as stored for ordinary artwork. Only a meter
+	draw of a sheet still in the Xbox channel order reads alpha as the
+	threshold and red as the shape. A sheet already reordered on upload,
+	and a replacement returned above, keeps that order. */
+	description->ce_meter_channels = halo_custom_edition_meter_channels((const void *)entry->address);
 	return entry->texture;
 }
 

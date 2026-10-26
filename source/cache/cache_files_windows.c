@@ -193,6 +193,9 @@ symbols in this file:
 #include "custom_edition_cache.h" /* port: port/linux/game/custom_edition_cache.c */
 
 #include <xtl.h>
+#ifdef HALO_IOS
+#include "halo_custom_maps.h"
+#endif
 
 /* ---------- constants */
 
@@ -206,7 +209,11 @@ enum
 
 	SOLO_CACHE_FILE_MAXIMUM_SIZE = 0x11600000,
 	MAIN_MENU_CACHE_FILE_MAXIMUM_SIZE = 0x02300000,
+#ifdef HALO_PORT_MULTIPLAYER_CACHE_SIZE
+	MULTIPLAYER_CACHE_FILE_MAXIMUM_SIZE = HALO_PORT_MULTIPLAYER_CACHE_SIZE,
+#else
 	MULTIPLAYER_CACHE_FILE_MAXIMUM_SIZE = 0x02F00000,
+#endif
 };
 
 /* ---------- macros */
@@ -1260,6 +1267,9 @@ static void cache_file_get_map_path(
 	const char *map_name,
 	char *path)
 {
+#ifdef HALO_IOS
+	if (!native_map_get_path(map_name, path, 256)) path[0] = 0;
+#else
 	/* port: no more than the callers' paths hold (256; the name can be a
 	host's, over the network). One that doesn't fit is no path (no file is
 	found), not a cut one (another file could be). */
@@ -1274,6 +1284,7 @@ static void cache_file_get_map_path(
 		error(_error_silent, "map path for '%.64s' is too long", map_name);
 		path[0] = 0;
 	}
+#endif
 
 	return;
 }

@@ -1,0 +1,746 @@
+/*
+HOST_SDL.C
+
+SDL3 on behalf of the guest (guest/runtime/guest_sdl.c). SDL objects are
+64-bit pointers, which the guest cannot hold; it gets small handles into the
+table here instead.
+
+SDL video runs on the main thread. Audio mixing runs on a worker with a
+guest stack, and output returns to SDL's callback thread to avoid taking
+SDL's stream lock recursively from a different thread.
+*/
+
+#include "host.h"
+
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#include <SDL3/SDL.h>
+#ifdef HALO_APPLE_GRAPHICS
+#include "../../apple/host_debug.h"
+#include "../../apple/host_graphics.h"
+#endif
+#include <pthread.h>
+#include <string.h>
+
+#define HANDLE_COUNT 256
+
+enum handle_type {
+    _handle_free,
+    _handle_window,
+    _handle_context,
+    _handle_gamepad,
+    _handle_audio,
+};
+
+struct handle {
+    int type;
+    void *object;
+};
+
+static struct handle handles[HANDLE_COUNT];
+static pthread_mutex_t handle_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static uint32_t handle_new(int type, void *object) {
+    uint32_t index;
+
+    if (!object)
+        return 0;
+    pthread_mutex_lock(&handle_lock);
+    /* an object that already has a handle keeps it */
+    for (index = 1; index < HANDLE_COUNT; index++) {
+        if (handles[index].type == type && handles[index].object == object) {
+            pthread_mutex_unlock(&handle_lock);
+            return index;
+        }
+    }
+    for (index = 1; index < HANDLE_COUNT; index++) {
+        if (handles[index].type == _handle_free) {
+            handles[index].type = type;
+            handles[index].object = object;
+            pthread_mutex_unlock(&handle_lock);
+            return index;
+        }
+    }
+    pthread_mutex_unlock(&handle_lock);
+    host_logf(HOST_LOG_ERROR, "out of SDL handles");
+    return 0;
+}
+
+static void *handle_get(uint32_t handle, int type) {
+    void *object = NULL;
+
+    if (handle == 0 || handle >= HANDLE_COUNT)
+        return NULL;
+    pthread_mutex_lock(&handle_lock);
+    if (handles[handle].type == type)
+        object = handles[handle].object;
+    pthread_mutex_unlock(&handle_lock);
+    return object;
+}
+
+/* the object of a handle, which the handle no longer refers to */
+static void *handle_release(uint32_t handle, int type) {
+    void *object = NULL;
+
+    if (handle == 0 || handle >= HANDLE_COUNT)
+        return NULL;
+    pthread_mutex_lock(&handle_lock);
+    if (handles[handle].type == type) {
+        object = handles[handle].object;
+        handles[handle].type = _handle_free;
+        handles[handle].object = NULL;
+    }
+    pthread_mutex_unlock(&handle_lock);
+    return object;
+}
+
+static EGLDisplay metal_display;
+static EGLContext metal_context;
+static EGLSurface metal_surface;
+static int requested_minor;
+static SDL_Window *metal_window;
+static SDL_MetalView metal_view;
+static int native_metal_owned;
+static int metal_window_hidden;
+static int metal_swap_interval = 1;
+
+/* ---------- general */
+
+int host_sdl_init(uint32_t flags) {
+    if (!SDL_Init((SDL_InitFlags)flags))
+        return 0;
+    SDL_SetEventEnabled(SDL_EVENT_DROP_FILE, true);
+    SDL_SetEventEnabled(SDL_EVENT_DROP_TEXT, true);
+    return 1;
+}
+
+int host_sdl_set_hint(const char *name, const char *value) { return SDL_SetHint(name, value); }
+
+void host_sdl_get_error(char *buffer, uint32_t size) { SDL_strlcpy(buffer, SDL_GetError(), size); }
+
+void host_sdl_scancode_name(int32_t scancode, char *buffer, uint32_t size) {
+    SDL_strlcpy(buffer, SDL_GetScancodeName((SDL_Scancode)scancode), size);
+}
+
+int32_t host_sdl_scancode_from_name(const char *name) {
+    return (int32_t)SDL_GetScancodeFromName(name);
+}
+
+int32_t host_sdl_key_from_scancode(int32_t scancode) {
+    return (int32_t)SDL_GetKeyFromScancode((SDL_Scancode)scancode, SDL_KMOD_NONE, true);
+}
+
+int64_t host_sdl_ticks(void) { return (int64_t)SDL_GetTicks(); }
+
+int64_t host_sdl_thread_id(void) { return (int64_t)SDL_GetCurrentThreadID(); }
+
+/* ---------- video */
+
+#if defined(HALO_IOS) && !defined(HALO_IOS_MAC_CHECK)
+/* SDL already requests the display's maximum rate through CADisplayLink.
+   Its public callback API replaces that link for the optional 60 Hz mode.
+   ANGLE's drawable/vsync wait still paces the game's main loop. */
+static void SDLCALL ios_refresh_hint(void *unused) { (void)unused; }
+#endif
+
+
+uint32_t host_sdl_create_window(const char *title, int width, int height, int64_t flags) {
+    const char *windowed = SDL_getenv("HALO_WINDOWED");
+    SDL_WindowFlags mode = SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    if (!halo_graphics_metal())
+        mode = (mode & ~SDL_WINDOW_METAL) | SDL_WINDOW_OPENGL;
+    metal_window_hidden = (flags & SDL_WINDOW_HIDDEN) != 0;
+    if (metal_window_hidden) mode |= SDL_WINDOW_HIDDEN;
+    else if (!windowed || !SDL_atoi(windowed)) mode |= SDL_WINDOW_FULLSCREEN;
+    metal_window = SDL_CreateWindow(title, width > 0 ? width : 1280, height > 0 ? height : 960,
+                                    mode);
+    if (metal_window) {
+        SDL_SyncWindow(metal_window);
+#if defined(HALO_IOS) && !defined(HALO_IOS_MAC_CHECK)
+        const SDL_DisplayMode *display = SDL_GetDesktopDisplayMode(SDL_GetDisplayForWindow(metal_window));
+        const char *rate = SDL_getenv("HALO_IOS_REFRESH_RATE");
+        int maximum = display ? (int)SDL_roundf(display->refresh_rate) : 60;
+        int requested = maximum;
+        if (rate && !SDL_strcmp(rate, "60")) {
+            int interval = SDL_max(1, maximum / 60);
+            if (SDL_SetiOSAnimationCallback(metal_window, interval, ios_refresh_hint, NULL))
+                requested = maximum / interval;
+            else
+                host_logf(HOST_LOG_WARN, "Cannot request 60 Hz: %s", SDL_GetError());
+        } else if (rate && SDL_strcmp(rate, "120")) {
+            host_logf(HOST_LOG_WARN, "HALO_IOS_REFRESH_RATE accepts 60 or 120; using display maximum");
+        }
+        host_logf(HOST_LOG_INFO, "iOS refresh request %d Hz; display maximum %d Hz (system may reduce rate)",
+                  requested, maximum);
+#endif
+        int w, h;
+        SDL_GetWindowSizeInPixels(metal_window, &w, &h);
+        host_logf(HOST_LOG_INFO, "%s drawable %dx%d (%s)",
+                  halo_graphics_metal() ? "Metal" : "OpenGL", w, h,
+                  (mode & SDL_WINDOW_FULLSCREEN) ? "borderless fullscreen" : "windowed");
+    }
+    return handle_new(_handle_window, metal_window);
+}
+
+
+void host_sdl_window_size_in_pixels(uint32_t window, int *width, int *height) {
+    SDL_Window *object = handle_get(window, _handle_window);
+
+    *width = 0;
+    *height = 0;
+    if (object)
+        SDL_GetWindowSizeInPixels(object, width, height);
+}
+
+void host_sdl_window_size(uint32_t window, int *width, int *height) {
+    SDL_Window *object = handle_get(window, _handle_window);
+    *width = *height = 0;
+    if (object) SDL_GetWindowSize(object, width, height);
+}
+
+void host_sdl_warp_mouse(uint32_t window, float x, float y) {
+    SDL_Window *object = handle_get(window, _handle_window);
+    if (object) SDL_WarpMouseInWindow(object, x, y);
+}
+
+int host_sdl_video_fullscreen(uint32_t window, int enabled) {
+    SDL_Window *object = handle_get(window, _handle_window);
+    if (!object) return 0;
+    if (enabled < 0) return (SDL_GetWindowFlags(object) & SDL_WINDOW_FULLSCREEN) != 0;
+    return enabled != 0;
+}
+
+int host_sdl_set_relative_mouse(uint32_t window, int enabled) {
+    SDL_Window *object = handle_get(window, _handle_window);
+
+    if (metal_window_hidden) return 1;
+    return object ? SDL_SetWindowRelativeMouseMode(object, enabled != 0) : 0;
+}
+
+void *host_sdl_native_metal_layer(uint32_t window) {
+    SDL_Window *object = handle_get(window, _handle_window);
+    if (!object || native_metal_owned) return NULL;
+    if (metal_context != EGL_NO_CONTEXT) return NULL;
+    if (!metal_view) metal_view = SDL_Metal_CreateView(object);
+    if (!metal_view) return NULL;
+    native_metal_owned = 1;
+    return SDL_Metal_GetLayer(metal_view);
+}
+
+
+void host_sdl_native_metal_release(void) {
+    if (!native_metal_owned) return;
+    SDL_Metal_DestroyView(metal_view);
+    metal_view = NULL;
+    native_metal_owned = 0;
+}
+
+unsigned int host_sdl_ios_default_framebuffer(void) {
+    return (unsigned int)SDL_GetNumberProperty(SDL_GetWindowProperties(metal_window),
+        SDL_PROP_WINDOW_UIKIT_OPENGL_FRAMEBUFFER_NUMBER, 0);
+}
+
+int host_sdl_gl_set_attribute(int attribute, int value) {
+    if (!halo_graphics_metal())
+        return SDL_GL_SetAttribute(attribute, value);
+    if (attribute == SDL_GL_CONTEXT_MINOR_VERSION)
+        requested_minor = value;
+    return 1;
+}
+uint32_t host_sdl_gl_create_context(uint32_t window) {
+    SDL_Window *object = handle_get(window, _handle_window);
+    if (!halo_graphics_metal()) {
+        SDL_GLContext native = object ? SDL_GL_CreateContext(object) : NULL;
+        if (!native)
+            return 0;
+        halo_debug_initialize();
+        extern void host_ios_controls_initialize(SDL_Window *);
+        host_ios_controls_initialize(object);
+        return handle_new(_handle_context, native);
+    }
+    if (!object || requested_minor > 0) {
+        SDL_SetError("ANGLE Metal uses ES 3.0");
+        return 0;
+    }
+    PFNEGLGETPLATFORMDISPLAYEXTPROC getDisplay =
+        (void *)eglGetProcAddress("eglGetPlatformDisplayEXT");
+    const EGLint displayAttributes[] = {0x3203, 0x3489, EGL_NONE};
+    metal_display = getDisplay ? getDisplay(0x3202, (void *)0, displayAttributes) : EGL_NO_DISPLAY;
+    EGLint major, minor, count;
+    if (metal_display == EGL_NO_DISPLAY || !eglInitialize(metal_display, &major, &minor)) {
+        SDL_SetError("Cannot initialize ANGLE Metal: %x", eglGetError());
+        return 0;
+    }
+    const EGLint configAttributes[] = {EGL_SURFACE_TYPE,
+                                       metal_window_hidden ? EGL_PBUFFER_BIT : EGL_WINDOW_BIT,
+                                       EGL_RENDERABLE_TYPE,
+                                       EGL_OPENGL_ES3_BIT,
+                                       EGL_RED_SIZE,
+                                       8,
+                                       EGL_GREEN_SIZE,
+                                       8,
+                                       EGL_BLUE_SIZE,
+                                       8,
+                                       EGL_ALPHA_SIZE,
+                                       8,
+                                       EGL_DEPTH_SIZE,
+                                       24,
+                                       EGL_STENCIL_SIZE,
+                                       8,
+                                       EGL_NONE};
+    EGLConfig config;
+    if (!eglChooseConfig(metal_display, configAttributes, &config, 1, &count) || !count)
+        return 0;
+#ifdef HALO_APPLE_GRAPHICS
+    extern void halo_graphics_attach(EGLDisplay display, EGLConfig configuration);
+    halo_graphics_attach(metal_display, config);
+#endif
+    eglBindAPI(EGL_OPENGL_ES_API);
+    const EGLint contextAttributes[] = {EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE};
+    metal_context = eglCreateContext(metal_display, config, EGL_NO_CONTEXT, contextAttributes);
+    if (metal_window_hidden) {
+        /* Isolated launch/input checks use the shipped host without taking
+           focus or capturing the user's mouse. Ordinary launches use MetalView. */
+        int width, height;
+        SDL_GetWindowSizeInPixels(object, &width, &height);
+        const EGLint size[] = {EGL_WIDTH, width, EGL_HEIGHT, height, EGL_NONE};
+        metal_surface = eglCreatePbufferSurface(metal_display, config, size);
+    } else {
+        metal_view = SDL_Metal_CreateView(object);
+        metal_surface = eglCreateWindowSurface(
+            metal_display, config, (EGLNativeWindowType)SDL_Metal_GetLayer(metal_view), NULL);
+    }
+    if (metal_context == EGL_NO_CONTEXT || metal_surface == EGL_NO_SURFACE) {
+        SDL_SetError("Cannot create Metal surface: %x", eglGetError());
+        return 0;
+    }
+    eglMakeCurrent(metal_display, metal_surface, metal_surface, metal_context);
+#if defined(HALO_IOS) && !defined(HALO_IOS_MAC_CHECK)
+    // Attach controls after SDL has installed the Metal view, otherwise
+    // the drawable can cover the controller's UIKit overlay.
+    extern void host_ios_controls_initialize(SDL_Window *);
+    host_ios_controls_initialize(object);
+#endif
+    return handle_new(_handle_context, metal_context);
+}
+int host_sdl_gl_make_current(uint32_t window, uint32_t context) {
+    if (!halo_graphics_metal())
+        return SDL_GL_MakeCurrent(handle_get(window, _handle_window), handle_get(context, _handle_context));
+    (void)window;
+    return eglMakeCurrent(metal_display, metal_surface, metal_surface,
+                          handle_get(context, _handle_context));
+}
+int host_sdl_gl_set_swap_interval(int interval) {
+    if (!halo_graphics_metal())
+        return SDL_GL_SetSwapInterval(interval);
+    metal_swap_interval = interval;
+    return eglSwapInterval(metal_display, interval);
+}
+int host_sdl_gl_swap_window(uint32_t window) {
+    (void)window;
+    uint64_t start = SDL_GetTicksNS();
+    int result;
+    result = halo_graphics_metal()
+        ? (halo_metalfx_take_presented() ? 1 : eglSwapBuffers(metal_display, metal_surface))
+        : SDL_GL_SwapWindow(handle_get(window, _handle_window));
+    {
+        static uint64_t last_frame;
+        int limit = halo_debug_frame_limit();
+        uint64_t now = SDL_GetTicksNS();
+        uint64_t period = limit > 0 ? 1000000000ull / (unsigned)limit : 0;
+        if (last_frame && period && now - last_frame < period)
+            SDL_DelayNS(period - (now - last_frame));
+        now = SDL_GetTicksNS();
+        if (last_frame)
+            halo_debug_frame((now - last_frame) / 1e6);
+        last_frame = now;
+    }
+    host_perf_frame((SDL_GetTicksNS() - start) / 1e6);
+    if (metal_window_hidden && metal_swap_interval > 0) {
+        uint64_t elapsed = SDL_GetTicksNS() - start;
+        if (elapsed < 16666667) SDL_DelayNS(16666667 - elapsed);
+    }
+    return result;
+}
+
+int host_sdl_poll_event(void *event) {
+    SDL_Event host_event;
+
+    if (!SDL_PollEvent(&host_event))
+        return 0;
+    /* Cocoa sends opened URLs as drop-file events. Consume the native
+       string here; the guest's 32-bit SDL event cannot hold that pointer. */
+    if (host_event.type == SDL_EVENT_DROP_FILE || host_event.type == SDL_EVENT_DROP_TEXT) {
+        if (host_is_discord_launch_url(host_event.drop.data))
+            host_logf(HOST_LOG_INFO, "Internet play: Discord launch received; waiting for its invite");
+        else if (host_invite_received(host_event.drop.data))
+            host_logf(HOST_LOG_INFO, "Internet play: opened invite queued for this game");
+        memset(event, 0, sizeof(host_event));
+        return 1;
+    }
+    /* the layouts agree except for the pointers of text, drop and user
+    events, which the guest does not read */
+    memcpy(event, &host_event, sizeof(host_event));
+    return 1;
+}
+
+int host_sdl_set_clipboard_text(const char *text) {
+    return SDL_SetClipboardText(text);
+}
+
+void host_sdl_get_clipboard_text(char *buffer, uint32_t size) {
+    char *text = SDL_GetClipboardText();
+    SDL_strlcpy(buffer, text ? text : "", size);
+    SDL_free(text);
+}
+
+int host_sdl_show_toast(const char *message, int duration, int gravity, int x, int y) {
+    (void)duration; (void)gravity; (void)x; (void)y;
+    host_logf(HOST_LOG_INFO, "%s", message);
+    return 1;
+}
+
+int host_sdl_show_simple_message_box(uint32_t flags, const char *title, const char *message) {
+    return SDL_ShowSimpleMessageBox(flags, title, message, metal_window);
+}
+
+/* the mods question at startup (port_mods.c): the guest only gets the
+button that was chosen, and -1 when the box cannot be shown */
+int host_sdl_show_message_box(uint32_t flags, const char *title, const char *message, int default_index,
+    const char *button0, const char *button1, const char *button2) {
+    const char *labels[3] = { button0, button1, button2 };
+    SDL_MessageBoxButtonData buttons[3];
+    SDL_MessageBoxData question;
+    int count = 0;
+    int answer = -1;
+    int index;
+
+    for (index = 0; index < 3; index++) {
+        if (!labels[index])
+            continue;
+        buttons[count].flags = index == default_index ?
+            SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT | SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT : 0;
+        buttons[count].buttonID = index;
+        buttons[count].text = labels[index];
+        count++;
+    }
+    question.flags = (SDL_MessageBoxFlags)flags;
+    question.window = metal_window;
+    question.title = title;
+    question.message = message;
+    question.numbuttons = count;
+    question.buttons = buttons;
+    question.colorScheme = NULL;
+    return SDL_ShowMessageBox(&question, &answer) ? answer : -1;
+}
+
+/* ---------- gamepads */
+
+int host_sdl_get_gamepads(uint32_t *ids, int capacity) {
+#if defined(HALO_IOS) && !defined(HALO_IOS_MAC_CHECK)
+    extern int host_ios_gamepads(uint32_t *ids, int capacity);
+    return host_ios_gamepads(ids, capacity);
+#endif
+    int count = 0, index;
+    SDL_JoystickID *list = SDL_GetGamepads(&count);
+
+    if (!list)
+        return 0;
+    if (count > capacity)
+        count = capacity;
+    for (index = 0; index < count; index++)
+        ids[index] = list[index];
+    SDL_free(list);
+    return count;
+}
+
+uint32_t host_sdl_open_gamepad(uint32_t id) {
+    SDL_Gamepad *gamepad = SDL_OpenGamepad((SDL_JoystickID)id);
+
+    if (gamepad)
+        host_logf(HOST_LOG_INFO, "gamepad %u: %s (type %d, %04x:%04x)", (unsigned)id,
+                  SDL_GetGamepadName(gamepad), (int)SDL_GetGamepadType(gamepad),
+                  SDL_GetGamepadVendor(gamepad), SDL_GetGamepadProduct(gamepad));
+    return handle_new(_handle_gamepad, gamepad);
+}
+
+uint32_t host_sdl_gamepad_from_id(uint32_t id) {
+    return handle_new(_handle_gamepad, SDL_GetGamepadFromID((SDL_JoystickID)id));
+}
+
+/* the event thread, when the controller goes (sdl_platform.c) */
+void host_sdl_close_gamepad(uint32_t gamepad) {
+    SDL_Gamepad *object = handle_release(gamepad, _handle_gamepad);
+
+    if (object)
+        SDL_CloseGamepad(object);
+}
+
+int host_sdl_gamepad_axis(uint32_t gamepad, int axis) {
+    SDL_Gamepad *object = handle_get(gamepad, _handle_gamepad);
+#ifdef HALO_APPLE_GRAPHICS
+    if (halo_debug_is_presented())
+        return 0;
+#endif
+#if defined(HALO_IOS) && !defined(HALO_IOS_MAC_CHECK)
+    extern int host_ios_gamepad_axis(SDL_Gamepad *pad, int axis);
+    return object ? host_ios_gamepad_axis(object, axis) : 0;
+#else
+    return object ? SDL_GetGamepadAxis(object, (SDL_GamepadAxis)axis) : 0;
+#endif
+}
+
+int host_sdl_gamepad_button(uint32_t gamepad, int button) {
+    SDL_Gamepad *object = handle_get(gamepad, _handle_gamepad);
+#ifdef HALO_APPLE_GRAPHICS
+    if (halo_debug_is_presented())
+        return 0;
+#endif
+#if defined(HALO_IOS) && !defined(HALO_IOS_MAC_CHECK)
+    extern int host_ios_gamepad_button(SDL_Gamepad *pad, int button);
+    return object ? host_ios_gamepad_button(object, button) : 0;
+#else
+    return object ? SDL_GetGamepadButton(object, (SDL_GamepadButton)button) : 0;
+#endif
+}
+
+int host_sdl_gamepad_type(uint32_t gamepad) {
+    SDL_Gamepad *object = handle_get(gamepad, _handle_gamepad);
+#if defined(HALO_IOS) && !defined(HALO_IOS_MAC_CHECK)
+    extern int host_ios_gamepad_type(SDL_Gamepad *pad);
+    return object ? host_ios_gamepad_type(object) : SDL_GAMEPAD_TYPE_UNKNOWN;
+#else
+    return object ? SDL_GetGamepadType(object) : SDL_GAMEPAD_TYPE_UNKNOWN;
+#endif
+}
+
+int host_sdl_rumble_gamepad(uint32_t gamepad, uint32_t low, uint32_t high, uint32_t milliseconds) {
+    SDL_Gamepad *object = handle_get(gamepad, _handle_gamepad);
+
+    return object ? SDL_RumbleGamepad(object, (Uint16)low, (Uint16)high, milliseconds) : 0;
+}
+
+/* ---------- audio */
+
+/* SDL calls audio_callback on its own audio thread, which cannot run guest
+code; it passes each request to the stream's thread (audio_thread), which
+can, and waits for it to be done */
+struct audio_binding {
+    uint32_t handle;
+    uint32_t callback;
+    uint32_t userdata;
+    pthread_mutex_t lock;
+    pthread_cond_t requested;
+    pthread_cond_t done;
+    int pending;
+    int additional;
+    int total;
+    unsigned char *staging;
+    size_t staging_length;
+    size_t staging_capacity;
+    int stop;
+    int exited;
+    pthread_cond_t finished;
+};
+static struct audio_binding *audio_bindings[HANDLE_COUNT];
+
+static void *audio_thread(void *context) {
+    struct audio_binding *binding = context;
+
+    pthread_mutex_lock(&binding->lock);
+    for (;;) {
+        int additional, total;
+
+        while (!binding->pending && !binding->stop)
+            pthread_cond_wait(&binding->requested, &binding->lock);
+        if (binding->stop) {
+            binding->pending = 0;
+            binding->exited = 1;
+            pthread_cond_signal(&binding->done);
+            pthread_cond_signal(&binding->finished);
+            pthread_mutex_unlock(&binding->lock);
+            return NULL;
+        }
+        additional = binding->additional;
+        total = binding->total;
+        pthread_mutex_unlock(&binding->lock);
+        host_call_guest(binding->callback, binding->userdata, binding->handle, (uint32_t)additional,
+                        (uint32_t)total);
+        pthread_mutex_lock(&binding->lock);
+        binding->pending = 0;
+        pthread_cond_signal(&binding->done);
+    }
+    return NULL;
+}
+
+static void SDLCALL audio_callback(void *userdata, SDL_AudioStream *stream, int additional,
+                                   int total) {
+    struct audio_binding *binding = userdata;
+
+    (void)stream;
+    pthread_mutex_lock(&binding->lock);
+    binding->additional = additional;
+    binding->total = total;
+    binding->pending = 1;
+    pthread_cond_signal(&binding->requested);
+    while (binding->pending)
+        pthread_cond_wait(&binding->done, &binding->lock);
+    /* SDL invokes its callback with the stream locked. The guest mixer runs
+     * on a different thread, so its output is staged and submitted here on
+     * the callback thread. Calling SDL_PutAudioStreamData from that worker
+     * would deadlock on SDL's stream lock while this callback waited. */
+    if (binding->staging_length) {
+        if (!SDL_PutAudioStreamData(stream, binding->staging, (int)binding->staging_length))
+            host_logf(HOST_LOG_ERROR, "Audio submission failed: %s", SDL_GetError());
+        binding->staging_length = 0;
+    }
+    pthread_mutex_unlock(&binding->lock);
+}
+
+uint32_t host_sdl_open_audio_stream(uint32_t device, const void *spec, uint32_t callback,
+                                    uint32_t userdata) {
+    struct audio_binding *binding;
+    SDL_AudioStream *stream;
+
+    /* A stream without a callback is the microphone. The guest reads it, so
+       there is no mixer thread to bind. */
+    if (!callback) {
+        stream = SDL_OpenAudioDeviceStream((SDL_AudioDeviceID)device, spec, NULL, NULL);
+        return stream ? handle_new(_handle_audio, stream) : 0;
+    }
+    binding = SDL_calloc(1, sizeof(*binding));
+    if (!binding)
+        return 0;
+
+    binding->callback = callback;
+    binding->userdata = userdata;
+    pthread_mutex_init(&binding->lock, NULL);
+    pthread_cond_init(&binding->requested, NULL);
+    pthread_cond_init(&binding->done, NULL);
+    pthread_cond_init(&binding->finished, NULL);
+    stream = SDL_OpenAudioDeviceStream((SDL_AudioDeviceID)device, spec,
+                                       callback ? audio_callback : NULL, binding);
+    if (!stream) {
+        SDL_free(binding);
+        return 0;
+    }
+    /* the device starts paused, so no callback can run before this */
+    binding->handle = handle_new(_handle_audio, stream);
+    audio_bindings[binding->handle] = binding;
+    if (callback && host_native_thread_create(audio_thread, binding, 256 * 1024) != 0)
+        host_fatal("cannot start the audio thread");
+    return binding->handle;
+}
+
+int host_sdl_put_audio_stream_data(uint32_t stream, const void *data, int length) {
+    if (stream >= HANDLE_COUNT || length < 0)
+        return 0;
+    struct audio_binding *binding = audio_bindings[stream];
+    if (!binding)
+        return 0;
+    pthread_mutex_lock(&binding->lock);
+    size_t needed = binding->staging_length + (size_t)length;
+    if (needed > binding->staging_capacity) {
+        size_t capacity = (needed + 16383) & ~(size_t)16383;
+        void *buffer = SDL_realloc(binding->staging, capacity);
+        if (!buffer) {
+            pthread_mutex_unlock(&binding->lock);
+            return 0;
+        }
+        binding->staging = buffer;
+        binding->staging_capacity = capacity;
+    }
+    memcpy(binding->staging + binding->staging_length, data, (size_t)length);
+    binding->staging_length = needed;
+    pthread_mutex_unlock(&binding->lock);
+    return 1;
+}
+
+int host_sdl_resume_audio_stream_device(uint32_t stream) {
+    SDL_AudioStream *object = handle_get(stream, _handle_audio);
+
+    return object ? SDL_ResumeAudioStreamDevice(object) : 0;
+}
+
+int host_sdl_get_audio_stream_data(uint32_t stream, void *data, int length) {
+    SDL_AudioStream *object = handle_get(stream, _handle_audio);
+
+    return object ? SDL_GetAudioStreamData(object, data, length) : -1;
+}
+
+int host_sdl_get_audio_stream_available(uint32_t stream) {
+    SDL_AudioStream *object = handle_get(stream, _handle_audio);
+
+    return object ? SDL_GetAudioStreamAvailable(object) : -1;
+}
+
+/* The microphone has no mixer thread. A playback stream does: stop that
+thread before the stream goes, or it keeps mixing into a stream SDL has
+destroyed. */
+void host_sdl_destroy_audio_stream(uint32_t stream) {
+    SDL_AudioStream *object = handle_get(stream, _handle_audio);
+    struct audio_binding *binding = stream < HANDLE_COUNT ? audio_bindings[stream] : NULL;
+
+    if (!object)
+        return;
+    if (binding) {
+        pthread_mutex_lock(&binding->lock);
+        binding->stop = 1;
+        pthread_cond_signal(&binding->requested);
+        while (!binding->exited)
+            pthread_cond_wait(&binding->finished, &binding->lock);
+        pthread_mutex_unlock(&binding->lock);
+        audio_bindings[stream] = NULL;
+    }
+    pthread_mutex_lock(&handle_lock);
+    handles[stream].type = _handle_free;
+    handles[stream].object = NULL;
+    pthread_mutex_unlock(&handle_lock);
+    SDL_DestroyAudioStream(object);
+    if (binding) {
+        pthread_cond_destroy(&binding->finished);
+        pthread_cond_destroy(&binding->done);
+        pthread_cond_destroy(&binding->requested);
+        pthread_mutex_destroy(&binding->lock);
+        SDL_free(binding->staging);
+        SDL_free(binding);
+    }
+}
+
+static SDL_AudioDeviceID *audio_device_list(int recording, int *count) {
+    return recording ? SDL_GetAudioRecordingDevices(count) : SDL_GetAudioPlaybackDevices(count);
+}
+
+int host_sdl_audio_device_count(int recording) {
+    int count = 0;
+    SDL_AudioDeviceID *devices = audio_device_list(recording, &count);
+
+    SDL_free(devices);
+    return devices ? count : 0;
+}
+
+void host_sdl_audio_device_name(int recording, int index, char *name, uint32_t size) {
+    int count = 0;
+    SDL_AudioDeviceID *devices = audio_device_list(recording, &count);
+    const char *found = devices && index >= 0 && index < count ? SDL_GetAudioDeviceName(devices[index]) : "";
+
+    SDL_strlcpy(name, found ? found : "", size);
+    SDL_free(devices);
+}
+
+uint32_t host_sdl_audio_device_id(int recording, const char *name) {
+    int count = 0, index;
+    SDL_AudioDeviceID *devices = audio_device_list(recording, &count);
+    uint32_t found = recording ? SDL_AUDIO_DEVICE_DEFAULT_RECORDING : SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
+
+    for (index = 0; devices && index < count; index++) {
+        const char *device_name = SDL_GetAudioDeviceName(devices[index]);
+
+        if (device_name && name && SDL_strcmp(device_name, name) == 0) {
+            found = devices[index];
+            break;
+        }
+    }
+    SDL_free(devices);
+    return found;
+}

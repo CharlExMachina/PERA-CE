@@ -347,7 +347,7 @@ bool SDL_HideCursor(void)
 
 SDL_Keycode SDL_GetKeyFromScancode(SDL_Scancode scancode, SDL_Keymod modstate, bool key_event)
 {
-	return (SDL_Keycode)host_sdl_key_from_scancode((int)scancode, (int)modstate, key_event);
+	return (SDL_Keycode)host_sdl_key_from_scancode_state((int)scancode, (int)modstate, key_event);
 }
 
 /* ---------- audio devices */

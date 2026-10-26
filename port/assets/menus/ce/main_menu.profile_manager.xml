@@ -58,9 +58,10 @@
 	<widget name="main_menu/profile_manager/profile_manager_button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<data input="common button bar update"/>
 		<child widget="main_menu/profile_manager/profile_manager_button_new" y="1"/>
-		<child widget="main_menu/profile_manager/profile_manager_button_delete" x="130" y="1"/>
-		<child widget="main_menu/profile_manager/profile_manager_button_ok" x="380" y="1"/>
-		<child widget="common_button_back" x="510" y="1"/>
+		<child widget="main_menu/profile_manager/profile_manager_button_delete" x="128" y="1"/>
+		<child widget="main_menu/profile_manager/profile_manager_button_edit" x="256" y="1"/>
+		<child widget="main_menu/profile_manager/profile_manager_button_ok" x="384" y="1"/>
+		<child widget="common_button_back" x="512" y="1"/>
 	</widget>
 	<widget name="main_menu/profile_manager/profile_manager_button_delete" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" string_list="strings/common_button_captions" string_index="5" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
 		<on event="a" run="mouse emit x event"/>
@@ -71,6 +72,11 @@
 		<on event="a" run="new campaign chosen" open="main_menu/profile_manager/pm_empty_creating_profile"/>
 		<on event="start" run="new campaign chosen" open="main_menu/profile_manager/pm_empty_creating_profile"/>
 		<on event="left_mouse" run="new campaign chosen" open="main_menu/profile_manager/pm_empty_creating_profile"/>
+	</widget>
+	<widget name="main_menu/profile_manager/profile_manager_button_edit" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" text="EDIT" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port profile edit" open="main_menu/settings_select/player_setup/player_profile_edit/player_profile_edit_screen" branch="true"/>
+		<on event="start" run="port profile edit" open="main_menu/settings_select/player_setup/player_profile_edit/player_profile_edit_screen" branch="true"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
 	<widget name="main_menu/profile_manager/profile_manager_button_ok" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" string_list="strings/common_button_captions" string_index="1" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
 		<on event="a" run="emit custom activation event"/>

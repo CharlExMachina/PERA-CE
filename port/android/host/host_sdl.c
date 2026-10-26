@@ -135,6 +135,11 @@ int32_t host_sdl_scancode_from_name(const char *name)
 	return (int32_t)SDL_GetScancodeFromName(name);
 }
 
+int32_t host_sdl_key_from_scancode(int32_t scancode)
+{
+	return (int32_t)SDL_GetKeyFromScancode((SDL_Scancode)scancode, SDL_KMOD_NONE, true);
+}
+
 int64_t host_sdl_ticks(void)
 {
 	return (int64_t)SDL_GetTicks();
@@ -167,6 +172,27 @@ int host_sdl_set_relative_mouse(uint32_t window, int enabled)
 	SDL_Window *object = handle_get(window, _handle_window);
 
 	return object ? SDL_SetWindowRelativeMouseMode(object, enabled != 0) : 0;
+}
+
+void host_sdl_window_size(uint32_t window, int *width, int *height)
+{
+	SDL_Window *object = handle_get(window, _handle_window);
+	*width = *height = 0;
+	if (object) SDL_GetWindowSize(object, width, height);
+}
+
+void host_sdl_warp_mouse(uint32_t window, float x, float y)
+{
+	SDL_Window *object = handle_get(window, _handle_window);
+	if (object) SDL_WarpMouseInWindow(object, x, y);
+}
+
+int host_sdl_video_fullscreen(uint32_t window, int enabled)
+{
+	SDL_Window *object = handle_get(window, _handle_window);
+	if (!object) return 0;
+	if (enabled < 0) return (SDL_GetWindowFlags(object) & SDL_WINDOW_FULLSCREEN) != 0;
+	return SDL_SetWindowFullscreen(object, enabled != 0);
 }
 
 int host_sdl_gl_set_attribute(int attribute, int value)

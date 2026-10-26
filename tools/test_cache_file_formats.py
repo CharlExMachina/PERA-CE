@@ -1130,9 +1130,22 @@ def test_compressed_xbox_caches_are_recognized(report_tool, tmp_path):
     assert report["format"] == "Xbox cache" and report["identify"] == "ok"
 
 
-def test_other_cache_versions_are_named_not_loaded(report_tool, tmp_path):
+def test_halo_pc_caches_take_the_custom_edition_loader(report_tool, tmp_path):
+    """Version 7 is Halo PC. Hardcore maps are these, and they share the
+    header and tag address the Custom Edition loader converts."""
     path = tmp_path / "pc.map"
     path.write_bytes(xbox_header(build=b"01.00.00.0564", version=7))
+    returncode, report = report_one(report_tool, path)
+    assert returncode == 1
+    assert report["format"] == "Custom Edition cache"
+    assert report["identify"] == "ok"
+    assert report["version"] == "7"
+    assert report["load"] != "ok"
+
+
+def test_other_cache_versions_are_named_not_loaded(report_tool, tmp_path):
+    path = tmp_path / "pc.map"
+    path.write_bytes(xbox_header(build=b"01.00.00.0564", version=6))
     returncode, report = report_one(report_tool, path)
     assert returncode == 1
     assert report["format"] == "cache of an unknown version"

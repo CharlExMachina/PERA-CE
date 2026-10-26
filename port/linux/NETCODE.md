@@ -47,6 +47,11 @@ with ideas from VALORANT's netcode articles, keeping the 30 Hz tick:
     host's is once that stops, or if they drift apart while it moves;
   - which named objects exist, so scripted creates and deletes match.
 
+  Script actions naming player0 also reach the players beyond player1.
+  They use the same reverse datum order as the script's `(players)` list,
+  skipping players without units, so a scripted BSP transition does not
+  leave the extra players in the unloaded part of the level.
+
   Every machine follows the host's structure BSP: a switch is sent at once
   and reliably, and each client's input says which BSP it has loaded.
   Until a client has the host's, the host takes none of its players'
@@ -233,13 +238,34 @@ from, so that a second copy of the game on one computer, on a port of its
 own, plays too; version 32 sends the host's mouse aim assist policy
 (distributed message 90, `network_aim_assist.c`), which a client must not
 ignore, and has a client's input say whether its player plays co-op with
-friendly fire; version 33 sends a
-multiplayer game's spectators as kind 91, where this fork's builds of 30
-and 31 sent them as kind 90, which is now the host's aim assist policy, and
-sends with the game's settings its skulls (Server Setup's SKULLS,
+friendly fire. This fork's builds and CoreCE's (mastercheese-dev/CoreCE)
+followed OpenCE's versions to 32 and then each went on alone, each line
+with a 33 of its own: this fork's version 33 sends a multiplayer game's
+spectators as kind 91, where this fork's builds of 30 and 31 sent them as
+kind 90, which is now the host's aim assist policy, and sends with the
+game's settings its skulls (Server Setup's SKULLS,
 `port/linux/game/skulls.c`), which every machine plays by: a build without
 them would spend its players' ammunition, draw their HUD and check the
-reach of explosions otherwise.
+reach of explosions otherwise; CoreCE's version 33 places a multiplayer
+map's weapons and powerups once at game time 0 and has the host place
+every player at the opening of the match, and its version 34 holds the
+match clock at 0 behind the opening's loading film
+(`port/linux/game/opening_film.c`) until the film has faded off the match,
+the host placing the players while it shows (a machine of CoreCE's 33
+starts that clock at the load and spawns at 3 seconds); version 35 joins
+the two lines, and plays all of these: no machine of either line's 33, or
+of CoreCE's 34, plays with it.
+
+A host whose gametype has PB Options on (practice presets,
+`port/linux/game/performance_options.c`, `docs/performance-options.md`)
+advertises version `0x800B` instead, with advertisement flag `0x04`
+beside the in-progress flag `0x02`, so that builds without them refuse its
+game; each client machine says what it supports over its connection before
+it joins (`source/networking/network_performance_protocol.h`), and the host
+refuses one that lacks the game's options. A Hardcore game's rules travel
+with the game's settings as a data message of their own
+(`port/linux/game/hardcore_rules.c`), which builds without them ignore in
+the lobby.
 
 `port/linux/network_format.txt` records the wire format of the current
 version (`tools/network_format.py`): `test_linux_port.py` fails when the
@@ -631,10 +657,11 @@ its name alone beside it, has its name given back as the map lists find it.
      there). Why the host deleted it is not known; the client follows
      the host's word whatever the reason: it takes the flag or ball out
      of its carrier's hands, and the goal its game type shows at it goes
-     with it. The two assertions are not made for anything a client
-     deletes in `distributed_client_delete`: the host's objects on its
-     word, one in the place of an object the host creates, and its own
-     the host has not told it of.
+     with it. Another delete that reaches one (a late join, or a view)
+     keeps the flag: deleting it there halted. The two assertions are not
+     made for anything a client deletes in `distributed_client_delete`:
+     the host's objects on its word, one in the place of an object the
+     host creates, and its own the host has not told it of.
    - The objects placed when the map loads are placed alike everywhere:
      the host's word finds a client's already there. Past loading, a
      client's own objects (projectiles, effects: what only it sees) take
@@ -669,13 +696,14 @@ its name alone beside it, has its name given back as the map lists find it.
    rest is on the ground, so it lies limp again where it stops instead of
    keeping the pose of its fall in the air. A client puts its copies there, and the difference is
    drawn fading over a few ticks (`render_interpolation.c`) instead of a
-   jump. A vehicle no player drives is carried between those updates along
-   the positions the host sent, a recording's lifepod as well as a Pelican.
-   Its physics velocity swings about that path, so the carry steps from
-   one of those positions to the next, and a jump further than a step of
-   the path is left where the host put it. The host's word that it is at
-   rest stops that step, and the step is kept only for the last gap
-   between positions, so a late word does not drive it on. A client drives its own player's vehicle and sends where it is,
+   jump, on the 30 Hz frame as well as between ticks. The picture turns
+   from the previous pose to this one across the frames until the next
+   sample, so a light aimed from it does not snap. A vehicle no player
+   drives moves from the host's previous position to the new one over the
+   gap those samples covered, a recording's lifepod as well as a Pelican,
+   and holds at the newest if the next is late. A jump further than a step
+   of the path is left where the host put it. A client drives its own
+   player's vehicle and sends where it is,
    which the host takes within a tolerance, as it does its own player's
    unit, and no further from an anchor (one it took, a newer once a
    second) than the vehicle moves in the client's ticks since, those no

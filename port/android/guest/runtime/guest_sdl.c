@@ -55,6 +55,18 @@ SDL_Scancode SDL_GetScancodeFromName(const char *name)
 	return (SDL_Scancode)host_sdl_scancode_from_name(name);
 }
 
+#ifndef HALO_MACOS
+/* (the macOS guest's, with the modifiers, is in port/macos/guest/guest_sdl_desktop.c) */
+SDL_Keycode SDL_GetKeyFromScancode(SDL_Scancode scancode, SDL_Keymod modstate, bool key_event)
+{
+	/* the menus ask for the key with no modifiers, as a key event, so a
+	French number row shows its numbers */
+	(void)modstate;
+	(void)key_event;
+	return (SDL_Keycode)host_sdl_key_from_scancode((int)scancode);
+}
+#endif
+
 Uint64 SDL_GetTicks(void)
 {
 	return (Uint64)host_sdl_ticks();
@@ -153,6 +165,23 @@ bool SDL_GetWindowSizeInPixels(SDL_Window *window, int *width, int *height)
 	return true;
 }
 
+#ifndef HALO_MACOS
+/* (the macOS guest's are in port/macos/guest/guest_sdl_desktop.c) */
+bool SDL_GetWindowSize(SDL_Window *window, int *width, int *height)
+{
+	int w = 0, h = 0;
+	host_sdl_window_size((unsigned int)window, &w, &h);
+	if (width) *width = w;
+	if (height) *height = h;
+	return w > 0 && h > 0;
+}
+
+void SDL_WarpMouseInWindow(SDL_Window *window, float x, float y)
+{
+	host_sdl_warp_mouse((unsigned int)window, x, y);
+}
+#endif
+
 bool SDL_SetWindowRelativeMouseMode(SDL_Window *window, bool enabled)
 {
 	return host_sdl_set_relative_mouse((unsigned int)window, enabled) != 0;
@@ -184,6 +213,7 @@ bool SDL_GL_SwapWindow(SDL_Window *window)
 {
 	return host_sdl_gl_swap_window((unsigned int)window) != 0;
 }
+
 
 SDL_FunctionPointer SDL_GL_GetProcAddress(const char *name)
 {

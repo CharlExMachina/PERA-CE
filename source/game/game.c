@@ -120,6 +120,12 @@ struct game_options;
 
 #include "cseries/cseries.h"
 #include "game/game.h"
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+#include "../../port/linux/game/performance_options.h"
+#include "hardcore_rules.h" /* port: hardcore rules for this map */
+#include "opening_film.h" /* port: the campaign loading film */
+#endif
+#include "hardcore_timer.h" /* port: port/linux/game/hardcore_timer.c */
 #include "ai/ai.h"
 #include "bink/bink_playback.h"
 #include "bungie_net/network/transport.h"
@@ -386,6 +392,12 @@ void game_tick(
 	decisions that belong to the host. */
 	if (!(network_game_distributed_client() && network_coop_active()))
 		profile_scope(game_tick_hs_section, hs_update();)
+	/* port: a hardcore map's announcer is turned off by its own startup
+	script. put it back once the scripts have had this tick */
+	hardcore_timer_after_scripts();
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	performance_options_update();
+#endif
 	profile_scope(game_tick_recorded_animations_section, recorded_animations_update();)
 	profile_scope(game_tick_objects_section, objects_update();)
 	profile_scope(game_tick_players_after_section, players_update_after_game();)
@@ -722,6 +734,11 @@ void game_initialize_for_new_map(
 	/* (the map's objects, placed as on the host: a distributed client's own
 	from now on go elsewhere, port/linux/game/network_objects.c) */
 	network_objects_placed();
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	performance_options_initialize_for_new_map();
+	/* port: after the practice flags are reset, so a hardcore game can add its own. */
+	hardcore_rules_begin_map();
+#endif
 	ui_widgets_safe_to_load(TRUE);
 
 	return;
@@ -828,6 +845,17 @@ void game_precache_new_map(
 	boolean blocking)
 {
 	long map_status;
+	boolean film;
+
+	film = opening_film_load_take_arm() ||
+		(game_connection() == _game_connection_local && map_name &&
+			strcmp(map_name, "levels\\ui\\ui") != 0);
+	if (!film)
+	{
+		if (opening_film_load_active())
+			progress_bar_end();
+		opening_film_load_cancel();
+	}
 
 	if (!cache_files_precache_map_loaded(map_name))
 	{
@@ -876,6 +904,8 @@ void game_precache_new_map(
 					cache_files_precache_is_copying_map(map_name));
 			ui_widget_load_progress_widget();
 			progress_bar_begin(global_scenario_index != NONE);
+			if (film)
+				opening_film_load_begin();
 			do
 			{
 				map_status = cache_files_precache_map_status(
@@ -886,7 +916,8 @@ void game_precache_new_map(
 			}
 			while (!map_status);
 
-			progress_bar_end();
+			if (!opening_film_load_active())
+				progress_bar_end();
 			ui_widgets_close_all();
 			if (map_status == _cached_map_file_failed)
 				display_error_damaged_media();
@@ -921,6 +952,9 @@ void game_precache_new_map(
 void game_dispose_from_old_map(
 	void)
 {
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	performance_options_dispose_from_old_map();
+#endif
 	rasterizer_dispose_from_old_map();
 	game_state_dispose_from_old_map();
 	cheats_dispose_from_old_map();

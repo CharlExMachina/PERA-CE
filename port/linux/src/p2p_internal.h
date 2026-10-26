@@ -57,7 +57,8 @@ enum
 typedef char p2p_listing_invite_size_assert[P2P_LISTING_INVITE_SIZE == P2P_LINK_SIZE ? 1 : -1];
 
 /* the prefix of a public game's slot (a key hash in hex follows), and the
-topic of queries (p2p_lobby.c) */
+topic of queries (p2p_lobby.c): listings and invites both use hceu/3/,
+the tree net.corece.org's broker relays */
 #define P2P_LOBBY_SLOT_PREFIX "hceu/3/lobby/s/"
 #define P2P_LOBBY_QUERY_TOPIC "hceu/3/lobby/q"
 

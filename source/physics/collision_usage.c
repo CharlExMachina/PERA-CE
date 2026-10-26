@@ -593,13 +593,12 @@ void collision_log_end_time(
 {
 	LARGE_INTEGER end_time;
 	short user;
+	__int64 elapsed_time;
 
 	user = collision_log_get_current_user(collision_function);
 	/* port: not timed (collision_log_start_time) */
 	if (user != NONE && start_time)
 	{
-		__int64 elapsed_time;
-
 		QueryPerformanceCounter(&end_time);
 		elapsed_time = end_time.QuadPart - start_time;
 

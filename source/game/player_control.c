@@ -214,6 +214,7 @@ symbols in this file:
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
 #include "spectator.h" /* port: port/linux/game/spectator.c */
 #include "photo_mode.h" /* port: port/linux/game/photo_mode.c */
+#include "hardcore_rules.h" /* port: hardcore magnetism scales */
 
 /* ---------- constants */
 
@@ -672,10 +673,17 @@ static void handle_one_player_input(
 		csmemset(&input, 0, sizeof(input));
 	}
 
+	/* The loading film is still up. These ticks place the player and draw
+	   the weapon. Movement, look and buttons wait until that screen is
+	   finished and the match clock starts. The look was already read, so
+	   a mouse move during the film does not turn them when it ends. */
 	if (director_inhibited_input(local_player_index) ||
-		player_control_port_menu_has_controller(local_player_index))
+		player_control_port_menu_has_controller(local_player_index) ||
+		hardcore_rules_opening_hold())
 	{
 		csmemset(&input, 0, sizeof(input));
+		if (hardcore_rules_opening_hold())
+			player->look_acceleration_time = 0.f;
 	}
 
 	if (game_connection() == _game_connection_local)
@@ -926,6 +934,16 @@ short player_control_get_zoom_level(
 		zoom_level = player_control_get(local_player_index)->zoom_level;
 	}
 	return zoom_level;
+}
+
+/* port: the slot does not control the unit. the scope and the hidden
+gun read this while the pane draws, and the pane clears it after */
+void player_control_port_set_zoom_level(
+	short local_player_index,
+	short zoom_level)
+{
+	if (local_player_index >= 0 && local_player_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS)
+		player_control_get(local_player_index)->zoom_level = zoom_level;
 }
 
 real player_control_get_autoaim_level(
@@ -1352,9 +1370,9 @@ static void get_local_player_input_blob(
 						{
 							real game_speed = game_time_get_speed();
 							real input_scale = 1.f - control->magnetism_level *
-								PIN(constants->magnetism_friction, 0.f, 1.f);
+								hardcore_rules_friction(PIN(constants->magnetism_friction, 0.f, 1.f));
 							real magnetism_scale = control->magnetism_level *
-								PIN(constants->magnetism_adhesion, 0.f, 1.f);
+								hardcore_rules_adhesion(PIN(constants->magnetism_adhesion, 0.f, 1.f));
 
 							if (game_players_are_double_speed())
 							{

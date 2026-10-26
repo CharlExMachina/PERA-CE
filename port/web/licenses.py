@@ -22,7 +22,7 @@ NOTICES = [
     ("musl (the maths functions)", "port/third_party/musl-math/COPYRIGHT"),
     ("stb_vorbis (Custom Edition maps' and mods' sounds)", "port/third_party/stb_vorbis/LICENSE"),
     ("Overpass (the menus' text and the page's)", "port/assets/fonts/Overpass-OFL.txt"),
-    ("OpenCE (the title font, from Newtown)", "port/assets/fonts/OpenCE-OFL.txt"),
+    ("CoreCE (the title font, from Newtown)", "port/assets/fonts/CoreCE-OFL.txt"),
     ("Newtown", "port/assets/fonts/Newtown-LICENSE.txt"),
     ("Lucide (voice chat's speaker icons, the Mods menu's warning icons)", "port/assets/icons/lucide/LICENSE"),
 ]

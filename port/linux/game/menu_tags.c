@@ -371,6 +371,7 @@ static char const *const port_function_names[] =
 	"port photo mode",
 	"port coop begin", "port coop player 2 list initialize", "port coop player 2",
 	"port lobby open", "port lobby add player", "port lobby join", "port lobby leave",
+	"port lobby download", "port lobby chat", "port profile edit",
 	"port lobby player list initialize", "port lobby player choose",
 	"port lobby preview add", "port lobby preview leave",
 	/* (the gametype editor's: the Xbox's walk their rows by place, which the
@@ -382,6 +383,10 @@ static char const *const port_function_names[] =
 	"mp profile init indicator opts", "mp profile set ctf rules", "mp profile set koth rules",
 	"mp profile set slayer rules", "mp profile set oddball rules", "mp profile set racing rules",
 	"mp profile set player options", "mp profile set item options", "mp profile set indicator opts",
+	/* (Multiplayer's HARDCORE. A name missing here rejects every port menu.) */
+	"port hardcore open", "port hardcore choose", "port hardcore start",
+	"port hardcore prepare", "port hardcore leave",
+	"port hardcore setup open", "port hardcore server open",
 	/* (Settings' OK: the Xbox's fails when the profile has no changes, the
 	settings' screens having written theirs to config.toml) */
 	"player profile save changes",
@@ -414,7 +419,7 @@ static char const *const port_game_data_input_names[] =
 	"mp map list update", "gt select list update", "gt edit list update", "load game list update",
 	"direct ip connect update", "network settings update",
 	"port settings help", "color picker update", "3wide player profile list update", "port lobby update",
-	"port lobby preview update",
+	"port lobby preview update", "port lobby settings", "port profile rows",
 	/* (the gametype editor's: the Xbox's stops the game on the buttons'
 	row; the Xbox's read only player_ui's gametype, not Server Setup's) */
 	"game settings lists text update", "get edit game settings name", "mp edit profile set rule text",
@@ -426,6 +431,8 @@ static char const *const port_game_data_input_names[] =
 	"port mods update",
 	/* (the SKULLS screens) */
 	"port skulls update",
+	/* (Hardcore's map list, and its setup while a gametype page is open) */
+	"port hardcore maps", "port hardcore setup", "port hardcore server",
 	/* (network co-op's pause menu's FRIENDLY FIRE: its text, ON or OFF) */
 	"port coop friendly fire text",
 };
@@ -1854,6 +1861,53 @@ static void pause_patch(struct cache_file_tag_instance *instances)
 		platform_log("menus: the pause menu has SETTINGS%s", host ? " and END GAME" : "");
 }
 
+/* a campaign map, and a map that keeps the game's menus, do not get the
+menus. the speaker beside a name (network_voice.c) is one of their bitmaps,
+so it is added on its own */
+static void voice_speaker_bitmap(void)
+{
+	struct halo_menus const *menus = halo_menus_load();
+	struct cache_file_tag_instance *instances;
+	long index, bitmap_index = NONE;
+
+	if (!menus)
+		return;
+	for (index = 0; index < menus->bitmap_count; index++)
+	{
+		if (menus->bitmaps[index].name && !strcmp(menus->bitmaps[index].name, "voice/speaker"))
+		{
+			bitmap_index = index;
+			break;
+		}
+	}
+	if (bitmap_index == NONE)
+		return;
+	memset(&build, 0, sizeof(build));
+	build.menus = menus;
+	build.game_map = TRUE;
+	instances = instances_grow(1, &build.first_index, &build.first_salt);
+	if (!instances || build.failed)
+		goto failed;
+	{
+		long tag_index = next_tag();
+
+		instance_set(instances, BITMAP_GROUP_TAG, tag_index, menus->bitmaps[bitmap_index].name, "",
+			bitmap_build(&menus->bitmaps[bitmap_index], tag_index));
+	}
+	if (build.failed)
+		goto failed;
+	cache_files_set_tag_instances(instances, build.first_index + build.next);
+	platform_log("menus: the voice speaker picture was added");
+	goto done;
+
+failed:
+	platform_log("menus: the voice speaker picture was not added");
+	menu_tags_release();
+
+done:
+	memset(&build, 0, sizeof(build));
+}
+
 /* ---------- the campaign's pause menu
 
 Its list gets the same SETTINGS (pause_list_patch) before REVERT TO SAVED, a
@@ -2250,6 +2304,7 @@ void menu_tags_loaded(
 	if ((game_map && tag_loaded('Soul', MULTIPLAYER_COLLECTION) == NONE && !campaign) ||
 		!menus_pc_chosen())
 	{
+		voice_speaker_bitmap();
 		return;
 	}
 	menus = halo_menus_load();

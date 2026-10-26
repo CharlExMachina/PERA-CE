@@ -344,7 +344,7 @@ def generate_windows_build(n: Writer, sln: Any) -> None:
         description="WINDOWS RC $out",
     )
     resources = BUILD / "halo.res"
-    n.build(outputs=resources, rule="windows_rc", inputs=PORT_DIR / "halo.rc", implicit=[PORT_DIR / "opence-icon.ico"])
+    n.build(outputs=resources, rule="windows_rc", inputs=PORT_DIR / "halo.rc", implicit=[PORT_DIR / "corece-icon.ico"])
     n.rule(
         name="windows_copy",
         command="$python -c \"import shutil,sys; shutil.copyfile(sys.argv[1], sys.argv[2])\" $in $out",
@@ -577,5 +577,8 @@ def generate_windows_build(n: Writer, sln: Any) -> None:
     # internet play's MQTT brokers, a file beside the game (network.brokers_file)
     brokers = BUILD / "brokers.txt"
     n.build(outputs=brokers, rule="windows_copy", inputs=Path("port/assets/network/brokers.txt"))
-    n.build(outputs="windows", rule="phony", inputs=[output, sdl_dll, brokers])
+    # the match and campaign loading film, beside the game
+    film = BUILD / "opening_frames.bin"
+    n.build(outputs=film, rule="windows_copy", inputs=Path("port/assets/opening/opening_frames.bin"))
+    n.build(outputs="windows", rule="phony", inputs=[output, sdl_dll, brokers, film])
     n.newline()

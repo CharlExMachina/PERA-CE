@@ -94,6 +94,7 @@ symbols in this file:
 #include "units/units.h"
 #include "text/unicode.h"
 #include "skulls.h" /* port: port/linux/game/skulls.c */
+#include "opening_film.h" /* port: port/linux/game/opening_film.c */
 
 #include <xtl.h>
 
@@ -170,6 +171,10 @@ struct game_options
 
 typedef char network_game_players_offset_assert[
 	offsetof(struct network_game, players) == HALO_PORT_NETWORK_GAME_PLAYERS_OFFSET ? 1 : -1];
+typedef char network_game_variant_options_offset_assert[
+	offsetof(struct network_game, variant_options) == HALO_PORT_NETWORK_GAME_VARIANT_OPTIONS_OFFSET ? 1 : -1];
+typedef char network_game_local_data_offset_assert[
+	offsetof(struct network_game, local_data) == HALO_PORT_NETWORK_GAME_LOCAL_DATA_OFFSET ? 1 : -1];
 typedef char network_game_size_assert[
 	sizeof(struct network_game) == HALO_PORT_NETWORK_GAME_SIZE ? 1 : -1];
 
@@ -793,6 +798,10 @@ boolean network_game_create_game_objects(
 			break;
 	}
 
+	/* port: a campaign or co-op load plays the opening film
+	(port/linux/game/opening_film.c) */
+	if (!game->variant.game_engine_index)
+		opening_film_load_arm();
 	game_precache_new_map(options.map_name, TRUE);
 	main_menu_unload();
 

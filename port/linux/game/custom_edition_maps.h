@@ -84,11 +84,6 @@ short custom_edition_maps_display_index_of(
 char const *custom_edition_maps_level_name(
 	short display_index);
 
-/* whether the display index is one of Halo PC's own multiplayer maps (Ice
-Fields, Death Island and so on), which are listed as VANILLA */
-boolean custom_edition_maps_stock(
-	short display_index);
-
 /* name and description for a display index, or NULL (text_group.c) */
 wchar_t *custom_edition_maps_name(
 	short display_index);

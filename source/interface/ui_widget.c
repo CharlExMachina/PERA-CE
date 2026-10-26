@@ -646,6 +646,7 @@ struct widget_instance;
 #include "input/input_abstraction.h"
 #include "interface/attract_mode.h"
 #include "interface/hud.h"
+#include "hardcore_views.h" /* port: a hardcore pane fits the pause screen */
 #include "interface/hud_definitions.h"
 #include "interface/hud_draw.h"
 #include "bitmaps/bitmap_color_conversion.h"
@@ -679,6 +680,12 @@ struct widget_instance;
 #include "text/text_group.h"
 #include "text/unicode.h"
 #include "ui_widget.h"
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+#include "halo_custom_maps.h"
+#include "port_config.h"
+#include "../../port/linux/game/performance_options.h"
+#include "game/game.h"
+#endif
 /* port: port/linux/game/menu_functions.c: a text's colour in place of its
 own (the server browser's pings) */
 boolean pc_menu_text_color(struct widget_instance *widget, real_argb_color *color);
@@ -1456,6 +1463,14 @@ static wchar_t *spinner_string_list_get_string(
 	long string_list_index,
 	short string_index);
 
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+#include "../../port/linux/game/device_settings.h"
+#include "performance_editor_menu.inc"
+#include "native_pause_frame.inc"
+#include "performance_pause_menu.inc"
+#include "game_settings_menu.inc"
+#endif
+
 /* ---------- globals */
 
 /* port: text boxes' string list indices from here are the descriptions of
@@ -1683,14 +1698,15 @@ static __inline real compute_offset_coordinate(
 		1.0);
 }
 
-void draw_bitmap_in_rect(
+static void draw_bitmap_region_in_rect(
 	struct bitmap_data *bitmap,
 	rectangle2d *rect,
 	rectangle2d *bitmap_rect,
 	rectangle2d *clip_rect,
 	pixel32 argb,
 	struct rasterizer_dynamic_screen_geometry_parameters *multitexture_params,
-	boolean no_plasma)
+	boolean no_plasma,
+	rectangle2d const *source_region)
 {
 	if (bitmap && rect)
 	{
@@ -1779,6 +1795,24 @@ void draw_bitmap_in_rect(
 				(vertex_index > 1) ? texture_height : 0.0f;
 			vertices[vertex_index].position = points[vertex_index];
 		}
+		/* Explicit source regions are reserved for runtime native pause
+		 * frames. Preserve the stock path above, including its texel-sized
+		 * clipping, for every authored widget. */
+		if (source_region)
+		{
+			if (rectangle_width <= 0 || rectangle_height <= 0 ||
+				points[0].x >= points[1].x || points[0].y >= points[2].y)
+				return;
+			for (vertex_index = 0; vertex_index < NUMBER_OF_POINTS_PER_RECTANGLE; vertex_index++)
+			{
+				real x = (points[vertex_index].x - rectangle_x0) / rectangle_width;
+				real y = (points[vertex_index].y - rectangle_y0) / rectangle_height;
+				vertices[vertex_index].texture_coordinates.x =
+					(source_region->x0 + x * (source_region->x1 - source_region->x0)) / bitmap_width;
+				vertices[vertex_index].texture_coordinates.y =
+					(source_region->y0 + y * (source_region->y1 - source_region->y0)) / bitmap_height;
+			}
+		}
 
 		csmemset(&parameters, 0, sizeof(parameters));
 		if (no_plasma)
@@ -1851,6 +1885,39 @@ void draw_bitmap_in_rect(
 
 	return;
 }
+
+void draw_bitmap_in_rect(
+	struct bitmap_data *bitmap, rectangle2d *rect, rectangle2d *bitmap_rect,
+	rectangle2d *clip_rect, pixel32 argb,
+	struct rasterizer_dynamic_screen_geometry_parameters *multitexture_params,
+	boolean no_plasma)
+{
+	draw_bitmap_region_in_rect(bitmap, rect, bitmap_rect, clip_rect, argb,
+		multitexture_params, no_plasma, NULL);
+}
+
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+static void native_pause_frame_render(struct widget_instance *widget,
+	rectangle2d *clip, point2d origin, real alpha)
+{
+	short piece, band;
+	if (!native_pause_frame_is_widget(widget->definition_tag_index)) return;
+	for (piece = 0; piece < 3; piece++)
+	{
+		struct bitmap_data *bitmap = bitmap_group_get_bitmap_from_sequence(
+			native_pause_frame_bitmaps[piece], 0, 0);
+		for (band = 0; band < 3; band++)
+		{
+			rectangle2d destination, source;
+			native_pause_frame_slice(piece, band,
+				ui_widget_definition_get(widget->definition_tag_index)->bounds.y1,
+				origin, &destination, &source);
+			draw_bitmap_region_in_rect(bitmap, &destination, &source, clip,
+				modulate_pixel32_by_real_alpha(0xFFFFFFFF, alpha), NULL, FALSE, &source);
+		}
+	}
+}
+#endif
 
 void ui_widgets_set_fade_value(
 	real value)
@@ -2561,12 +2628,38 @@ static struct widget_instance *widget_instance_find_by_tag_index_recursive(
 	return result;
 }
 
+/* port: leaving a row clears the child it was passing events to. the
+lobby's split rows are that way: once a bottom button has had the focus,
+left and right never reach the spinner, and only the pointer can move it.
+a row that only passes events gets that child back */
+static void widget_instance_refocus_passthrough(
+	struct widget_instance *widget)
+{
+	struct ui_widget_definition *definition;
+	struct widget_instance *child;
+
+	if (!widget || widget->focused_child || widget_instance_can_handle_events(widget))
+		return;
+	definition = ui_widget_definition_get(widget->definition_tag_index);
+	if (!TEST_FLAG(definition->flags, _widget_pass_unhandled_events_to_children_bit))
+		return;
+	for (child = widget->child; child; child = child->next)
+	{
+		if (widget_instance_can_handle_events(child))
+		{
+			widget->focused_child = child;
+			return;
+		}
+	}
+}
+
 static void widget_instance_give_focus_directly(
 	struct widget_instance *widget,
 	struct widget_instance *new_focus)
 {
 	struct widget_instance *focused_child =
 		widget_instance_get_topmost_parent(widget)->focused_child;
+	struct widget_instance *leaf;
 
 	if (new_focus->disabled == TRUE)
 	{
@@ -2596,6 +2689,7 @@ static void widget_instance_give_focus_directly(
 		if (substitute)
 			new_focus = substitute;
 	}
+	leaf = new_focus;
 	if (focused_child)
 	{
 		if (new_focus &&
@@ -2603,6 +2697,7 @@ static void widget_instance_give_focus_directly(
 			focused_child->parent)
 		{
 			new_focus->parent->focused_child = new_focus;
+			widget_instance_refocus_passthrough(leaf);
 
 			return;
 		}
@@ -2617,6 +2712,7 @@ static void widget_instance_give_focus_directly(
 		new_focus->parent->focused_child = new_focus;
 		new_focus = new_focus->parent;
 	}
+	widget_instance_refocus_passthrough(leaf);
 
 	return;
 }
@@ -3303,6 +3399,10 @@ static void event_handler_dispatch(
 	boolean close_widget_after = FALSE;
 	boolean close_current = FALSE;
 	boolean close_all = FALSE;
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	struct ui_widget_event_handler_reference settings_handler;
+	handler = game_settings_route_handler(&widget, handler, &settings_handler);
+#endif
 
 	if (TEST_FLAG(handler->flags, _event_handler_run_scenario_script_bit) &&
 		handler->script[0])
@@ -3312,11 +3412,16 @@ static void event_handler_dispatch(
 	}
 	if (TEST_FLAG(handler->flags, _event_handler_run_function_bit) &&
 		!widget_deleted &&
-		!ui_widget_event_handler_function_invoke(
-			widget,
-			event,
-			handler->function,
-			&widget_deleted))
+		!(
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+			handler->function >= 31970 && handler->function <= 31999 ?
+				game_settings_event(widget, handler->function) :
+			handler->function >= 32000 && handler->function <= 32001 ?
+				performance_editor_event(widget, handler->function) :
+			handler->function >= 32010 && handler->function <= 32019 ?
+				performance_pause_event(widget, handler->function) :
+#endif
+			ui_widget_event_handler_function_invoke(widget, event, handler->function, &widget_deleted)))
 	{
 		error(_error_silent, "event handler function %d of %s failed", handler->function,
 			tag_get_name(definition_tag_index));
@@ -3933,6 +4038,11 @@ struct widget_instance *ui_widget_load_by_name_or_tag(
 		tag_index = tag_loaded(UI_WIDGET_DEFINITION_TAG, name);
 	if (tag_index != NONE)
 	{
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		tag_index = performance_editor_remap_tag(tag_index);
+		tag_index = performance_pause_remap_tag(tag_index);
+		tag_index = game_settings_remap_tag(tag_index);
+#endif
 		definition = ui_widget_definition_get(tag_index);
 		widget = pool_new_pointer(
 			widget_memory_pool,
@@ -4250,6 +4360,10 @@ void draw_string_and_hack_in_icons(
 void ui_start_main_menu_music(
 	void)
 {
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	if (!config_boolean("audio.menu_music"))
+		return;
+#endif
 	if (!widget_globals.main_menu_music_active && !main_menu_fade_active())
 	{
 		long sound_definition_index = tag_loaded(LOOPING_SOUND_DEFINITION_TAG, "sound\\music\\title1\\title1");
@@ -4268,6 +4382,16 @@ void ui_start_main_menu_music(
 
 	return;
 }
+
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+void ui_apply_main_menu_music_setting(void)
+{
+	if (!config_boolean("audio.menu_music"))
+		ui_stop_main_menu_music();
+	else if (we_are_at_the_main_menu)
+		ui_start_main_menu_music();
+}
+#endif
 
 void ui_stop_main_menu_music(
 	void)
@@ -5232,7 +5356,11 @@ static void widget_instance_render_text_box(
 	rectangle2d bounds;
 	rectangle2d clip;
 
-	if (definition->text_label_string_list.index != NONE)
+	if (definition->text_label_string_list.index != NONE
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		&& widget->parameters.text_box.string_list_index != HALO_CUSTOM_MAP_TEXT
+#endif
+		)
 	{
 		short string_list_index;
 		wchar_t *string;
@@ -5567,6 +5695,16 @@ static void widget_instance_render_spinner_list(
 				bounds.y1 += offset.y;
 				bounds.x0 += offset.x;
 				bounds.y0 += offset.y;
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+				/* These runtime selectors retain the original pause button's
+				 * three-pixel text inset. Authored spinner tags are unchanged. */
+				if (performance_pause_is_spinner(widget))
+				{
+					bounds.x0 += definition->horizontal_offset;
+					bounds.y0 += definition->vertical_offset;
+				}
+#endif
+
 				/* port: a spinner with extra items (three digits) is wider, to the
 				left */
 				if (spinner_string_list_extra_count(definition->text_label_string_list.index))
@@ -6146,6 +6284,17 @@ static void ui_mouse_note_target(
 		if (!parent)
 			return;
 		kind = _ui_mouse_target_value;
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		if (game_settings_is_native_spinner(widget) || performance_editor_is_spinner(widget))
+		{
+			/* Native option arrows sit just outside the text rectangle. A
+			 * missed arrow would select the row and send its Accept button. */
+			bounds.x0 = MIN(bounds.x0, definition->list_header_bounds.x0 + offset.x);
+			bounds.x1 = MAX(bounds.x1, definition->list_footer_bounds.x1 + offset.x);
+			bounds.y0 = MIN(bounds.y0, definition->list_header_bounds.y0 + offset.y);
+			bounds.y1 = MAX(bounds.y1, definition->list_footer_bounds.y1 + offset.y);
+		}
+#endif
 	}
 	else if (ui_mouse_widget_is_item(widget))
 	{
@@ -6422,7 +6571,16 @@ static struct ui_mouse_target *ui_mouse_target_at(
 	short y)
 {
 	long index;
+	real px = (real)x;
+	real py = (real)y;
 
+	/* port: the menu was fitted into the pane. the pointer is the
+	screen's, so turn it back to the menu's own coordinates */
+	if (rasterizer_screen_fit_pointer(&px, &py))
+	{
+		x = (short)px;
+		y = (short)py;
+	}
 	for (index = ui_mouse_target_count - 1; index >= 0; index--)
 	{
 		rectangle2d const *bounds = &ui_mouse_targets[index].bounds;
@@ -6492,6 +6650,9 @@ static void ui_mouse_list_directions(
 	struct ui_widget_definition *definition = ui_widget_definition_get(widget->definition_tag_index);
 
 	if (TEST_FLAG(definition->flags, _widget_dpad_leftright_tabs_thru_list_items_bit) ||
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		game_settings_is_native_spinner(widget) ||
+#endif
 		TEST_FLAG(definition->flags, _widget_dpad_leftright_tabs_thru_children_bit))
 	{
 		*back = _widget_event_dpad_left;
@@ -6546,10 +6707,14 @@ static struct widget_instance *ui_mouse_wheel_widget(
 
 		if (skip_settings && widget->type == _ui_widget_type_spinner_list && !ui_mouse_list_shows_several(widget))
 			continue;
-		if (definition->flags & (FLAG(_widget_dpad_updown_tabs_thru_children_bit) |
+		if (
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+			game_settings_is_native_spinner(widget) ||
+#endif
+			(definition->flags & (FLAG(_widget_dpad_updown_tabs_thru_children_bit) |
 			FLAG(_widget_dpad_leftright_tabs_thru_children_bit) |
 			FLAG(_widget_dpad_updown_tabs_thru_list_items_bit) |
-			FLAG(_widget_dpad_leftright_tabs_thru_list_items_bit)))
+			FLAG(_widget_dpad_leftright_tabs_thru_list_items_bit))))
 		{
 			result = widget;
 		}
@@ -6942,6 +7107,12 @@ static void ui_widgets_process_mouse(
 						break;
 					}
 					ui_mouse_give_focus(target->widget);
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+					if (game_settings_is_adjustable(target->widget))
+						ui_mouse_press(ui_mouse_click_x < (target->bounds.x0 + target->bounds.x1) / 2 ?
+							_widget_event_dpad_left : _widget_event_dpad_right);
+					else
+#endif
 					ui_mouse_press(_gamepad_analog_button_a);
 					break;
 				case _ui_mouse_target_value:
@@ -7028,6 +7199,10 @@ static void widget_instance_render_recursive(
 	struct bitmap_data *custom_edition_picture;
 	short frame_index;
 
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	if (!widget->parent)
+		performance_pause_update(widget);
+#endif
 	if (!use_nifty_plasma_fx &&
 		TEST_FLAG(definition->flags, _widget_always_render_with_nifty_fx_bit))
 	{
@@ -7044,11 +7219,24 @@ static void widget_instance_render_recursive(
 				definition->game_data_inputs.address +
 			input_index;
 
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		if (input->function >= 32000 && input->function <= 32001)
+			performance_editor_input(widget, input->function);
+		else
+#endif
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		if (input->function == _device_settings_chooser_preview || input->function == _device_settings_option_help)
+			game_settings_input(widget, input->function);
+		else
+#endif
 		ui_widget_game_data_function_invoke(widget, input->function);
 	}
 	if (!widget->visible)
 		return;
 	ui_mouse_note_target(widget, definition, offset);
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	native_pause_frame_render(widget, clip_rect, offset, alpha_modifier);
+#endif
 	/* port: a Custom Edition map's picture, drawn over the whole widget, or
 	the unknown level's frame for a map without one
 	(port/linux/game/custom_edition_maps.c) */
@@ -7085,6 +7273,7 @@ static void widget_instance_render_recursive(
 			bounds.x1 >= 640 && bounds.y1 >= 480 &&
 			bitmap->width <= 16 &&
 			halo_screen_width() > 640;
+		boolean pane_dim = FALSE;
 
 		if (use_nifty_plasma_fx)
 		{
@@ -7093,7 +7282,20 @@ static void widget_instance_render_recursive(
 			ui_plasma_effect_color.green = 0.05f;
 			ui_plasma_effect_color.blue = 0.05f;
 		}
-		if (widen_to_screen)
+		/* port: the dim covers this pane. the menu on top of it is scaled */
+		if (widen_to_screen && rasterizer_screen_fit_drawing())
+		{
+			short pane_w;
+			short pane_h;
+
+			pane_dim = TRUE;
+			rasterizer_screen_fit_pane(&pane_w, &pane_h);
+			bounds.x0 = 0;
+			bounds.y0 = 0;
+			bounds.x1 = pane_w;
+			bounds.y1 = pane_h;
+		}
+		else if (widen_to_screen)
 		{
 			long extra = (halo_screen_width() - 640) / 2;
 			bounds.x0 -= (short)extra;
@@ -7112,7 +7314,7 @@ static void widget_instance_render_recursive(
 			clip->y0 += offset.y;
 			clip->y1 += offset.y;
 		}
-		if (widen_to_screen && clip)
+		if (widen_to_screen && clip && !pane_dim)
 		{
 			/* widen the clip by the same amount (it is offset-shifted but
 			 * still 640-wide at the edges) so the dim is not clipped back
@@ -7144,6 +7346,12 @@ static void widget_instance_render_recursive(
 			boolean stretched = custom_edition_picture &&
 				custom_edition_maps_campaign_level(widget->animation.current_frame_index) == NONE;
 
+			/* port: the gradient is 512 tall and a screen samples its top
+			480, line and all. the pane's own height would keep that line
+			low and cut the blue short of the view */
+			if (pane_dim)
+				texels = definition->bounds;
+
 			if (pc_menu_frame_placement(bitmap, &frame_x, &frame_y, &frame_width, &frame_height))
 			{
 				bounds.x0 += frame_x;
@@ -7154,6 +7362,25 @@ static void widget_instance_render_recursive(
 				texels.y1 = (short)((long)(bounds.y1 - bounds.y0) * bitmap->height / frame_height);
 				shown = bounds.x1 > bounds.x0 && bounds.y1 > bounds.y0;
 			}
+			/* A settings row shorter than its 32-tall bar draws the whole bar
+			into the row. The stock path crops from the top, which cuts the
+			bar's lower rim. The server browser's rows are wider than this and
+			keep that crop. */
+			else if (!stretched && bitmap->height == 32 && bitmap->width >= 256)
+			{
+				short row_w = (short)(bounds.x1 - bounds.x0);
+				short row_h = (short)(bounds.y1 - bounds.y0);
+
+				if (row_w >= 400 && row_w <= 560 && row_h >= 16 && row_h < 26)
+				{
+					texels.x0 = 0;
+					texels.y0 = 0;
+					texels.x1 = bitmap->width;
+					texels.y1 = bitmap->height;
+				}
+			}
+			if (pane_dim)
+				rasterizer_screen_fit_suspend(TRUE);
 			if (shown)
 			{
 				draw_bitmap_in_rect(
@@ -7165,6 +7392,8 @@ static void widget_instance_render_recursive(
 					&multitexture_params,
 					FALSE);
 			}
+			if (pane_dim)
+				rasterizer_screen_fit_suspend(FALSE);
 		}
 		if (use_nifty_plasma_fx)
 		{
@@ -7315,6 +7544,61 @@ void render_ui_widgets_postgame(
 	return;
 }
 
+/* port: the single screen menu, shrunk to this pane and centered in it.
+the full screen's centering offset would shove it out of a corner */
+static void hardcore_pause_fit_begin(
+	rectangle2d const *window_bounds,
+	short local_player_index)
+{
+	long pane_w;
+	long pane_h;
+	real sx;
+	real sy;
+	real scale;
+	real center_x;
+	real center_y;
+
+	rasterizer_screen_fit_clear();
+	if (!hardcore_views_split() || local_player_index < 0 ||
+		local_player_index >= MAXIMUM_NUMBER_OF_LOCAL_PLAYERS ||
+		!widget_globals.active_widgets[local_player_index])
+		return;
+	pane_w = window_bounds->x1 - window_bounds->x0;
+	pane_h = window_bounds->y1 - window_bounds->y0;
+	if (pane_w < 1 || pane_h < 1)
+		return;
+	sx = (real)pane_w / 640.0f;
+	sy = (real)pane_h / 480.0f;
+	scale = sx < sy ? sx : sy;
+	if (!(scale > 0.05f && scale < 0.999f))
+		return;
+	center_x = ((real)pane_w - 640.0f * scale) * 0.5f;
+	center_y = ((real)pane_h - 480.0f * scale) * 0.5f;
+	halo_screen_ui_offset(FALSE);
+	rasterizer_screen_fit_begin(
+		scale,
+		center_x / (1.0f - scale),
+		center_y / (1.0f - scale),
+		(real)window_bounds->x0,
+		(real)window_bounds->y0,
+		(real)pane_w,
+		(real)pane_h,
+		(real)((halo_screen_width() - 640) / 2));
+
+	return;
+}
+
+static void hardcore_pause_fit_end(
+	void)
+{
+	if (!rasterizer_screen_fit_drawing())
+		return;
+	rasterizer_screen_fit_end();
+	halo_screen_ui_offset(TRUE);
+
+	return;
+}
+
 /* renders the active widgets for one local player's viewport (or the whole
 screen), noting and settling the first player's tap targets in the frame's
 first render that can, and draws the debug view of the targets and the
@@ -7341,6 +7625,7 @@ void render_ui_widgets(
 			local_player_index,
 			0,
 			MAXIMUM_NUMBER_OF_LOCAL_PLAYERS - 1);
+		hardcore_pause_fit_begin(window_bounds, local_player_index);
 		for (widget_index = 0;
 			widget_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS;
 			widget_index++)
@@ -7377,10 +7662,20 @@ void render_ui_widgets(
 			{
 				point2d offset;
 
-				bounds.x0 = 0;
-				bounds.y0 = 0;
-				bounds.x1 = window_bounds->x1 - window_bounds->x0;
-				bounds.y1 = window_bounds->y1 - window_bounds->y0;
+				if (rasterizer_screen_fit_drawing())
+				{
+					bounds.x0 = -4096;
+					bounds.y0 = -4096;
+					bounds.x1 = 4096;
+					bounds.y1 = 4096;
+				}
+				else
+				{
+					bounds.x0 = 0;
+					bounds.y0 = 0;
+					bounds.x1 = window_bounds->x1 - window_bounds->x0;
+					bounds.y1 = window_bounds->y1 - window_bounds->y0;
+				}
 				offset.x = 0;
 				offset.y = 0;
 				/* the mouse drives the first player's menus; a widget shown in
@@ -7419,6 +7714,7 @@ void render_ui_widgets(
 				}
 			}
 		}
+		hardcore_pause_fit_end();
 		if (first_players_render && !ui_mouse_targets_settled)
 		{
 			/* fit the legends while the rows are still targets (merging
@@ -8298,10 +8594,17 @@ static boolean ui_check_for_pause_game(
 					short machine_index =
 						network_game_client_get_machine_index(client);
 					char const *widget_name;
+					short panes = hardcore_views_window_count();
 
 					/* port: a campaign map has only the campaign's pause screen */
 					if (network_coop_active())
 						widget_name = "ui\\shell\\solo_game\\pause_game\\pause_game";
+					/* port: teammate panes are not local players, so the
+					pause screen would stay the full one. the single
+					screen menu is drawn into this pane, scaled to fit */
+					else if (local_player_count == 1 && panes > 1)
+						widget_name =
+							"ui\\shell\\multiplayer_game\\pause_game\\1p_pause_game";
 					else switch (local_player_count)
 					{
 					case 1:

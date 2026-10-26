@@ -72,7 +72,6 @@ typedef char profile_trace_record_size_assert[sizeof(struct profile_trace_record
 /* ---------- prototypes/PROFILE_TRACE.C */
 
 const char *profile_trace_name_text(int name);
-int profile_trace_name_is_aggregate(int name);
 /* the writer: the next part (waits for one), and a part written (its
 arena back; after the last, both arenas freed and the recording over) */
 struct profile_part *profile_trace_writer_next(void);

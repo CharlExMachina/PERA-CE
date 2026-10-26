@@ -120,6 +120,10 @@ boolean map_share_download_begin(
 	char const *level_name,
 	unsigned long version,
 	char const *message);
+/* the next map_share_download_begin may run even when network.map_download
+is off. one call, then it is off again */
+void map_share_download_permit(
+	void);
 /* the version of the map the network game this machine is in is on, if it
 is on the level `level_name` (or a map of its name: custom_edition_cache.c
 takes the file of that version) */

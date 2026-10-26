@@ -1376,7 +1376,23 @@ boolean network_connection_read(
 	word *buffer_size,
 	struct transport_address *source_address)
 {
+	/* port: (network_connection_read_with_transport, below) */
+	return network_connection_read_with_transport(connection, buffer, buffer_size, source_address, NULL);
+}
+
+/* port: network_connection_read, telling whether the message came over the
+connection (reliable) rather than in a datagram */
+boolean network_connection_read_with_transport(
+	struct network_connection *connection,
+	void *buffer,
+	word *buffer_size,
+	struct transport_address *source_address,
+	boolean *reliable)
+{
 	boolean result;
+
+	if (reliable)
+		*reliable = FALSE;
 
 	if (TEST_FLAG(connection->flags, _connection_create_server_bit))
 	{
@@ -1390,6 +1406,8 @@ boolean network_connection_read(
 		connection->flags&FLAG(_connection_create_serverside_client_bit));
 
 	result = network_client_reliable_connection_read(connection, buffer, buffer_size, source_address);
+	if (reliable)
+		*reliable = result;
 	network_connection_last_read_unreliable = FALSE;
 	if (!result && TEST_FLAG(connection->flags, _connection_create_clientside_client_bit))
 	{

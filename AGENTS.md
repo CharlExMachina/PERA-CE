@@ -1,12 +1,14 @@
 # Notes for agents
 
 This repository ports the Halo: Combat Evolved decompilation (Xbox build
-01.01.14.2342, `cachebeta.exe`) to Linux, Windows, macOS, Android and the web. The game's C
+01.01.14.2342, `cachebeta.exe`) to Linux, Windows, macOS, Android, the web and
+(as a developer build) the iPhone. The game's C
 sources are the decompilation; the port adds a platform layer that
 implements the Xbox APIs the game calls (Direct3D on OpenGL, or on Metal on
 the Mac), and features the Xbox game did not
 have (a new netcode, internet play, the PC version's menus, Custom Edition
-maps, touch controls). The project is published as OpenCE.
+maps, touch controls). The project is published as OpenCE; it also carries
+the work of CoreCE, a fork of it from the same base.
 
 Start with [README.md](README.md). The other documents are listed at the
 end.
@@ -23,12 +25,14 @@ end.
 | `port/windows/` | The Windows build's own files (`win32_*.c`, headers) |
 | `port/android/` | The Android app: the guest runtime (the macOS build's too), the host library (`host/`), the Java app (`app/`), host imports (`host_imports.list`) |
 | `port/macos/` | The macOS app: the host (`host/`: loader, window memory, Linux system calls on Darwin, SDL, Metal), the guest's Metal Direct3D device and desktop SDL calls (`guest/`), the Metal interface (`include/halo_metal.h`), host imports (`host_imports.list`) |
+| `port/ios/` | CoreCE's iPhone app (a developer build): the app's files, its host imports and the Xcode project's inputs; built with `tools/ios_build.py` |
+| `port/apple/` | The iPhone app's host pieces: the host (`host/`), the guest compiler's pieces (`compiler/`), native code (`native/`), graphics through ANGLE, the game data import (`game_store.m`, `xiso.c`), licences |
 | `port/web/` | The web build: its runtime (`src/`: entry, sockets inside the page, memory watch), the page and its service worker (`site/`), the SDL port, tests |
 | `port/assets/` | What the builds embed or ship: high-res HUD (`hud/`), fonts, titles, menus (`menus/`), icons, network brokers |
 | `port/third_party/` | Vendored libraries, each with a README naming its upstream, version and checksum |
 | `port/tools/` | Stand-alone tools (`cache_file_report.c`) |
-| `tools/` | Build scripts (`linux_build.py`, `windows_build.py`, `android_build.py`, `macos_build.py` with `macos_asm_rebase.py`, `macos_imports.py` and `macos_image_check.py`, `web_build.py`, `ci_build.py`, `web_serve.py`), generators (`ce_menus.py`, `port_settings.py`, `hud_assets.py`, `title_assets.py`, `embed_assets.py`, `xdk_headers.py`), tests, and `stagekit/` (scenarios staged and instrumented on the real engine, no retail assets) |
-| `docs/` | Longer design notes (`custom_edition_caches.md`, `mods.md`) |
+| `tools/` | Build scripts (`linux_build.py`, `windows_build.py`, `android_build.py`, `macos_build.py` with `macos_asm_rebase.py`, `macos_imports.py` and `macos_image_check.py`, `web_build.py`, `ios_build.py` with `ios_setup.py`, `ci_build.py`, `web_serve.py`), generators (`ce_menus.py`, `port_settings.py`, `hud_assets.py`, `title_assets.py`, `embed_assets.py`, `xdk_headers.py`), tests, and `stagekit/` (scenarios staged and instrumented on the real engine, no retail assets) |
+| `docs/` | Longer design notes (`custom_edition_caches.md`, `mods.md`, `xbox-fidelity.md`, the upstream reviews) |
 | `pgo/` | Profile-guided optimisation profiles |
 | `assets/` | Game data for local runs (gitignored: `maps/`, `custom_maps/`) |
 | `.github/workflows/` | CI: builds every platform on each push, publishes releases from `main` |
@@ -71,6 +75,12 @@ python tools/ci_build.py linux release   # what CI builds
   addresses or handles. The guest's pages are 16 KB. Run `ninja macos`
   after changing what it compiles (as for Android, and `port/macos`).
   Refer to [port/macos/README.md](port/macos/README.md).
+- iOS: the game is the Android build's guest (`HALO_ANDROID`, `HALO_GLES`,
+  `HALO_ARM64_GUEST`, with `HALO_IOS`), drawn through ANGLE on Metal, in
+  CoreCE's iPhone app; `tools/ios_build.py` builds it on an Apple silicon Mac
+  (not `ninja`). `HALO_MACOS` is the Metal Mac build's, never the iPhone's:
+  code for the iPhone is under `HALO_IOS`. Refer to
+  [port/ios/README.md](port/ios/README.md).
 - Web: the game is `wasm32` (also ILP32), run on a Web Worker; calls must
   match their callee's type exactly (the link fails on a mismatch), and
   WebGL 2 is ES 3.0. Run `ninja web` after changing what it compiles (as
@@ -86,6 +96,7 @@ python tools/ci_build.py linux release   # what CI builds
 | `HALO_WEB` | Web | The browser: its frames, storage, sockets and WebGL 2's limits (with `HALO_GLES`, not `HALO_ANDROID`) |
 | `HALO_METAL` | macOS | The Metal renderer (`port/macos/guest/d3d8_metal.c` in place of `d3d8_gl.c`); with `HALO_ARM64_GUEST` |
 | `HALO_MACOS` | macOS | The Mac app: its files and window (with `HALO_ARM64_GUEST` and `HALO_METAL`, not `HALO_ANDROID` or `HALO_GLES`) |
+| `HALO_IOS` | iOS (`tools/ios_build.py`) | iOS: CoreCE's iPhone app (with `HALO_ANDROID`, `HALO_GLES`, `HALO_ARM64_GUEST`); `HALO_IOS_SIMULATOR` for the simulator's |
 | `HALO_WINDOWS` | Windows (`halo_windows_prefix.h`) | The Windows build |
 | `HALO_RELEASE` | `--release` | No assertions checked |
 | `HALO_PROFILE` | `--profile` | The profiling build; a normal build must be unchanged by it |
@@ -134,6 +145,59 @@ Running the game without a person at it:
   processes you started.
 
 ## Rules of the project
+
+### Project direction
+
+Preserve original Xbox Halo: Combat Evolved NTSC gameplay and presentation
+while improving native performance, portability and online play. Community
+maps are separate content imports. Custom maps and explicitly selected
+competitive options serve serious OG Halo players; they do not authorize
+adopting another engine's rules as the original-game baseline. Keep optional
+host tools separate and off by default.
+
+### Fidelity and performance are separate checks
+
+Preserve the original 30 Hz simulation. High-refresh rendering (for example
+120 FPS) can be appropriate without changing the game rules; review interpolation
+and camera/input latency separately. A 30 FPS reference preset is a comparison
+tool, not a requirement for normal play or a reason to reject performance work.
+Do not silently impose a rendering cap as part of a gameplay-fidelity change.
+
+Matching decompilation progress refers to the original executable target and
+build configuration. Do not describe a native ARM executable as byte-identical
+to an Xbox executable, or a successful smoke test as proof of full retail parity.
+[docs/xbox-fidelity.md](docs/xbox-fidelity.md) records the baseline, the
+upstream changes left out, the current settings and the validation limits.
+
+### Reviewing upstream changes
+
+Changes from the upstream projects (OpenCE, `OpenCommunityEdition/OpenCE`,
+formerly `cybersecurity/halo-ce-universal`; and CoreCE) are reviewed before
+they are integrated: fetch and review all new commits since the last recorded
+review, and inspect the actual diff and its dependencies, not just the commit
+title.
+
+- Prioritize verified decompilation/matching accuracy, correctness, stability,
+  performance, renderer correctness and platform compatibility fixes that
+  preserve the original game's behavior and appearance.
+- Consider netcode and matchmaking improvements case by case. Review their
+  effects on simulation timing, input, fairness, session compatibility and
+  service dependencies before adoption. Their category alone is not approval.
+- Changes to sounds, weapons, balance or game rules do not belong in the
+  original-game baseline; timers and other competitive modifications are
+  settings, off by default (Settings, below).
+- Split mixed commits or port the relevant fix when possible. Do not take an
+  unwanted modification merely to obtain a performance or matching improvement;
+  defer the change with a reason if it cannot be separated safely.
+- Record each reviewed commit's hash, purpose, decision (adopt, partially adopt,
+  exclude or defer), behavioral effect and relevant validation in
+  [docs/xbox-fidelity.md](docs/xbox-fidelity.md) or a linked review record
+  (`docs/upstream-review-*.md`). Track the last reviewed revision separately
+  from the last integrated baseline so excluded commits are not accidentally
+  reintroduced during later updates.
+- Run checks appropriate to the selected change. Assess performance with
+  comparable settings and workloads; verify gameplay-sensitive changes against
+  the chosen Xbox reference and record any remaining uncertainty.
 
 ### The game's sources
 
@@ -189,7 +253,7 @@ read `xbox/include`. To add a name, follow `port/include/xdk/README.md`.
   screenshot, a logo) may be used only if it is listed in
   `port/assets/menus/NON_HANDDRAWN.md`.
 - `AUTHORS.md` credits art only.
-- Fonts: Overpass and OpenCE (Newtown, respaced) only; see
+- Fonts: Overpass and CoreCE (Newtown, respaced) only; see
   `port/assets/fonts/README.md`. Never ship the maps' commercial typefaces.
 
 ### Custom Edition maps
@@ -246,10 +310,13 @@ The decompilation's upstream, punpckhdq/halo, is AGPL 3.0 from 17 October
 | [port/windows/README.md](port/windows/README.md) | The Windows build, its headers, inline functions, crash reports |
 | [port/android/README.md](port/android/README.md) | The Android build, the guest and host, touch controls, Android settings, finding problems |
 | [port/macos/README.md](port/macos/README.md) | The macOS build, the guest's window and its rewrite, the host, Metal, finding problems |
+| [port/ios/README.md](port/ios/README.md) | The iPhone developer build: building, signing, installing, the simulator |
 | [port/web/README.md](port/web/README.md) | The web build, the page, the game data in the browser, limits, how it operates, hosting on GitHub Pages |
 | [port/include/xdk/README.md](port/include/xdk/README.md) | How the SDK declarations were written and are checked |
 | [docs/custom_edition_caches.md](docs/custom_edition_caches.md) | Loading and converting Custom Edition maps, and the evidence for each layout |
 | [docs/mods.md](docs/mods.md) | Mods: folders of Halo PC tag files whose sounds, bitmaps, text and models play over a map's on one machine |
+| [docs/xbox-fidelity.md](docs/xbox-fidelity.md) | The original Xbox baseline, the upstream changes reviewed and left out, validation limits |
+| [docs/performance-options.md](docs/performance-options.md) | The Performance Build (PB) options |
 | [port/assets/text_filter/README.md](port/assets/text_filter/README.md) | Streamer mode's words: Surge AI's list, the review, the allowed words |
 | [port/assets/menus/README.md](port/assets/menus/README.md) | The menu files' format and how to write them again |
 | [port/assets/menus/NON_HANDDRAWN.md](port/assets/menus/NON_HANDDRAWN.md) | Menu pictures that are not redraws |

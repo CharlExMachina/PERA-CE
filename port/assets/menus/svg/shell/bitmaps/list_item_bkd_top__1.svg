@@ -1,5 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="32" viewBox="0 0 256 32">
-  <!-- list item background: rounded left cap, blue 2px outline, open right end (9-slice piece) -->
-  <path d="M10,0 H233 V32 H10 A10,10 0 0 1 0,22 V10 A10,10 0 0 1 10,0 Z" fill="#000e23"/>
-  <path d="M233,1 H10 A9,9 0 0 0 1,10 V22 A9,9 0 0 0 10,31 H226" fill="none" stroke="#2995ff" stroke-width="2"/>
+  <!-- top list item: the body stops at the card's side. the top of the body
+       and its line continue across the card's rounded corner onto the top edge -->
+  <path d="M10,0 H236 V11 H226 V32 H10 A10,10 0 0 1 0,22 V10 A10,10 0 0 1 10,0 Z" fill="#000e23"/>
+  <path d="M252,1 H10 A9,9 0 0 0 1,10 V22 A9,9 0 0 0 10,31 H226" fill="none" stroke="#2995ff" stroke-width="2" stroke-linecap="butt"/>
 </svg>

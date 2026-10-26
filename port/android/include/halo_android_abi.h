@@ -29,15 +29,20 @@ This header is included by both halves.
 /* the guest image is linked to run here, just above the Xbox window: ART
 keeps its heaps low in the address space and fills it upwards */
 #define HALO_GUEST_IMAGE_BASE 0x88000000u
+#define HALO_GUEST_WINDOW_SIZE 0x08000000u
 /* the room the host reserves for the image there (port/android/host/host_memory.c) */
 #define HALO_GUEST_IMAGE_RESERVE 0x04000000u
 
 /* the Xbox contiguous memory window (port/linux/src/platform.h) */
 #define HALO_GUEST_WINDOW_BASE 0x80000000u
-#define HALO_GUEST_WINDOW_SIZE 0x08000000u
 
 #define HALO_GUEST_MAGIC 0x4f4c4148u /* 'HALO' */
+#ifdef HALO_IOS
+/* Rebased guest pointers; cannot be loaded by the Android host. */
+#define HALO_GUEST_ABI_VERSION 0x20001
+#else
 #define HALO_GUEST_ABI_VERSION 2
+#endif
 
 /* at HALO_GUEST_IMAGE_BASE */
 struct halo_guest_header

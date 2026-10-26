@@ -56,6 +56,7 @@ being hit looks and feels like on the clients).
 #include "objects/damage_effect_definitions.h"
 #include "effects/effect_definitions.h"
 #include "physics/collision_model_definitions.h"
+#include "physics/collisions.h"
 #include "items/weapon_definitions.h"
 #include "items/projectile_definitions.h"
 #include "scenario/scenario.h"
@@ -148,6 +149,13 @@ enum
 	PLAYER_TRAIL_REPORT_SLACK_TICKS = TICKS_PER_SECOND,
 	PLAYER_TRAIL_POINTS = 128,
 	PLAYER_TRAIL_TICKS = PLAYER_TRAIL_INTERVAL_TICKS * PLAYER_TRAIL_POINTS,
+	/* a direct hit looks back over this much of that trail for a clear line */
+	REPORT_LINE_OF_SIGHT_TICKS = 2 * TICKS_PER_SECOND,
+	REPORT_LINE_OF_SIGHT_POINTS = REPORT_LINE_OF_SIGHT_TICKS / PLAYER_TRAIL_INTERVAL_TICKS,
+	/* projectiles the host has seen stuck to something, long enough for the
+	detonation report to arrive */
+	MAXIMUM_STUCK_PROJECTILES = 16,
+	STUCK_PROJECTILE_TICKS = REPORT_MAXIMUM_AGE_TICKS + 2 * TICKS_PER_SECOND,
 };
 
 enum
@@ -179,6 +187,8 @@ enum
 	/* the vehicle they drive running into a unit: at the unit (the origin),
 	from the vehicle (the epicenter), area damage (physics.c) */
 	_damage_source_collision_bit,
+	/* the detonation of a projectile the host has seen stuck to the target */
+	_damage_source_attached_bit,
 };
 
 /* struct distributed_damage_event kill flags */
@@ -364,6 +374,15 @@ static struct distributed_damage_event damage_events[MAXIMUM_DAMAGE_EVENTS_PER_T
 static short damage_event_count;
 /* ... dealing a client's report */
 static boolean damage_dealing_report;
+/* ... a projectile the host has seen stuck to an object */
+struct damage_stuck_projectile
+{
+	long projectile_index;
+	long object_index;
+	long damage_index;
+	long time;
+	boolean spent;
+};
 /* ... each player's weapons of late, and hits left */
 static struct
 {
@@ -372,6 +391,7 @@ static struct
 	/* (the grenades thrown, not yet gone off: NONE for none) */
 	long throw_times[MAXIMUM_GRENADE_THROWS];
 	short throw_types[MAXIMUM_GRENADE_THROWS];
+	struct damage_stuck_projectile stuck[MAXIMUM_STUCK_PROJECTILES];
 	long driven_time;
 	/* (the blow of the player's unit with no weapon: units.c's
 	unit_unarmed_melee_damage) */
@@ -407,14 +427,18 @@ static struct damage_history_tick
 	} objects[MAXIMUM_TRACKED_PLAYERS][2];
 } damage_history[TARGET_HISTORY_TICKS];
 /* ... and where each player's living unit was every few ticks, longer (NONE
-for no time: none), how fast it or its vehicle went, and the size of the
-vehicle it rode */
+for no time: none), how fast it or its vehicle went, the size of the
+vehicle it rode, the eye above that position, and, while driving or gunning,
+the mounted weapon's muzzle */
 static struct damage_trail_point
 {
 	long time;
 	real_point3d position;
 	real speed;
 	real radius;
+	real eye;
+	boolean mounted;
+	real_point3d muzzle;
 } damage_trails[MAXIMUM_TRACKED_PLAYERS][PLAYER_TRAIL_POINTS];
 /* ... what each weapon or grenade deals, as the tags have it (their walk
 is long): the hits a second of a damage effect from it, how it deals it
@@ -995,6 +1019,8 @@ static byte distributed_projectile_deals(
 	{
 		SET_FLAG(kinds, _damage_source_impact_bit, TRUE);
 	}
+	if (projectile->projectile.attached_detonation_damage.index == damage_index)
+		SET_FLAG(kinds, _damage_source_attached_bit, TRUE);
 	kinds |= distributed_effect_deals(projectile->projectile.effect.index, damage_index, depth + 1, &from_here);
 	kinds |= distributed_effect_deals(projectile->projectile.super_detonation.index, damage_index, depth + 1,
 		&from_here);
@@ -1311,6 +1337,45 @@ static real distributed_distance_squared(
 	return dx * dx + dy * dy + dz * dz;
 }
 
+/* the mounted weapon's muzzle, when this vehicle has one (a hull-down gun
+fires from in front of the seat the host records) */
+static boolean distributed_vehicle_muzzle(
+	long vehicle_index,
+	real_point3d *muzzle)
+{
+	struct unit_datum *vehicle = unit_get(vehicle_index);
+	struct object_datum *weapon;
+	struct object_marker marker;
+	long weapon_index = NONE;
+	short slot = vehicle->unit.current_weapon_index;
+	short index;
+
+	if (slot >= 0 && slot < MAXIMUM_WEAPONS_PER_UNIT && vehicle->unit.weapon_object_indices[slot] != NONE &&
+		object_try_and_get(vehicle->unit.weapon_object_indices[slot]))
+	{
+		weapon_index = vehicle->unit.weapon_object_indices[slot];
+	}
+	for (index = 0; weapon_index == NONE && index < MAXIMUM_WEAPONS_PER_UNIT; index++)
+	{
+		if (vehicle->unit.weapon_object_indices[index] != NONE &&
+			object_try_and_get(vehicle->unit.weapon_object_indices[index]))
+		{
+			weapon_index = vehicle->unit.weapon_object_indices[index];
+		}
+	}
+	if (weapon_index == NONE)
+		return FALSE;
+	weapon = object_get(weapon_index);
+	if (object_get_marker_by_name(TEST_FLAG(weapon->object.flags, _object_invisible_bit) &&
+		weapon->object.parent_object_index != NONE ? weapon->object.parent_object_index : weapon_index,
+		"primary trigger", &marker, 1) < 1)
+	{
+		return FALSE;
+	}
+	*muzzle = marker.matrix.position;
+	return TRUE;
+}
+
 /* where each player's unit and vehicle are this tick (and whether they
 drive it), noted; and every few ticks where their unit is */
 static void distributed_note_targets(
@@ -1350,25 +1415,128 @@ static void distributed_note_targets(
 
 			tick->objects[player_index][1].driving = vehicle && vehicle->unit.driver_object_index == unit_index;
 		}
-		if (game_time_get() % PLAYER_TRAIL_INTERVAL_TICKS == 0)
 		{
-			struct damage_trail_point *point =
-				&damage_trails[player_index][(game_time_get() / PLAYER_TRAIL_INTERVAL_TICKS) & (PLAYER_TRAIL_POINTS - 1)];
+			struct damage_history_tick const *last =
+				&damage_history[(game_time_get() - 1) & (TARGET_HISTORY_TICKS - 1)];
+			boolean appeared = unit_index != NONE &&
+				(last->time != game_time_get() - 1 || last->objects[player_index][0].object_index == NONE);
 
-			point->time = unit_index != NONE ? game_time_get() : NONE;
-			if (unit_index != NONE)
+			if (game_time_get() % PLAYER_TRAIL_INTERVAL_TICKS == 0 || appeared)
 			{
-				point->position = tick->objects[player_index][0].position;
-				point->speed = tick->objects[player_index][0].speed;
-				point->radius = 0.0f;
-				if (tick->objects[player_index][1].object_index != NONE)
+				struct damage_trail_point *point =
+					&damage_trails[player_index][(game_time_get() / PLAYER_TRAIL_INTERVAL_TICKS) & (PLAYER_TRAIL_POINTS - 1)];
+
+				point->time = unit_index != NONE ? game_time_get() : NONE;
+				if (unit_index != NONE)
 				{
-					point->speed = MAX(point->speed, tick->objects[player_index][1].speed);
-					point->radius = object_get(tick->objects[player_index][1].object_index)->object.bounding_sphere_radius;
+					real_point3d camera;
+
+					point->position = tick->objects[player_index][0].position;
+					point->speed = tick->objects[player_index][0].speed;
+					point->radius = 0.0f;
+					unit_get_camera_position(unit_index, &camera);
+					point->eye = camera.z - point->position.z;
+					point->mounted = FALSE;
+					if (tick->objects[player_index][1].object_index != NONE)
+					{
+						long vehicle_index = tick->objects[player_index][1].object_index;
+						struct unit_datum *vehicle = (struct unit_datum *)object_try_and_get_and_verify_type(
+							vehicle_index, _object_mask_vehicle);
+
+						point->speed = MAX(point->speed, tick->objects[player_index][1].speed);
+						point->radius = object_get(vehicle_index)->object.bounding_sphere_radius;
+						if (vehicle && (vehicle->unit.driver_object_index == unit_index ||
+							vehicle->unit.gunner_object_index == unit_index))
+						{
+							point->mounted = distributed_vehicle_muzzle(vehicle_index, &point->muzzle);
+						}
+					}
 				}
 			}
 		}
 	}
+}
+
+/* projectiles stuck to something other than whoever fired them */
+static void distributed_note_stuck_projectiles(
+	void)
+{
+	struct object_iterator iterator;
+	struct object_datum *projectile;
+
+	object_iterator_new(&iterator, _object_mask_projectile, 0);
+	while ((projectile = (struct object_datum *)object_iterator_next(&iterator)) != NULL)
+	{
+		struct damage_stuck_projectile *stuck;
+		long damage_index;
+		short player_index;
+		short index;
+		short slot = NONE;
+		short slot_rank = 0;
+		boolean found = FALSE;
+
+		if (projectile->object.parent_object_index == NONE ||
+			projectile->object.parent_object_index == projectile->object.owner_object_index ||
+			projectile->object.owner_player_index == NONE || !player_try_and_get(projectile->object.owner_player_index))
+		{
+			continue;
+		}
+		player_index = (short)DATUM_INDEX_TO_ABSOLUTE_INDEX(projectile->object.owner_player_index);
+		damage_index = projectile_definition_get(projectile->definition_index)->projectile.attached_detonation_damage.index;
+		if (player_index >= MAXIMUM_TRACKED_PLAYERS || damage_index == NONE)
+			continue;
+		for (index = 0; index < MAXIMUM_STUCK_PROJECTILES; index++)
+		{
+			struct damage_stuck_projectile const *note = &damage_players[player_index].stuck[index];
+			short rank;
+
+			if (note->time != NONE && note->projectile_index == iterator.index)
+			{
+				slot = index;
+				found = TRUE;
+				break;
+			}
+			rank = note->time == NONE || game_time_get() - note->time > STUCK_PROJECTILE_TICKS ? 0 : note->spent ? 1 : 2;
+			if (slot == NONE || rank < slot_rank ||
+				(rank == slot_rank && note->time < damage_players[player_index].stuck[slot].time))
+			{
+				slot = index;
+				slot_rank = rank;
+			}
+		}
+		stuck = &damage_players[player_index].stuck[slot];
+		if (!found)
+		{
+			stuck->projectile_index = iterator.index;
+			stuck->damage_index = damage_index;
+			stuck->spent = FALSE;
+		}
+		stuck->object_index = projectile->object.parent_object_index;
+		stuck->time = game_time_get();
+	}
+}
+
+/* one stuck detonation of that damage against that object */
+static boolean distributed_stuck_detonation(
+	short player_index,
+	long object_index,
+	long damage_index)
+{
+	short index;
+
+	distributed_note_stuck_projectiles();
+	for (index = 0; index < MAXIMUM_STUCK_PROJECTILES; index++)
+	{
+		struct damage_stuck_projectile *stuck = &damage_players[player_index].stuck[index];
+
+		if (stuck->time != NONE && !stuck->spent && game_time_get() - stuck->time <= STUCK_PROJECTILE_TICKS &&
+			stuck->object_index == object_index && stuck->damage_index == damage_index)
+		{
+			stuck->spent = TRUE;
+			return TRUE;
+		}
+	}
+	return FALSE;
 }
 
 /* whether the host had the history's object within the tolerance of the
@@ -1392,9 +1560,12 @@ vehicle), unless it is not there. */
 static short distributed_target_seen(
 	long object_index,
 	real_point3d const *position,
-	long ticks)
+	long ticks,
+	real_point3d *seen_position)
 {
 	boolean latest = FALSE;
+	boolean seen = FALSE;
+	real seen_distance = 0.0f;
 	short column_player_index = NONE;
 	short column_slot = 0;
 	long back;
@@ -1403,6 +1574,8 @@ static short distributed_target_seen(
 	{
 		long time = game_time_get() - back;
 		struct damage_history_tick const *tick = &damage_history[time & (TARGET_HISTORY_TICKS - 1)];
+		real reach;
+		real distance;
 
 		if (tick->time != time)
 			break;
@@ -1432,12 +1605,18 @@ static short distributed_target_seen(
 		}
 		if (back == 0)
 			latest = TRUE;
-		if (distributed_history_near(&tick->objects[column_player_index][column_slot].position,
-			tick->objects[column_player_index][column_slot].speed, position, REPORT_HISTORY_TOLERANCE))
+		reach = REPORT_HISTORY_TOLERANCE +
+			REPORT_HISTORY_LEAD_TICKS * tick->objects[column_player_index][column_slot].speed;
+		distance = distributed_distance_squared(position, &tick->objects[column_player_index][column_slot].position);
+		if (distance <= reach * reach && (!seen || distance < seen_distance))
 		{
-			return TRUE;
+			seen = TRUE;
+			seen_distance = distance;
+			*seen_position = tick->objects[column_player_index][column_slot].position;
 		}
 	}
+	if (seen)
+		return TRUE;
 	/* (one that was a player's, a body, a vehicle left: where it is now) */
 	return latest ? FALSE : NONE;
 }
@@ -1740,6 +1919,84 @@ static boolean distributed_report_paid(
 	return TRUE;
 }
 
+/* a clear line through the structure, to the centre or by way of the impact */
+static boolean distributed_report_sight_clear(
+	unsigned long flags,
+	real_point3d const *from,
+	real_point3d const *impact,
+	real_point3d const *centre)
+{
+	struct collision_result collision;
+
+	return !collision_test_line(flags, from, centre, NONE, &collision) ||
+		(!collision_test_line(flags, from, impact, NONE, &collision) &&
+			!collision_test_line(flags, impact, centre, NONE, &collision));
+}
+
+/* whether the structure left the shooter a line to the target from the
+newest of their living trail points in the window (none: not alive to fire
+it, refused). The eye and the target position are matched over windows, not
+to one moment: the same slack the other checks allow. */
+static boolean distributed_report_line_of_sight(
+	long machine_index,
+	short player_index,
+	real_point3d const *impact_point,
+	real_point3d const *centre,
+	real radius,
+	struct damage_reach const *reach,
+	long host_time)
+{
+	unsigned long flags = FLAG(_collision_test_structure_bit) |
+		FLAG(_collision_test_front_facing_surfaces_bit) |
+		FLAG(_collision_test_ignore_invisible_surfaces_bit) | FLAG(_collision_test_ignore_breakable_surfaces_bit) |
+		FLAG(_collision_test_ignore_two_sided_surfaces_bit);
+	real ticks = reach->ticks > 0.0f ? MIN(reach->ticks, (real)PLAYER_TRAIL_TICKS) : (real)REPORT_LINE_OF_SIGHT_TICKS;
+	long latest_made = game_time_get() - (long)distributed_machine_round_trip_ticks(machine_index) -
+		PLAYER_TRAIL_REPORT_SLACK_TICKS;
+	long newest = game_time_get() / PLAYER_TRAIL_INTERVAL_TICKS;
+	long earliest;
+	long bucket;
+	short traced = 0;
+	real_point3d impact = *impact_point;
+	struct collision_result collision;
+
+	{
+		real distance = (real)sqrt(distributed_distance_squared(centre, impact_point));
+
+		if (distance > radius && distance > 0.0f)
+		{
+			real scale = radius / distance;
+
+			impact.x = centre->x + (impact_point->x - centre->x) * scale;
+			impact.y = centre->y + (impact_point->y - centre->y) * scale;
+			impact.z = centre->z + (impact_point->z - centre->z) * scale;
+		}
+	}
+	if (host_time < latest_made)
+		host_time = latest_made;
+	earliest = host_time - (long)ticks - TARGET_HISTORY_SLACK_TICKS - PLAYER_TRAIL_INTERVAL_TICKS;
+	for (bucket = newest; bucket >= 0 && newest - bucket < PLAYER_TRAIL_POINTS &&
+		(bucket + 1) * PLAYER_TRAIL_INTERVAL_TICKS > earliest && traced < REPORT_LINE_OF_SIGHT_POINTS; bucket--)
+	{
+		struct damage_trail_point const *trail_point = &damage_trails[player_index][bucket & (PLAYER_TRAIL_POINTS - 1)];
+		real_point3d eye;
+
+		if (trail_point->time == NONE || trail_point->time / PLAYER_TRAIL_INTERVAL_TICKS != bucket)
+			continue;
+		traced++;
+		eye = trail_point->position;
+		eye.z += trail_point->eye;
+		if (distributed_report_sight_clear(flags, &eye, &impact, centre))
+			return TRUE;
+		if (trail_point->mounted && !collision_test_line(flags, &eye, &trail_point->muzzle, NONE, &collision) &&
+			distributed_report_sight_clear(flags, &trail_point->muzzle, &impact, centre))
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
 /* whether the host takes the report, which it makes the damage as the
 host deals it (the cheaper checks first, and the report paid for before the
 history is looked through: a flood of reports costs its sender no more than
@@ -1773,6 +2030,7 @@ static boolean distributed_report_valid(
 	real reach;
 	struct damage_reach fired_reach;
 	short seen;
+	real_point3d seen_position;
 	short grenade_type;
 	short throw_index = NONE;
 
@@ -1886,8 +2144,7 @@ static boolean distributed_report_valid(
 		return FALSE;
 	}
 	/* what hits at a point (a shot, an explosion) within its reach of where
-	the host had the player since it was fired, where the tags bound that
-	(no line of sight: a wall between is not looked for) */
+	the host had the player since it was fired, where the tags bound that */
 	if (!melee && !collision && fired_reach.distance >= 0.0f &&
 		!distributed_player_could_fire(machine_index, player_index, &report->damage.origin, &fired_reach,
 			report->host_time))
@@ -1897,7 +2154,7 @@ static boolean distributed_report_valid(
 	/* the target about where the host had it when the shooter saw it: a
 	player's unit or vehicle as far back as the report was made, else (what
 	no player has) about where it is */
-	seen = distributed_target_seen(report->object_index, &report->target_position, ticks);
+	seen = distributed_target_seen(report->object_index, &report->target_position, ticks, &seen_position);
 	if (seen == FALSE)
 		return FALSE;
 	if (seen == NONE)
@@ -1913,6 +2170,25 @@ static boolean distributed_report_valid(
 			(real)sqrt(velocity.i * velocity.i + velocity.j * velocity.j + velocity.k * velocity.k);
 		if (!(distributed_distance_squared(&report->target_position, &origin) <= tolerance * tolerance))
 			return FALSE;
+		seen_position = origin;
+	}
+	/* a point hit needs a line to the target, unless it is the detonation of
+	a projectile the host has had stuck to it: that flew there, no line now */
+	if (!melee && !collision && !area &&
+		!(TEST_FLAG(kinds, _damage_source_attached_bit) &&
+			distributed_stuck_detonation(player_index, report->object_index, report->damage.definition_index)))
+	{
+		real_point3d centre, target_origin;
+
+		object_get_origin(report->object_index, &target_origin);
+		centre.x = seen_position.x + target->object.bounding_sphere_center.x - target_origin.x;
+		centre.y = seen_position.y + target->object.bounding_sphere_center.y - target_origin.y;
+		centre.z = seen_position.z + target->object.bounding_sphere_center.z - target_origin.z;
+		if (!distributed_report_line_of_sight(machine_index, player_index, &report->damage.origin, &centre,
+			target->object.bounding_sphere_radius, &fired_reach, report->host_time))
+		{
+			return FALSE;
+		}
 	}
 	/* the damage as the host deals it: what a client's hit can be, from the
 	player's own */
@@ -2159,6 +2435,7 @@ void network_damage_host_tick(
 	distributed_log_reports();
 	distributed_note_weapons();
 	distributed_note_targets();
+	distributed_note_stuck_projectiles();
 	distributed_note_event_destinations();
 	for (machine_number = 0; machine_number < machine_count; machine_number++)
 	{
@@ -2386,6 +2663,8 @@ void network_damage_new_game(
 		damage_players[player_index].unarmed_melee_damage_index = NONE;
 		for (index = 0; index < MAXIMUM_GRENADE_THROWS; index++)
 			damage_players[player_index].throw_times[index] = NONE;
+		for (index = 0; index < MAXIMUM_STUCK_PROJECTILES; index++)
+			damage_players[player_index].stuck[index].time = NONE;
 		damage_players[player_index].driven_time = -RECENT_WEAPON_TICKS - 1;
 		damage_players[player_index].hit_seconds = HIT_REPORT_BURST_SECONDS;
 		damage_explosions[player_index].time = NONE;

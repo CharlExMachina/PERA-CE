@@ -25,6 +25,7 @@ scale (a window made fullscreen) or a full atlas starts it over.
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <stdint.h>
 #include <string.h>
 
 #define STBTT_STATIC
@@ -69,6 +70,8 @@ static float atlas_scale;   /* the pixels per unit its glyphs have */
 static int pack_x, pack_y, pack_row_height;
 static int dirty_top = ATLAS_SIZE, dirty_bottom;
 static unsigned long placeholder_data, placeholder_width, placeholder_height;
+static unsigned char *atlas_rgba;
+static uint64_t atlas_revision, atlas_rgba_revision;
 static GLuint atlas_texture;
 
 /* tag names compared as the game does, ignoring case (and without the POSIX
@@ -121,6 +124,7 @@ static void atlas_reset(float scale)
 	pack_x = pack_y = pack_row_height = 0;
 	dirty_top = 0;
 	dirty_bottom = ATLAS_SIZE;
+	atlas_revision++;
 }
 
 long text_hires_font(char const *tag_name, float cap_height, short const *letter_widths, float oversample)
@@ -264,6 +268,7 @@ int text_hires_glyph(long font, unsigned long code, struct text_hires_glyph *gly
 				dirty_top = pack_y;
 			if (pack_y + height + 2 * ATLAS_PADDING > dirty_bottom)
 				dirty_bottom = pack_y + height + 2 * ATLAS_PADDING;
+			atlas_revision++;
 		}
 		glyphs[slot].font = font;
 		glyphs[slot].code = code;
@@ -301,6 +306,50 @@ void text_hires_register_atlas(const unsigned long *texture, unsigned long width
 	placeholder_data = texture ? texture[1] : 0;
 	placeholder_width = width;
 	placeholder_height = height;
+}
+
+static void atlas_rgba_refresh(void)
+{
+	long index;
+
+	if (!atlas)
+		return;
+	if (!atlas_rgba)
+		atlas_rgba = malloc((size_t)ATLAS_SIZE * ATLAS_SIZE * 4);
+	if (!atlas_rgba || atlas_rgba_revision == atlas_revision)
+		return;
+	for (index = 0; index < ATLAS_SIZE * ATLAS_SIZE; index++)
+	{
+		atlas_rgba[index * 4 + 0] = atlas_rgba[index * 4 + 1] = atlas_rgba[index * 4 + 2] = 255;
+		atlas_rgba[index * 4 + 3] = atlas[index];
+	}
+	atlas_rgba_revision = atlas_revision;
+}
+
+int text_hires_atlas_pixels(unsigned long data, struct text_hires_atlas_pixels *out)
+{
+	return text_hires_atlas_pixels_since(data, 0, out);
+}
+
+int text_hires_atlas_pixels_since(unsigned long data, uint64_t uploaded_revision,
+	struct text_hires_atlas_pixels *out)
+{
+	if (!out)
+		return 0;
+	memset(out, 0, sizeof(*out));
+	if (!data || data != placeholder_data || !atlas)
+		return 0;
+	atlas_rgba_refresh();
+	if (!atlas_rgba)
+		return 0;
+	out->rgba = atlas_rgba;
+	out->width = out->height = ATLAS_SIZE;
+	out->revision = atlas_revision;
+	out->dirty_top = 0;
+	/* An empty range is bottom 0. A matching revision still has to describe
+	   a valid atlas; the caller keeps the texture it already uploaded. */
+	out->dirty_bottom = uploaded_revision == atlas_revision ? 0 : ATLAS_SIZE;
+	return 1;
 }
 
 unsigned int text_hires_atlas_texture(unsigned long data)

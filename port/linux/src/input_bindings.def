@@ -1,0 +1,6 @@
+/* BINDING(name, Mac default, other native default, config comment).
+   Keep the config defaults and the input parser's fallback in one place.
+   The game's actions are bound with the controls.* settings (Controls
+   Setup); these are the keys outside them. */
+BINDING(console, "Grave", "Grave", "Developer console toggle (keyboard keys only). Bindings are comma-separated\nkey names (case-insensitive); Grave is the backtick (`) key. This key takes\npriority over the game's controls. Edit this file with Halo closed, then restart.")
+BINDING(release_mouse, "F12", "F12", "Release / recapture the mouse (keyboard keys only).")

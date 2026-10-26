@@ -78,6 +78,7 @@ symbols in this file:
 #include "scenario/scenario.h" /* port: game_time_menu_scene */
 #include "scenario/scenario_definitions.h"
 #include "profile_sections.h" /* port: port/linux/include/profile_sections.h */
+#include "hardcore_rules.h" /* port: the opening ring holds the match clock */
 /* port/linux/game/network_distributed.c's */
 void network_distributed_tick(void);
 
@@ -470,8 +471,16 @@ void game_time_update(
 			{
 				long final_local_time;
 				long maximum_possible_server_time;
+				/* port: the opening ring freezes the match clock (local_time)
+				while these ticks still run, and each one takes an update.
+				server_time is that update cursor. Counting the freeze against
+				it left the cursor behind the queue, and leaving the match
+				(the host stops queueing updates) tried to play the opening's
+				ticks again with none left (players.c halt 779). */
+				long tick_limit;
 
 				final_local_time = game_time_globals->local_time + ticks_elapsed;
+				tick_limit = game_time_globals->server_time + ticks_elapsed;
 				switch (game_connection())
 				{
 				case _game_connection_local:
@@ -495,27 +504,36 @@ void game_time_update(
 				else if (game_connection() == _game_connection_network_client)
 				{
 					maximum_possible_server_time = game_time_held() ?
-						game_time_globals->server_time : final_local_time;
+						game_time_globals->server_time : tick_limit;
 				}
 				else
 					maximum_possible_server_time = update_client_get_maximum_possible_server_time();
 				if (maximum_possible_server_time > game_time_globals->server_time)
 				{
-					long final_server_time = MIN(maximum_possible_server_time, final_local_time);
+					long final_server_time = MIN(maximum_possible_server_time, tick_limit);
 					long server_updates = final_server_time - game_time_globals->server_time;
 					long update_index;
+					long advanced = 0;
 
 					for (update_index = 0; update_index < server_updates; update_index++)
 					{
+						/* port: the opening ring. These ticks place the players.
+						   The match clock stays at 0 until that screen is finished. */
+						hardcore_rules_opening_before_tick();
 						game_tick();
 						profile_scope(game_time_render_interpolation_tick_section, render_interpolation_tick();)
 						game_time_globals->server_time++;
-						game_time_globals->local_time++;
+						if (!hardcore_rules_opening_hold())
+						{
+							game_time_globals->local_time++;
+							advanced++;
+						}
 						/* the distributed netcode's per-tick state (port: none of
 						the main menu's scene, which a lobby's machines do not share) */
 						if (!game_time_menu_scene())
 							profile_scope(game_time_network_distributed_tick_section, network_distributed_tick();)
 					}
+					ticks_elapsed = advanced;
 				}
 
 				/* (none while a client's clock waits: a frame that runs no tick

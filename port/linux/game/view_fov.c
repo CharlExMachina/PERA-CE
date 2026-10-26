@@ -4,11 +4,13 @@ VIEW_FOV.C
 The first-person view's field of view (display.fov, display.viewmodel_fov)
 and whether the weapon is drawn (display.viewmodel_visible), the local
 render view only: the observer, its transitions and what the network sends
-keep the game's own camera. Each angle is horizontal at 16:9 (the vertical
-angle is kept, so other shapes of window widen or narrow as the stock view
-does), and 0 keeps the stock view. Called from the game's camera
-(main.c's set_window_camera_values), its HUD (hud_draw.c) and the passes
-that draw the first-person weapon (rasterizer and render sources).
+keep the game's own camera. The host's field of view changes this machine's
+view and does not write display.fov; a player who joined keeps display.fov.
+Each angle is horizontal at 16:9 (the vertical angle is kept, so other
+shapes of window widen or narrow as the stock view does), and 0 keeps the
+stock view. Called from the game's camera (main.c's
+set_window_camera_values), its HUD (hud_draw.c) and the passes that draw
+the first-person weapon (rasterizer and render sources).
 */
 
 #include "cseries.h"
@@ -26,6 +28,8 @@ that draw the first-person weapon (rasterizer and render sources).
 #include "units/unit_definitions.h"
 #include "units/units.h"
 #include "spectator.h"
+#include "hardcore_views.h"
+#include "hardcore_rules.h"
 
 #include <math.h>
 
@@ -44,6 +48,17 @@ unsigned long config_changes(void);
 static real reticle_scales[MAXIMUM_LOCAL_PLAYERS];
 static real authored_vertical[MAXIMUM_LOCAL_PLAYERS];
 
+/* 0 keeps this machine's video setting. The host's value is 80 to 150,
+step 5, and a player who joined does not take it. */
+static double host_fov_degrees(void)
+{
+	unsigned char fov = hardcore_rules_local_fov();
+
+	if (fov < 80 || fov > 150 || ((fov - 80) % 5) != 0)
+		return 0.0;
+	return (double)fov;
+}
+
 /* the view's vertical angle for display.fov: the game's own in a vehicle,
 dead, in a cinematic, a scripted camera or a view the director holds, and
 at a scope's full zoom; between, the zoom's own transition */
@@ -51,18 +66,21 @@ static real render_fov_adjust(short local_player_index, real native_vertical_fie
 {
 	static boolean initialized;
 	static unsigned long read_at;
+	static double host_seen;
 	static real requested_tangent;
 	unsigned long changes = config_changes();
+	double host = host_fov_degrees();
 	long unit_index, weapon_index;
 	struct unit_datum *unit;
 	real unzoomed_angle, unzoomed_tangent, native_tangent, adjusted_tangent;
 
-	if (!initialized || read_at != changes)
+	if (!initialized || read_at != changes || host_seen != host)
 	{
-		double degrees = config_real("display.fov");
+		double degrees = host != 0.0 ? host : config_real("display.fov");
 
 		initialized = TRUE;
 		read_at = changes;
+		host_seen = host;
 		requested_tangent = degrees >= 20.0 && degrees <= 150.0 ?
 			(real)(tan(degrees * _pi / 360.0) * (9.0 / 16.0)) : 0.0f;
 	}
@@ -159,12 +177,12 @@ real render_fov_authored_vertical(short local_player_index)
 
 real render_fov_reticle_scale(short local_player_index)
 {
-	if (local_player_index < 0 || local_player_index >= MAXIMUM_LOCAL_PLAYERS ||
-		reticle_scales[local_player_index] == 0.0f)
+	if (local_player_index >= 0 && local_player_index < MAXIMUM_LOCAL_PLAYERS &&
+		reticle_scales[local_player_index] != 0.0f)
 	{
-		return 1.0f;
+		return reticle_scales[local_player_index];
 	}
-	return reticle_scales[local_player_index];
+	return 1.0f;
 }
 
 /* ---------- the first-person weapon's */
@@ -205,15 +223,17 @@ void viewmodel_projection_begin(void)
 	projection_applied = FALSE;
 	/* (display.viewmodel_fov's angle; by default the view's own, from before
 	display.fov widened it: arms and a gun right against the camera stretch
-	at a wide angle) */
+	at a wide angle. a split keeps that pane's camera, so the gun and the
+	shot share one aim) */
 	angle = viewmodel_vertical();
 	if (!angle)
 		angle = render_fov_authored_vertical(render.local_player_index);
 	if (!angle || render.local_player_index < 0 || render.local_player_index >= MAXIMUM_LOCAL_PLAYERS ||
 		global_window_parameters.rasterizer_target != _rasterizer_target_render_primary ||
 		cinematic_in_progress() || (director_camera_scripted && *director_camera_scripted) ||
-		director_get_perspective(render.local_player_index) != _director_perspective_first_person ||
-		director_inhibited_facing(render.local_player_index))
+		(!hardcore_views_is_teammate_window((short)render.window_index) &&
+			(director_get_perspective(render.local_player_index) != _director_perspective_first_person ||
+			director_inhibited_facing(render.local_player_index))))
 	{
 		return;
 	}
@@ -233,7 +253,11 @@ void viewmodel_projection_begin(void)
 	render_camera_build_frustum(&global_window_parameters.camera, &rasterizer_bounds,
 		&global_window_parameters.frustum, TRUE);
 	projection_applied = TRUE;
-	rasterizer_set_frustum_z(0.0f, 0.0f);
+	/* the gun sits closer than the world's near plane. A glow on it was
+	cut down to a sliver until this plane matches the weapon's. */
+	rasterizer_set_frustum_z(
+		rasterizer_globals.first_person_weapon_near_clip_distance,
+		rasterizer_globals.first_person_weapon_far_clip_distance);
 }
 
 void viewmodel_projection_end(void)

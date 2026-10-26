@@ -597,6 +597,7 @@ struct network_game *network_game_server_get_game(struct network_game_server *se
 #include "custom_edition_cache.h" /* port: port/linux/game/custom_edition_cache.c */
 #include "spectator.h" /* port: port/linux/game/spectator.c */
 #include "latency_meter.h" /* port: port/linux/game/latency_meter.c */
+#include "hardcore_rules.h" /* port: hardcore kills and item spawns */
 
 /* network_game_globals.c's */
 boolean network_game_distributed_client(void);
@@ -3956,9 +3957,9 @@ void game_engine_rasterize_message(
 /* port: who is talking in voice chat (network_voice.c), down the view's
 left from below its middle: each machine's first player's name after its
 speaker (this machine's own too, as it talks), VOICE_SPEAKERS_SCALE times
-the HUD's text, in the colours of the names above players' heads (an ally's
-or an enemy's: hud_player_name_color; in co-op every player an ally), this
-machine's own white; while the scores are hidden */
+the HUD's text, in the HUD's own text colour (hud_player_name_color; in
+co-op every player an ally), this machine's own white; while the scores
+are hidden */
 #define VOICE_SPEAKERS_SCALE 0.8f
 
 static void game_engine_rasterize_voice_speakers(
@@ -4019,7 +4020,7 @@ static void game_engine_rasterize_voice_speakers(
 		text.x1 = (short)(left + (bounds.x1 - left) / VOICE_SPEAKERS_SCALE);
 		text.y0 = (short)(top + row * line_height);
 		text.y1 = (short)(text.y0 + line_height);
-		/* (allies as the names above heads have them: the same team) */
+		/* (allies as the game's markers have them: the same team) */
 		if (player->local_player_index != NONE)
 		{
 			color.alpha = 1.0f;
@@ -5080,6 +5081,8 @@ void game_engine_player_killed(
 	/* port: a killer who has left the game since is no one's kill */
 	if (killing_player_index != NONE && !player_try_and_get(killing_player_index))
 		killing_player_index = NONE;
+	/* port: hardcore kill restore, and a dropped powerup. Vitality is simulated. */
+	hardcore_rules_on_kill(killing_player_index, dead_player_index);
 	/* the host's kill of a player who quit, ahead of this client's clock
 	(game_update_quit_players has not come to its time yet) */
 	if (network_game_distributed_client() && dead_player->quit_out_of_game_time != NONE &&
@@ -5389,6 +5392,10 @@ boolean game_engine_draw_object_in_motion_sensor(
 {
 	boolean draw_object = TRUE;
 
+	/* port: hardcore draws no motion sensor, and the menu has no switch for it */
+	if (hardcore_rules_active())
+		return FALSE;
+
 	if (game_engine)
 		draw_object = TEST_FLAG(global_variant.universal_variant.flags, _game_variant_draw_object_in_motion_sensor_bit);
 	/* port: friends only: the viewer's team's */
@@ -5411,6 +5418,10 @@ boolean game_engine_hud_draw_motion_sensor(
 	long player_index)
 {
 	boolean draw_motion_sensor = TRUE;
+
+	/* port: hardcore draws no motion sensor, and the menu has no switch for it */
+	if (hardcore_rules_active())
+		return FALSE;
 
 	if (game_engine)
 	{
@@ -6185,8 +6196,8 @@ struct game_variant *build_game_variant_slayer(
 	result.universal_variant.suicide_penalty = 300;
 	result.universal_variant.teams = FALSE;
 	result.universal_variant.weapon_set = _game_engine_weapons_normal;
-	result.game_engine_variant.slayer.no_death_bonus = FALSE;
-	result.game_engine_variant.slayer.no_kill_penalty = FALSE;
+	result.game_engine_variant.slayer.no_death_bonus = TRUE;
+	result.game_engine_variant.slayer.no_kill_penalty = TRUE;
 	result.game_engine_variant.slayer.kill_in_order = FALSE;
 	result.flags = 1;
 
@@ -6219,8 +6230,8 @@ struct game_variant *build_game_variant_team_slayer(
 	result.universal_variant.respawn_time_growth = 0;
 	result.universal_variant.score_to_win = 50;
 	result.universal_variant.weapon_set = _game_engine_weapons_normal;
-	result.game_engine_variant.slayer.no_death_bonus = FALSE;
-	result.game_engine_variant.slayer.no_kill_penalty = FALSE;
+	result.game_engine_variant.slayer.no_death_bonus = TRUE;
+	result.game_engine_variant.slayer.no_kill_penalty = TRUE;
 	result.game_engine_variant.slayer.kill_in_order = FALSE;
 
 	*variant = result;
@@ -6252,8 +6263,8 @@ struct game_variant *build_game_variant_elimination(
 	result.universal_variant.suicide_penalty = 300;
 	result.universal_variant.teams = FALSE;
 	result.universal_variant.weapon_set = _game_engine_weapons_normal;
-	result.game_engine_variant.slayer.no_death_bonus = FALSE;
-	result.game_engine_variant.slayer.no_kill_penalty = FALSE;
+	result.game_engine_variant.slayer.no_death_bonus = TRUE;
+	result.game_engine_variant.slayer.no_kill_penalty = TRUE;
 	result.game_engine_variant.slayer.kill_in_order = FALSE;
 
 	*variant = result;
@@ -6318,8 +6329,8 @@ struct game_variant *build_game_variant_endurance(
 	result.universal_variant.score_to_win = 10;
 	result.universal_variant.teams = FALSE;
 	result.universal_variant.weapon_set = _game_engine_weapons_normal;
-	result.game_engine_variant.slayer.no_death_bonus = FALSE;
-	result.game_engine_variant.slayer.no_kill_penalty = FALSE;
+	result.game_engine_variant.slayer.no_death_bonus = TRUE;
+	result.game_engine_variant.slayer.no_kill_penalty = TRUE;
 	result.game_engine_variant.slayer.kill_in_order = FALSE;
 
 	*variant = result;
@@ -6351,8 +6362,8 @@ struct game_variant *build_game_variant_rockets(
 	result.universal_variant.suicide_penalty = 300;
 	result.universal_variant.teams = FALSE;
 	result.universal_variant.weapon_set = _game_engine_weapons_rocket_launchers;
-	result.game_engine_variant.slayer.no_death_bonus = FALSE;
-	result.game_engine_variant.slayer.no_kill_penalty = FALSE;
+	result.game_engine_variant.slayer.no_death_bonus = TRUE;
+	result.game_engine_variant.slayer.no_kill_penalty = TRUE;
 	result.game_engine_variant.slayer.kill_in_order = FALSE;
 
 	*variant = result;
@@ -6384,8 +6395,8 @@ struct game_variant *build_game_variant_snipers(
 	result.universal_variant.suicide_penalty = 300;
 	result.universal_variant.teams = FALSE;
 	result.universal_variant.weapon_set = _game_engine_weapons_sniping;
-	result.game_engine_variant.slayer.no_death_bonus = FALSE;
-	result.game_engine_variant.slayer.no_kill_penalty = FALSE;
+	result.game_engine_variant.slayer.no_death_bonus = TRUE;
+	result.game_engine_variant.slayer.no_kill_penalty = TRUE;
 	result.game_engine_variant.slayer.kill_in_order = FALSE;
 
 	*variant = result;
@@ -7503,9 +7514,15 @@ void game_engine_initialize(
 	return;
 }
 
+/* The opening ring holds the match clock at 0 for many ticks. The map's
+weapons and powerups are placed on the first of those, and not again
+until the clock moves. */
+static boolean map_items_placed_at_start;
+
 void game_engine_initialize_for_new_map(
 	void)
 {
+	map_items_placed_at_start = FALSE;
 	if (game_engine)
 	{
 		game_engine_verify_current_map();
@@ -8967,11 +8984,22 @@ static void game_engine_update_item_spawn(
 	struct scenario *scenario = global_scenario_get();
 	/* port: a long counter, for a map's long count */
 	long equipment_index;
+	long now;
 
 	/* a client of the distributed netcode has the host's items
 	(port/linux/game/network_distributed.c) */
 	if (network_game_distributed_client())
 		return;
+
+	now = game_time_get();
+	/* time 0 is the map's initial weapons and powerups. the opening holds
+	the clock there, so only the first of those ticks places them */
+	if (now == 0)
+	{
+		if (map_items_placed_at_start)
+			return;
+		map_items_placed_at_start = TRUE;
+	}
 
 	for (equipment_index = 0;
 		equipment_index < scenario->netgame_equipment.count;
@@ -8982,7 +9010,7 @@ static void game_engine_update_item_spawn(
 				&scenario->netgame_equipment,
 				equipment_index,
 				struct scenario_netgame_equipment);
-		if (match_game_type(
+		if (equipment->item_collection.index != NONE && match_game_type(
 			game_engine_get_type(),
 			NUMBEROF(equipment->game_type),
 			equipment->game_type))
@@ -9008,7 +9036,12 @@ static void game_engine_update_item_spawn(
 				respawn_period = respawn_time * TICKS_PER_SECOND;
 			}
 
-			if (game_time_get() % respawn_period == 0)
+			/* port: hardcore item timing. A classic game keeps the tag's period. */
+			respawn_period = hardcore_rules_item_period(respawn_period, respawn_time);
+			if (respawn_period <= 0)
+				continue;
+
+			if (now % respawn_period == 0)
 			{
 				long definition_index =
 					random_item(equipment->item_collection.index);
@@ -9471,6 +9504,8 @@ boolean game_engine_should_spawn_player(
 		}
 		else if (player->statistics.deaths == 0)
 		{
+			/* port: place them under the opening ring. The match clock stays
+			   at 0 until that screen is finished, so it cannot be the wait. */
 			should_spawn = TRUE;
 		}
 		else if (game_engine_player_is_out_of_lives(player_index))

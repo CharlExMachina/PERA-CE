@@ -26,6 +26,12 @@ Conventions carried over from the Xbox:
 #include "halo_ui_pointer.h"
 #include "port_config.h"
 #include "main/console.h"
+#ifdef HALO_IOS
+/* port/ios: MetalFX's upscale of the back buffer's texture into the window;
+FALSE where it is not (the frame is then blitted) */
+extern int host_ios_metalfx_present(unsigned int texture, unsigned int width, unsigned int height,
+	unsigned int output_width, unsigned int output_height);
+#endif
 
 #include <SDL3/SDL.h>
 
@@ -473,6 +479,7 @@ struct draw_uniforms
 	float bump_matrix[4][4];
 	float bump_luminance[4][4];
 	float texture_scale[4][4];
+	float texture_border_color[4][4];
 	float screen_offset;
 	float texture_lod_bias[4];
 	float height_fade[4];
@@ -491,6 +498,7 @@ struct program_entry
 	GLint ps_c0, ps_c1, ps_final_c0, ps_final_c1;
 	GLint fog_color, fog_parameters, alpha_reference;
 	GLint bump_matrix, bump_luminance, texture_scale;
+	GLint texture_border_color;
 	GLint texture_lod_bias;
 	GLint screen_offset;
 	GLint height_fade;
@@ -3317,6 +3325,7 @@ static struct program_entry *program_get(GLuint vertex_shader, GLuint fragment_s
 	entry->bump_matrix = glGetUniformLocation(entry->program, "bump_matrix");
 	entry->bump_luminance = glGetUniformLocation(entry->program, "bump_luminance");
 	entry->texture_scale = glGetUniformLocation(entry->program, "texture_scale");
+	entry->texture_border_color = glGetUniformLocation(entry->program, "texture_border_color");
 	entry->texture_lod_bias = glGetUniformLocation(entry->program, "texture_lod_bias");
 	entry->screen_offset = glGetUniformLocation(entry->program, "screen_offset");
 	entry->height_fade = glGetUniformLocation(entry->program, "height_fade");
@@ -3481,7 +3490,8 @@ static DWORD anisotropic_filtering(void)
 }
 
 /* hires: a high-res HUD texture (hud_hires.h), drawn smaller than it is, so
-filtered and from its mip levels whatever the game asks: the HUD's meters are
+filtered and, when it has mip levels, from those whatever the game asks. A
+picture with one level is sampled from that level. The HUD's meters are
 point sampled for one player, to keep the Xbox bitmaps' texels sharp.
 rendered: a render target the game draws into */
 static void configure_sampler(int stage, BOOL mipmapped, BOOL hires, BOOL rendered)
@@ -3493,7 +3503,9 @@ static void configure_sampler(int stage, BOOL mipmapped, BOOL hires, BOOL render
 	DWORD inputs[SAMPLER_STATE_WORDS];
 
 	inputs[0] = hires ? D3DTEXF_LINEAR : state[D3DTSS_MINFILTER];
-	inputs[1] = hires ? D3DTEXF_LINEAR : mipmapped ? state[D3DTSS_MIPFILTER] : D3DTEXF_NONE;
+	/* one level (a speaker icon: its picture is not a power of two on a
+	side) is sampled from that level. A mip filter of it is blank */
+	inputs[1] = mipmapped ? (hires ? D3DTEXF_LINEAR : state[D3DTSS_MIPFILTER]) : D3DTEXF_NONE;
 	inputs[2] = hires ? D3DTEXF_LINEAR : state[D3DTSS_MAGFILTER];
 	inputs[3] = state[D3DTSS_ADDRESSU];
 	inputs[4] = state[D3DTSS_ADDRESSV];
@@ -3657,7 +3669,10 @@ static GLuint framebuffer_get(GLuint color, GLuint depth);
 static void copy_level_by_blit(GLuint source, GLuint destination, GLint level, GLsizei width, GLsizei height)
 {
 	static GLuint draw_framebuffer;
+	GLint read_binding = 0, draw_binding = 0;
 
+	glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read_binding);
+	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw_binding);
 	if (!draw_framebuffer)
 		glGenFramebuffers(1, &draw_framebuffer);
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer_get(source, 0));
@@ -3665,7 +3680,9 @@ static void copy_level_by_blit(GLuint source, GLuint destination, GLint level, G
 	glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, destination, level);
 	glDisable(GL_SCISSOR_TEST);
 	glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	/* (the framebuffers bound before, not 0) */
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)read_binding);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)draw_binding);
 	/* the blit bypasses the cached state, so the next draw must re-apply it */
 	xgpu_gl_state_invalidate();
 }
@@ -3795,6 +3812,35 @@ static GLuint feedback_copy(struct xgpu_render_target *target)
 }
 #endif
 
+/* Border emulation is exact for a single 2D level. Mipmapped, anisotropic,
+3D and cube sampling need different footprints; do not apply a level-zero
+coverage estimate to those paths. The shadow render targets have one level. */
+static void texture_border_key(struct nv2a_pixel_shader_key *key, int stage,
+	GLenum target, const struct xgpu_texture_description *description)
+{
+#ifdef HALO_ANDROID
+	DWORD *state = D3D__TextureState[stage];
+	DWORD min_filter = description->hires ? D3DTEXF_LINEAR : state[D3DTSS_MINFILTER];
+	DWORD mag_filter = description->hires ? D3DTEXF_LINEAR : state[D3DTSS_MAGFILTER];
+
+	if (!xgpu_capabilities.border_clamp && target == GL_TEXTURE_2D && description->levels == 1 &&
+		min_filter != D3DTEXF_ANISOTROPIC && mag_filter != D3DTEXF_ANISOTROPIC)
+	{
+		key->border_axes[stage] = (state[D3DTSS_ADDRESSU] == D3DTADDRESS_BORDER ? 1 : 0) |
+			(state[D3DTSS_ADDRESSV] == D3DTADDRESS_BORDER ? 2 : 0);
+		if (key->border_axes[stage])
+		{
+			key->border_filter[stage] = (min_filter == D3DTEXF_POINT ? 0 : 1) |
+				(mag_filter == D3DTEXF_POINT ? 0 : 2);
+			/* A positive minimum LOD forces minification filtering even for
+			a single-level texture, as configured on the native sampler. */
+			if (!description->hires && state[D3DTSS_MAXMIPLEVEL])
+				key->border_filter[stage] = (key->border_filter[stage] & 1) ? 3 : 0;
+		}
+	}
+#endif
+}
+
 static void bind_textures(struct nv2a_pixel_shader_key *key, float texture_scale[4][4])
 {
 	/* Bind only after resolving every stage, since texture uploads can
@@ -3864,10 +3910,12 @@ static void bind_textures(struct nv2a_pixel_shader_key *key, float texture_scale
 			gl_targets[stage] = gl_target;
 			gl_textures[stage] = gl_texture;
 			configure_sampler(stage, description.levels > 1, description.hires, target != NULL);
+			texture_border_key(key, stage, gl_target, &description);
 			if (stage == 0)
 			{
 				key->coverage_alpha = description.hires_coverage != FALSE;
 				key->point_threshold = description.hires_point_threshold != FALSE;
+				key->ce_meter_channels = description.ce_meter_channels != FALSE;
 			}
 			key->sampler_type[stage] = gl_target == GL_TEXTURE_CUBE_MAP ? _xgpu_sampler_cube :
 				gl_target == GL_TEXTURE_3D ? _xgpu_sampler_3d : _xgpu_sampler_2d;
@@ -4138,7 +4186,7 @@ static void gl_check_errors(const char *where)
 
 /* the uniforms of the latest draws, converted from these inputs; the serial
 counts the conversions */
-#define DRAW_UNIFORM_INPUT_COUNT (4 + 4 + 16 + 1 + 16 + 2 + 4 + 1 + 1 + 7 * D3DTSS_MAXSTAGES + 4)
+#define DRAW_UNIFORM_INPUT_COUNT (4 + 4 + 16 + 1 + 16 + 2 + 4 + 1 + 1 + 8 * D3DTSS_MAXSTAGES + 4)
 
 /* the height fade of the draws that follow (d3d8_gl_set_height_fade): off
 while its scale is zero */
@@ -4259,10 +4307,12 @@ static struct program_entry *prepare_draw(BOOL immediate)
 	key.combiner_state[D3DRS_PSFINALCOMBINERCONSTANT0] = 0;
 	key.combiner_state[D3DRS_PSFINALCOMBINERCONSTANT1] = 0;
 	key.texture_modes = D3D__RenderState[D3DRS_PSTEXTUREMODES];
-	/* the textures before the targets: a render target the draw samples
-	has its multisampled pixels resolved by a blit (render_target_resolve),
-	which binds framebuffers of its own, and the back buffer can be both
-	sampled and drawn into */
+	/* the textures before the targets: binding one can copy a render target's
+	levels into a mipmapped texture by blits (ES without copy image: ANGLE
+	on Metal), and a target the draw samples has its multisampled pixels
+	resolved by a blit (render_target_resolve). Either blit binds
+	framebuffers of its own, and the back buffer can be both sampled and
+	drawn into */
 	bind_textures(&key, uniforms.texture_scale);
 	if (!bind_targets(&has_depth))
 	{
@@ -4454,6 +4504,7 @@ static struct program_entry *prepare_draw(BOOL immediate)
 			inputs[count++] = state[D3DTSS_BUMPENVLSCALE];
 			inputs[count++] = state[D3DTSS_BUMPENVLOFFSET];
 			inputs[count++] = state[D3DTSS_MIPMAPLODBIAS];
+			inputs[count++] = state[D3DTSS_BORDERCOLOR];
 		}
 		memcpy(&inputs[count], height_fade_value, sizeof(height_fade_value));
 		count += 4;
@@ -4493,6 +4544,7 @@ static struct program_entry *prepare_draw(BOOL immediate)
 				converted->bump_luminance[stage][1] = dword_to_float(state[D3DTSS_BUMPENVLOFFSET]);
 				converted->bump_luminance[stage][2] = converted->bump_luminance[stage][3] = 0.0f;
 				converted->texture_lod_bias[stage] = dword_to_float(state[D3DTSS_MIPMAPLODBIAS]);
+				color_to_vec4(state[D3DTSS_BORDERCOLOR], converted->texture_border_color[stage]);
 			}
 			converted->screen_offset = (float)UI_OFFSET;
 			memcpy(converted->height_fade, height_fade_value, sizeof(converted->height_fade));
@@ -4515,6 +4567,7 @@ static struct program_entry *prepare_draw(BOOL immediate)
 	uniform_vec4(entry->bump_matrix, entry->uniforms.bump_matrix[0], draw_uniforms.bump_matrix[0], 4);
 	uniform_vec4(entry->bump_luminance, entry->uniforms.bump_luminance[0], draw_uniforms.bump_luminance[0], 4);
 	uniform_vec4(entry->texture_scale, entry->uniforms.texture_scale[0], draw_uniforms.texture_scale[0], 4);
+	uniform_vec4(entry->texture_border_color, entry->uniforms.texture_border_color[0], draw_uniforms.texture_border_color[0], 4);
 	uniform_float(entry->screen_offset, &entry->uniforms.screen_offset, draw_uniforms.screen_offset);
 	uniform_vec4(entry->texture_lod_bias, entry->uniforms.texture_lod_bias, draw_uniforms.texture_lod_bias, 1);
 	uniform_vec4(entry->height_fade, entry->uniforms.height_fade, draw_uniforms.height_fade, 1);
@@ -4812,7 +4865,14 @@ static BOOL mirror_range(unsigned long address, unsigned long size, GLuint *buff
 	unsigned long segment, first, last, page, oldest = ~0UL, newest = 0;
 	BOOL present = TRUE;
 
-	if (!size || address < PLATFORM_CONTIGUOUS_BASE || start + size > PLATFORM_CONTIGUOUS_SIZE)
+#ifdef HALO_IOS
+	/* (iOS streams its geometry, until the mirror improves its frame time
+	there) */
+	return FALSE;
+#endif
+
+	if (!size || address < PLATFORM_CONTIGUOUS_BASE || start >= PLATFORM_CONTIGUOUS_SIZE ||
+		size > PLATFORM_CONTIGUOUS_SIZE - start)
 		return FALSE;
 	segment = start / MIRROR_SEGMENT_SIZE;
 	if ((start + size - 1) / MIRROR_SEGMENT_SIZE != segment)
@@ -5361,6 +5421,73 @@ static BOOL vertex_array_cache_use(const struct vertex_shader_object *declaratio
 }
 #endif
 
+#ifdef HALO_IOS
+/* (ANGLE on Metal) Metal requires four-byte vertex offsets and strides.
+Xbox model declarations put SHORT1 at byte 30 of a 32-byte vertex. ANGLE
+converts the entire backing buffer for that attribute, invalidating it on
+each upload. Expand only this draw's affected attribute instead. */
+static BOOL ios_attribute_needs_upload(const struct vertex_element *element)
+{
+	unsigned long stride = device.streams[element->stream].stride;
+	unsigned long address = device.streams[element->stream].data + element->offset;
+	return !stride || (stride & 3) || (address & 3);
+}
+
+static unsigned long ios_attribute_upload(const struct vertex_element *element,
+	unsigned long first, unsigned long count)
+{
+	static float *scratch;
+	static unsigned long capacity;
+	unsigned long stride = device.streams[element->stream].stride;
+	const unsigned char *source = PLATFORM_PHYSICAL_TO_VIRTUAL(device.streams[element->stream].data);
+	GLint components;
+	GLenum type;
+	GLboolean normalized;
+	unsigned long vertex, component;
+	if (count > capacity)
+	{
+		free(scratch);
+		capacity = count + 256;
+		scratch = malloc(capacity * 4 * sizeof(float));
+		if (!scratch)
+			abort();
+	}
+	attribute_format(element, &components, &type, &normalized);
+	source += first * stride + element->offset;
+	for (vertex = 0; vertex < count; vertex++)
+	{
+		float *out = scratch + vertex * 4;
+		const unsigned char *in = source + vertex * stride;
+		out[0] = out[1] = out[2] = 0;
+		out[3] = 1;
+		if (element->type == D3DVSDT_NORMPACKED3)
+		{
+			memcpy(out, in, 4);
+			continue;
+		}
+		for (component = 0; component < (unsigned long)components; component++)
+		{
+			if (type == GL_FLOAT)
+				memcpy(out + component, in + component * 4, 4);
+			else if (type == GL_SHORT)
+			{
+				short value;
+				memcpy(&value, in + component * 2, 2);
+				out[component] = normalized ? (value == -32768 ? -1.0f : value / 32767.0f) : (float)value;
+			}
+			else
+			{
+				unsigned long channel = component;
+				if (element->type == D3DVSDT_D3DCOLOR && (component == 0 || component == 2))
+					channel = 2 - component;
+				out[component] = normalized ? in[channel] / 255.0f : (float)in[channel];
+			}
+		}
+	}
+	return stream_upload(scratch, count * 4 * sizeof(float));
+}
+#endif
+
 static void setup_streams(unsigned long first, unsigned long count)
 {
 	struct vertex_shader_object *declaration = device.vertex_shader;
@@ -5386,6 +5513,10 @@ static void setup_streams(unsigned long first, unsigned long count)
 		unsigned long bytes = stride ? stride * count : 64;
 		unsigned long base;
 
+#ifdef HALO_IOS
+		if (device.streams[stream].data && element->type != D3DVSDT_NONE && ios_attribute_needs_upload(element))
+			total += count * 4 * sizeof(float);
+#endif
 		if (!device.streams[stream].data || element->type == D3DVSDT_NONE || placed[stream])
 			continue;
 		placed[stream] = TRUE;
@@ -5441,6 +5572,19 @@ static void setup_streams(unsigned long first, unsigned long count)
 
 		if (!device.streams[stream].data || element->type == D3DVSDT_NONE)
 			continue;
+#ifdef HALO_IOS
+		if (ios_attribute_needs_upload(element))
+		{
+			unsigned long offset = ios_attribute_upload(element, first, count);
+			BOOL packed = element->type == D3DVSDT_NORMPACKED3;
+
+			state_attribute_stream(element->reg, element->reg, device.stream_buffer, packed ? 1 : 4,
+				packed ? GL_UNSIGNED_INT : GL_FLOAT, GL_FALSE, packed, 4 * sizeof(float), offset, 0);
+			enabled[element->reg] = TRUE;
+			stats.streamed_bytes += count * 4 * sizeof(float);
+			continue;
+		}
+#endif
 		if (!stream_buffers[stream])
 		{
 			const unsigned char *base = PLATFORM_PHYSICAL_TO_VIRTUAL(device.streams[stream].data);
@@ -6776,6 +6920,7 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 	{
 		struct render_target_entry *back_buffer = render_target_get(&device.back_buffer);
 		int window_width, window_height, width, height, x, y;
+		GLuint read_framebuffer;
 
 		if (trace_frame())
 			platform_log("present back buffer %08lx texture %u", (unsigned long)device.back_buffer.Data,
@@ -6804,25 +6949,39 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 		}
 		x = (window_width - width) / 2;
 		y = (window_height - height) / 2;
-		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-		glDisable(GL_SCISSOR_TEST);
-		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
-		/* (display.hdr's back buffer, or display.hdr_output's window, by a
-		shader: a blit neither makes the pixels linear nor, on OpenGL ES,
-		converts half floats) */
-		if (!((back_buffer->target.format == GL_RGBA16F || hdr.float_window) &&
-			xgpu_post_present(back_buffer->target.texture, x, y, width, height,
-				hdr.float_window ? hdr.sdr_white : 0.0f)))
+#ifdef HALO_IOS
+		/* (MetalFX's upscale into the window, where the host has it) */
+		if (!host_ios_metalfx_present(back_buffer->target.texture, back_buffer->target.gl_width,
+			back_buffer->target.gl_height, (unsigned int)width, (unsigned int)height))
+#endif
 		{
-			glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer_get(back_buffer->target.texture, 0));
-			/* row 0 of the render target is the top of the picture */
-			glBlitFramebuffer(0, 0, (GLint)back_buffer->target.gl_width, (GLint)back_buffer->target.gl_height,
-				x, y + height, x + width, y, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+			/* (made first: making a framebuffer binds it to both the read and
+			the draw targets, the first frame's too) */
+			read_framebuffer = framebuffer_get(back_buffer->target.texture, 0);
+			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+			glDisable(GL_SCISSOR_TEST);
+			glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
+			/* (display.hdr's back buffer, or display.hdr_output's window, by a
+			shader: a blit neither makes the pixels linear nor, on OpenGL ES,
+			converts half floats) */
+			if (!((back_buffer->target.format == GL_RGBA16F || hdr.float_window) &&
+				xgpu_post_present(back_buffer->target.texture, x, y, width, height,
+					hdr.float_window ? hdr.sdr_white : 0.0f)))
+			{
+				glBindFramebuffer(GL_READ_FRAMEBUFFER, read_framebuffer);
+				/* row 0 of the render target is the top of the picture */
+				glBlitFramebuffer(0, 0, (GLint)back_buffer->target.gl_width, (GLint)back_buffer->target.gl_height,
+					x, y + height, x + width, y, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+			}
 		}
+		/* (a capture hook copies the read framebuffer at the swap: the
+		window's, which is upright) */
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 		glBindVertexArray(device.vertex_array);
 		platform_video_swap();
+		gl_check_errors("present");
 		xgpu_gl_state_invalidate();
 		memory_watch_begin_frame();
 		xgpu_texture_cache_begin_frame();

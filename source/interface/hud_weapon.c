@@ -78,6 +78,7 @@ symbols in this file:
 #include "units/unit_definitions.h"
 #include "units/units.h"
 #include "spectator.h" /* port: port/linux/game/spectator.c */
+#include "custom_edition_hud.h"
 
 #include <math.h>
 #include <string.h>
@@ -616,7 +617,7 @@ static void render_grenade_hud(
 		draw_flags,
 		_hud_draw_disabled_bit,
 		unit->unit.grenade_counts[unit->unit.current_grenade_index] == 0);
-	SET_FLAG(draw_flags, _hud_draw_in_multiplayer_bit, local_player_count() > 1);
+	SET_FLAG(draw_flags, _hud_draw_in_multiplayer_bit, hud_split_screen());
 
 	if (TEST_FLAG(draw_flags, _hud_draw_flashing_bit))
 	{
@@ -682,7 +683,7 @@ static void render_grenade_hud(
 			overlay_flags,
 			hud_state->last_grenade_flash_time,
 			draw_flags,
-			local_player_count() > 1);
+			hud_split_screen());
 	}
 
 finished:
@@ -1001,8 +1002,8 @@ static void crosshairs_draw(
 		struct weapon_hud_interface_definition *root_definition = weapon_hud_interface_definition_get(hud_index);
 		short map_type_flags = global_scenario_get()->type != _scenario_type_main_menu;
 
-		SET_FLAG(map_type_flags, 1, local_player_count() == 1);
-		SET_FLAG(map_type_flags, 2, local_player_count() > 1);
+		SET_FLAG(map_type_flags, 1, !hud_split_screen());
+		SET_FLAG(map_type_flags, 2, hud_split_screen());
 		if (unit_index != NONE)
 		{
 			struct unit_datum *unit = unit_get(unit_index);
@@ -1038,7 +1039,7 @@ static void crosshairs_draw(
 			{
 				struct weapon_hud_interface_definition *definition = weapon_hud_hierarchy[definition_index];
 				struct hud_absolute_placement_definition absolute_placement = { _hud_anchor_center };
-				boolean in_multiplayer = local_player_count() > 1;
+				boolean in_multiplayer = hud_split_screen();
 				short crosshair_index;
 
 				for (crosshair_index = 0;
@@ -1073,7 +1074,7 @@ static void crosshairs_draw(
 								(!TEST_FLAG(item->flags, _hud_crosshair_only_on_default_zoom_bit) ||
 									crosshair->states[_crosshair_state_zoom].value.reference_data == 0))
 							{
-								real scale = local_player_count() > 1 &&
+								real scale = hud_split_screen() &&
 									!TEST_FLAG(item->placement.multiplayer_scaling_flags, _hud_dont_scale_size_bit) ?
 									0.5f :
 									1.0f;
@@ -1319,10 +1320,23 @@ static void crosshairs_draw(
 										}
 										else
 										{
+											struct hud_placement_definition placement = item->placement;
+											short window_width = (short)PIN(
+												render.camera.window_bounds.x1 - render.camera.window_bounds.x0,
+												0, SHORT_MAX);
+											short window_height = (short)PIN(
+												render.camera.window_bounds.y1 - render.camera.window_bounds.y0,
+												0, SHORT_MAX);
+
+											/* port: a Custom Edition warning made for the old
+											widescreen fix keeps its tag offset on a wider
+											window, and is not scaled with display.fov */
+											custom_edition_hud_warning_placement(
+												state_index, window_width, window_height, &placement);
 											hud_draw_bitmap(
 												bitmap,
 												&absolute_placement,
-												&item->placement,
+												&placement,
 												sequence ?
 													&TAG_BLOCK_GET_ELEMENT(&sequence->sprites, frame_index, struct bitmap_group_sprite)->bounds :
 													NULL,
@@ -1333,8 +1347,9 @@ static void crosshairs_draw(
 												bitmap_group->type == _bitmap_group_type_interface_bitmaps,
 												/* port: a reticle, scaled with display.fov
 												(view_fov.c); a scope's picture keeps its
-												place */
-												state_index != _crosshair_state_zoom);
+												place, and so does a Custom Edition warning */
+												state_index != _crosshair_state_zoom &&
+													!custom_edition_hud_warning(state_index));
 										}
 									}
 								}
@@ -1443,7 +1458,7 @@ static void render_weapon_hud(
 		SET_FLAG(
 			flags,
 			_hud_draw_in_multiplayer_bit,
-			local_player_count() > 1);
+			hud_split_screen());
 		state_flags[0] = flags;
 
 		flags = state_flags[1];
@@ -1456,7 +1471,7 @@ static void render_weapon_hud(
 		SET_FLAG(
 			flags,
 			_hud_draw_in_multiplayer_bit,
-			local_player_count() > 1);
+			hud_split_screen());
 		state_flags[1] = flags;
 
 		flags = state_flags[2];
@@ -1468,7 +1483,7 @@ static void render_weapon_hud(
 		SET_FLAG(
 			flags,
 			_hud_draw_in_multiplayer_bit,
-			local_player_count() > 1);
+			hud_split_screen());
 		state_flags[2] = flags;
 
 		flags = state_flags[3];
@@ -1487,7 +1502,7 @@ static void render_weapon_hud(
 		SET_FLAG(
 			flags,
 			_hud_draw_in_multiplayer_bit,
-			local_player_count() > 1);
+			hud_split_screen());
 		state_flags[3] = flags;
 
 		/* port: a weapon of one magazine has no secondary ammunition, so
@@ -1506,7 +1521,7 @@ static void render_weapon_hud(
 			SET_FLAG(
 				flags,
 				_hud_draw_in_multiplayer_bit,
-				local_player_count() > 1);
+				hud_split_screen());
 			state_flags[4] = flags;
 
 			flags = state_flags[5];
@@ -1519,12 +1534,12 @@ static void render_weapon_hud(
 			SET_FLAG(
 				flags,
 				_hud_draw_in_multiplayer_bit,
-				local_player_count() > 1);
+				hud_split_screen());
 			state_flags[5] = flags;
 		}
 		else
 		{
-			state_flags[4] = local_player_count() > 1 ? FLAG(_hud_draw_in_multiplayer_bit) : 0;
+			state_flags[4] = hud_split_screen() ? FLAG(_hud_draw_in_multiplayer_bit) : 0;
 			state_flags[5] = state_flags[4];
 		}
 
@@ -1745,8 +1760,8 @@ static void render_weapon_hud(
 	}
 
 	map_type_flags = global_scenario_get()->type != _scenario_type_main_menu;
-	SET_FLAG(map_type_flags, 1, local_player_count() == 1);
-	SET_FLAG(map_type_flags, 2, local_player_count() > 1);
+	SET_FLAG(map_type_flags, 1, !hud_split_screen());
+	SET_FLAG(map_type_flags, 2, hud_split_screen());
 
 	for (element_index = 0;
 		element_index < definition->statics.count;
@@ -1914,7 +1929,7 @@ static void render_weapon_hud(
 				overlay_flags[state_index],
 				hud_state->last_weapon_flash_time[state_index],
 				state_flags[state_index],
-				local_player_count() > 1);
+				hud_split_screen());
 		}
 	}
 
@@ -1943,25 +1958,12 @@ void hud_fix_weapon_data(
 	return;
 }
 
-void hud_update_weapon(
-	void)
+static void hud_update_weapon_one(
+	short local_player_index)
 {
-	long return_eip = get_return_eip();
-	long stack_buffer[STACK_BUFFER_LENGTH];
-	short local_player_index;
-
-	csmemset(
-		stack_buffer,
-		0x62,
-		sizeof(stack_buffer));
-
-	for (local_player_index = local_player_get_next(NONE);
-		local_player_index != NONE;
-		local_player_index = local_player_get_next(local_player_index))
-	{
-		/* port: the view's player's (a spectator's, the player it watches in
-		first person: port/linux/game/spectator.c) */
-		long unit_index = local_player_get_view_unit_index(local_player_index);
+	/* port: the view's player's (a spectator's, the player it watches in
+	first person: port/linux/game/spectator.c) */
+	long unit_index = local_player_get_view_unit_index(local_player_index);
 
 		if (unit_index != NONE)
 		{
@@ -2031,13 +2033,44 @@ void hud_update_weapon(
 					&weapon_state);
 			}
 
-			get_hud_state(local_player_index)->last_weapon_index = weapon_index;
-		}
+		get_hud_state(local_player_index)->last_weapon_index = weapon_index;
+	}
+}
+
+void hud_update_weapon(
+	void)
+{
+	long return_eip = get_return_eip();
+	long stack_buffer[STACK_BUFFER_LENGTH];
+	short local_player_index;
+
+	csmemset(
+		stack_buffer,
+		0x62,
+		sizeof(stack_buffer));
+
+	for (local_player_index = local_player_get_next(NONE);
+		local_player_index != NONE;
+		local_player_index = local_player_get_next(local_player_index))
+	{
+		hud_update_weapon_one(local_player_index);
 	}
 
 	match_assert_stack_frame("c:\\halo\\SOURCE\\interface\\hud_weapon.c", 0xD4);
 
 	return;
+}
+
+/* port: the teammate pane's reticle. the state lives on the spare slot, so
+the local player's own reticle is left as the update already set it */
+void hud_weapon_port_update_player(
+	short local_player_index)
+{
+	if (local_player_index < 0 || local_player_index >= MAXIMUM_NUMBER_OF_LOCAL_PLAYERS)
+		return;
+	if (!weapon_hud_globals)
+		return;
+	hud_update_weapon_one(local_player_index);
 }
 
 void hud_render_weapon_interface(

@@ -34,8 +34,6 @@ void voice_audio_play(int speaker, unsigned short sequence, const unsigned char 
 /* a speaker no longer heard: their buffer and decoder freed; or all */
 void voice_audio_forget(int speaker);
 void voice_audio_forget_all(void);
-/* whether a speaker's voice is playing now */
-int voice_audio_speaking(int speaker);
 void voice_audio_set_volume(float volume);
 /* (dsound_sdl.c, on the audio thread) the voices added to the output
 (stereo, 48 kHz) */

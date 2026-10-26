@@ -3,13 +3,13 @@
 
     python tools/app_icon.py
 
-- opence-icon.png, the helmet on its background (512x512): the Windows
-  executable's icon (port/windows/opence-icon.ico, which port/windows/halo.rc
-  puts in halo.exe) and the desktop builds' window icon (opence-icon-256.png,
+- corece-icon.png, the helmet on its background (512x512): the Windows
+  executable's icon (port/windows/corece-icon.ico, which port/windows/halo.rc
+  puts in halo.exe) and the desktop builds' window icon (corece-icon-256.png,
   which tools/embed_assets.py embeds and sdl_platform.c gives the window);
-- opence-icon-render.png, the helmet alone on transparency (1024x1024, the same
+- corece-icon-render.png, the helmet alone on transparency (1024x1024, the same
   framing): the Android app's launcher icon;
-- opence-icon.png again: the web page's icons (port/web/site/icons), its tab's,
+- corece-icon.png again: the web page's icons (port/web/site/icons), its tab's,
   the installed web app's and the home screen's.
 
 The launcher icon is an adaptive one (Android 8 and later): the render as its
@@ -32,10 +32,10 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 ARTWORK = ROOT / "port/assets/icon"
-ICON = ARTWORK / "opence-icon.png"
-RENDER = ARTWORK / "opence-icon-render.png"
-WINDOW_ICON = ARTWORK / "opence-icon-256.png"
-WINDOWS_ICON = ROOT / "port/windows/opence-icon.ico"
+ICON = ARTWORK / "corece-icon.png"
+RENDER = ARTWORK / "corece-icon-render.png"
+WINDOW_ICON = ARTWORK / "corece-icon-256.png"
+WINDOWS_ICON = ROOT / "port/windows/corece-icon.ico"
 RESOURCES = ROOT / "port/android/app/src/main/res"
 
 # the layers' size, and the part of them a launcher shows, in dp
@@ -122,7 +122,8 @@ def main() -> None:
                 directory / f"{name}.png", optimize=True)
         print(f"{directory.relative_to(ROOT)}: {size}x{size}")
 
-    top, bottom = background_gradient(icon, render)
+    # Android keeps its own launcher art. Do not sample the desktop icon.
+    top, bottom = (0x0A, 0x2B, 0x54), (0x03, 0x06, 0x10)
     drawable = RESOURCES / "drawable"
     drawable.mkdir(parents=True, exist_ok=True)
     (drawable / "ic_launcher_background.xml").write_text(

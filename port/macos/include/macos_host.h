@@ -34,7 +34,6 @@ int host_sdl_set_window_fullscreen(unsigned int window, int fullscreen);
 /* with a mode's fields (HOST_SDL_MODE_FIELDS), or NULL for the desktop's
 (borderless) */
 int host_sdl_set_window_fullscreen_mode(unsigned int window, const int *mode);
-int host_sdl_warp_mouse(unsigned int window, float x, float y);
 int host_sdl_set_window_mouse_grab(unsigned int window, int grabbed);
 
 /* ---------- displays */
@@ -63,7 +62,8 @@ int host_sdl_has_screen_keyboard(void);
 /* the window with the keyboard's focus, 0 for none */
 unsigned int host_sdl_keyboard_focus(void);
 int host_sdl_show_cursor(int shown);
-unsigned int host_sdl_key_from_scancode(int scancode, int modifiers, int key_event);
+/* (guest_host.h has the one-argument host_sdl_key_from_scancode of Android) */
+unsigned int host_sdl_key_from_scancode_state(int scancode, int modifiers, int key_event);
 
 /* ---------- audio devices */
 

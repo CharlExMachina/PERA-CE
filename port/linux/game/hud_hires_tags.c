@@ -29,6 +29,7 @@ When the texture cannot be drawn, the sprites are drawn from their bitmap.
 #include "game/players.h"
 #include "game/game.h"
 #include "interface/hud.h"
+#include "interface/hud_draw.h"
 #include "interface/hud_definitions.h"
 #include "rasterizer/rasterizer.h"
 #include "text/draw_string.h"
@@ -233,6 +234,66 @@ void hud_hires_tags_loaded(
 		for (index = 0; index < hires_sprite_bitmap_count; index++)
 			assets[count++] = hires_sprite_bitmaps[index].asset;
 		hud_hires_map_loaded(assets, count);
+	}
+
+	return;
+}
+
+/* the bitmap itself, not the first tag of its name: a custom map has its
+own copy of the Xbox HUD's bitmap names, and that copy is not the redraw */
+void hud_hires_register_bitmap(
+	char const *tag_name,
+	struct bitmap_data *bitmap,
+	long bitmap_index)
+{
+	long asset_count = hud_hires_asset_count();
+	long asset;
+	long index;
+
+	if (!tag_name || !bitmap)
+		return;
+	for (asset = 0; asset < asset_count; asset++)
+	{
+		if (hud_hires_asset_bitmap(asset) != bitmap_index || _stricmp(hud_hires_asset_tag(asset), tag_name))
+			continue;
+		if (!hud_hires_asset_fits(asset, bitmap->width, bitmap->height))
+		{
+			platform_log("high-res hud: %s bitmap %ld is %dx%d here, which its texture does not fit",
+				tag_name, bitmap_index, bitmap->width, bitmap->height);
+			return;
+		}
+		if (hud_hires_asset_sprites(asset))
+		{
+			for (index = 0; index < hires_sprite_bitmap_count; index++)
+			{
+				if (hires_sprite_bitmaps[index].asset == asset)
+				{
+					hires_sprite_bitmaps[index].bitmap = bitmap;
+					return;
+				}
+			}
+			if (hires_sprite_bitmap_count >= MAXIMUM_HIRES_SPRITE_BITMAPS)
+				return;
+			csmemset(&hires_sprite_bitmaps[hires_sprite_bitmap_count], 0, sizeof(hires_sprite_bitmaps[0]));
+			hires_sprite_bitmaps[hires_sprite_bitmap_count].bitmap = bitmap;
+			hires_sprite_bitmaps[hires_sprite_bitmap_count].asset = asset;
+			hires_sprite_bitmap_count++;
+			return;
+		}
+		for (index = 0; index < hires_bitmap_count; index++)
+		{
+			if (hires_bitmaps[index].asset == asset)
+			{
+				hires_bitmaps[index].bitmap = bitmap;
+				return;
+			}
+		}
+		if (hires_bitmap_count >= MAXIMUM_HIRES_BITMAPS)
+			return;
+		hires_bitmaps[hires_bitmap_count].bitmap = bitmap;
+		hires_bitmaps[hires_bitmap_count].asset = asset;
+		hires_bitmap_count++;
+		return;
 	}
 
 	return;
@@ -446,7 +507,8 @@ boolean hud_hires_button_draw(struct icon_hud_element_definition const *icon,
 	}
 	bitmap = hud_buttons[slot].bitmap;
 	if (!bitmap) return FALSE;
-	viewport = local_player_count() > 1 ? 0.75f : 1.0f;
+	/* A hardcore pane is a local split, so the button is that size. */
+	viewport = hud_split_screen() ? 0.75f : 1.0f;
 	scale = viewport;
 	/* Account for the text renderer's leading inset on the following run. */
 	x = cursor->x0 + 4.0f * viewport;

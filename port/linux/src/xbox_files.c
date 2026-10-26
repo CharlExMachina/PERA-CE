@@ -11,8 +11,11 @@ h:\ is the Halo Custom Edition install paths.custom_edition names, if any
 (its maps folder holds the resource maps Custom Edition maps need, and more
 maps).
 Every other drive letter X:\ is the subdirectory X/ of the save root (z:\ holds the persistent cache and saves,
-u:\ user data, t:\ title data): paths.saves, else
-$XDG_DATA_HOME/halo-linux or ~/.local/share/halo-linux. Path components are
+u:\ user data, t:\ title data): paths.saves, else %APPDATA%/Halo OG on
+Windows, $XDG_DATA_HOME/halo-og or ~/.local/share/halo-og on Linux. The
+legacy halo/halo-linux tree is copied without replacing existing files;
+an incomplete or unsafe copy keeps the legacy root and logs the failure.
+Path components are
 matched case-insensitively, like the Xbox's FATX volumes.
 
 Photo mode's photos (port/linux/game/photo_mode.c) go in the photos root:
@@ -33,6 +36,9 @@ as a download).
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#ifdef HALO_IOS
+#include "halo_custom_maps.h"
+#endif
 
 #if !defined(_WIN32) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_MACOS)
 /* (Linux's Pictures folder: the user's folders, XDG_PICTURES_DIR, which SDL
@@ -140,6 +146,62 @@ const char *platform_data_root(void)
 	return root;
 }
 
+/* a file that exists and is not empty */
+static FILE *open_readable(const char *path)
+{
+	struct posix_file_information information;
+
+	if (!path || !path[0])
+		return NULL;
+	if (posix_stat(path, &information) != 0 || (information.size_low == 0 && information.size_high == 0))
+		return NULL;
+	return fopen(path, "rb");
+}
+
+FILE *platform_open_opening_film(void)
+{
+	char path[1024];
+	char executable[1024];
+	FILE *file;
+	const char *named;
+	ssize_t length;
+	char *slash;
+
+	/* a copy the player already has beside the maps */
+	platform_translate_path("d:\\maps\\opening_frames.bin", path, sizeof(path));
+	file = open_readable(path);
+	if (file)
+		return file;
+	/* the Mac and iOS bundles name this before the game starts */
+	named = getenv("HALO_OPENING_FILM");
+	file = open_readable(named);
+	if (file)
+		return file;
+	/* Windows and Linux ship it beside the executable */
+	length = readlink("/proc/self/exe", executable, sizeof(executable) - 1);
+	if (length > 0)
+	{
+		executable[length] = '\0';
+		slash = strrchr(executable, '/');
+		if (!slash)
+			slash = strrchr(executable, '\\');
+		if (slash)
+		{
+			*slash = '\0';
+			snprintf(path, sizeof(path), "%s/opening_frames.bin", executable);
+			file = open_readable(path);
+			if (file)
+				return file;
+			snprintf(path, sizeof(path), "%s/../Resources/opening_frames.bin", executable);
+			file = open_readable(path);
+			if (file)
+				return file;
+		}
+	}
+	platform_log("opening film: maps/opening_frames.bin is not there");
+	return NULL;
+}
+
 /* creates every missing directory along path */
 static void make_directories(const char *path)
 {
@@ -164,12 +226,23 @@ static void make_directories(const char *path)
 const char *platform_save_root(void)
 {
 	static char root[MAX_PATH];
+#if !defined(HALO_ANDROID) && !defined(HALO_MACOS)
+	static pthread_mutex_t root_lock = PTHREAD_MUTEX_INITIALIZER;
+
+	/* Do not expose a new root to another startup thread until the copy has
+	finished or selected its legacy fallback. */
+	pthread_mutex_lock(&root_lock);
+#endif
 
 	if (!root[0])
 	{
 		const char *environment = config_string("paths.saves");
 		const char *data_home = getenv("XDG_DATA_HOME");
 		const char *home = getenv("HOME");
+#if !defined(HALO_ANDROID) && !defined(HALO_MACOS)
+		char legacy[MAX_PATH] = "";
+		int root_length = 0, legacy_length = 0;
+#endif
 
 		if (*environment)
 			snprintf(root, sizeof(root), "%s", environment);
@@ -177,7 +250,10 @@ const char *platform_save_root(void)
 		/* the Windows build (port/windows) keeps saves in the roaming
 		application data folder */
 		else if (getenv("APPDATA") && *getenv("APPDATA"))
-			snprintf(root, sizeof(root), "%s/halo", getenv("APPDATA"));
+		{
+			root_length = snprintf(root, sizeof(root), "%s/Halo OG", getenv("APPDATA"));
+			legacy_length = snprintf(legacy, sizeof(legacy), "%s/halo", getenv("APPDATA"));
+		}
 #endif
 #ifdef HALO_MACOS
 		/* the Mac app keeps them with its other files (port/macos/README.md) */
@@ -185,15 +261,53 @@ const char *platform_save_root(void)
 			snprintf(root, sizeof(root), "%s/Library/Application Support/OpenCE/saves", home);
 #endif
 		else if (data_home && *data_home)
+		{
+#if !defined(HALO_ANDROID) && !defined(HALO_MACOS)
+			root_length = snprintf(root, sizeof(root), "%s/halo-og", data_home);
+			legacy_length = snprintf(legacy, sizeof(legacy), "%s/halo-linux", data_home);
+#else
 			snprintf(root, sizeof(root), "%s/halo-linux", data_home);
+#endif
+		}
 		else if (home && *home)
+		{
+#if !defined(HALO_ANDROID) && !defined(HALO_MACOS)
+			root_length = snprintf(root, sizeof(root), "%s/.local/share/halo-og", home);
+			legacy_length = snprintf(legacy, sizeof(legacy), "%s/.local/share/halo-linux", home);
+#else
 			snprintf(root, sizeof(root), "%s/.local/share/halo-linux", home);
+#endif
+		}
 		else
 			snprintf(root, sizeof(root), "%s", platform_data_root());
 		trim_separators(root);
+#if !defined(HALO_ANDROID) && !defined(HALO_MACOS)
+		if (legacy[0])
+		{
+			int migrated;
+
+			trim_separators(legacy);
+			if (root_length < 0 || (size_t)root_length >= sizeof(root) ||
+				legacy_length < 0 || (size_t)legacy_length >= sizeof(legacy))
+			{
+				platform_log("save migration: default path exceeds the port's path limit; keeping legacy %s", legacy);
+				snprintf(root, sizeof(root), "%s", legacy);
+			}
+			else if ((migrated = posix_migrate_save_directory(legacy, root)) < 0)
+			{
+				platform_log("save migration: could not copy %s to %s (%s); keeping legacy saves", legacy, root, strerror(errno));
+				snprintf(root, sizeof(root), "%s", legacy);
+			}
+			else if (migrated == 0)
+				platform_log("save migration: copied %s to %s; original and existing destination files preserved", legacy, root);
+		}
+#endif
 		make_directories(root);
 		platform_log("save root: %s", root);
 	}
+#if !defined(HALO_ANDROID) && !defined(HALO_MACOS)
+	pthread_mutex_unlock(&root_lock);
+#endif
 	return root;
 }
 
@@ -264,12 +378,26 @@ void platform_translate_path(const char *xbox_path, char *host_path, unsigned lo
 	char resolved[1024];
 	const char *cursor = xbox_path;
 	unsigned long length;
+#ifdef HALO_IOS
+	BOOL managed_exact = FALSE;
+#endif
 
 	snprintf(resolved, sizeof(resolved), "%s", platform_data_root());
 	if (((cursor[0] >= 'a' && cursor[0] <= 'z') || (cursor[0] >= 'A' && cursor[0] <= 'Z')) && cursor[1] == ':')
 	{
 		char drive = (char)(cursor[0] | 0x20);
 
+#ifdef HALO_IOS
+		if (drive == 'm')
+		{
+			managed_exact = TRUE;
+			/* M: is a read-only map namespace; downloader publishes verified files
+			atomically here. Existing D: game data always remains independent. */
+			if (!halo_map_download_directory(resolved, sizeof(resolved)))
+				snprintf(resolved, sizeof(resolved), "%s/Community Maps/maps", platform_save_root());
+		}
+		else
+#endif
 		if (drive == 'h' && platform_custom_edition_root()[0])
 		{
 			snprintf(resolved, sizeof(resolved), "%s", platform_custom_edition_root());
@@ -278,7 +406,18 @@ void platform_translate_path(const char *xbox_path, char *host_path, unsigned lo
 		{
 			struct posix_file_information information;
 
+#if !defined(HALO_ANDROID) && !defined(HALO_MACOS)
+			char drive_name[2] = { drive, 0 }, on_disk[256];
+			const char *saves = platform_save_root();
+
+			/* A migrated existing U/ or Z/ directory is the same Xbox drive.
+			Keep its spelling, just as the following path components do. */
+			if (!posix_find_entry_case_insensitive(saves, drive_name, on_disk, sizeof(on_disk)))
+				snprintf(on_disk, sizeof(on_disk), "%s", drive_name);
+			snprintf(resolved, sizeof(resolved), "%s/%s", saves, on_disk);
+#else
 			snprintf(resolved, sizeof(resolved), "%s/%c", platform_save_root(), drive);
+#endif
 			/* every Xbox drive always exists; create its directory on first use */
 			if (posix_stat(resolved, &information) != 0)
 				posix_make_directory(resolved);
@@ -303,7 +442,11 @@ void platform_translate_path(const char *xbox_path, char *host_path, unsigned lo
 		if (!component_length || strspn(component, ". ") == component_length)
 			continue;
 
-		if (posix_find_entry_case_insensitive(resolved, component, on_disk, sizeof(on_disk)))
+		if (
+#ifdef HALO_IOS
+			!managed_exact &&
+#endif
+			posix_find_entry_case_insensitive(resolved, component, on_disk, sizeof(on_disk)))
 		{
 			/* prefer an exact match when several spellings exist */
 			char exact[1100];

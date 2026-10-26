@@ -1,0 +1,58 @@
+name: iOS regression checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'source/**'
+      - 'port/**'
+      - 'tools/**'
+      - '.github/workflows/apple.yml'
+  pull_request:
+    paths:
+      - 'source/**'
+      - 'port/**'
+      - 'tools/**'
+      - '.github/workflows/apple.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apple-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime:
+    # CoreCE's iPhone app (port/ios, docs/apple-build.md): its ARM64 guest
+    # probes execute on Apple silicon. These tests use authored fixtures and
+    # public dependencies; no maps, Xbox SDK or signing account.
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      HALO_IOS_LLVM_BIN: /opt/homebrew/opt/llvm@22/bin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Public toolchain
+        run: |
+          brew install llvm@22 lld@22 sdl3 ninja
+          printf '%s\n' /opt/homebrew/opt/lld@22/bin >> "$GITHUB_PATH"
+      - name: Verify runner and prepare dependencies
+        run: |
+          test "$(uname -m)" = arm64
+          python3 tools/ios_setup.py
+          python3 tools/ios_build.py --plugin-only
+      - name: Signed iOS instruction image
+        run: python3 tools/test_ios_runtime.py
+      - name: Controls and rendering
+        run: python3 -m unittest tools.test_input_bindings tools.test_visibility_queries tools.test_presentation tools.test_ios_controller_routing
+      - name: Version 11 network protocol
+        run: python3 -m unittest tools.test_network_pings tools.test_network_v11
+      - name: Desktop data migration
+        run: python3 -m unittest tools.test_save_migration
+      - name: Managed map lookup and precache readiness
+        run: python3 -m unittest tools.test_custom_maps tools.test_map_download_precache tools.test_map_catalog tools.test_publish_map_catalog

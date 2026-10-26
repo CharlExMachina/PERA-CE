@@ -15,9 +15,12 @@ and the debug keyboard that the game's console reads.
 #include "sdl_platform.h"
 #include "gl.h"
 #include "port_config.h"
+#include "input_bindings.h"
 #include "p2p.h"
 #include "port_mods.h"
 #include "xiso.h"
+#include "native_video.h"
+#include "native_input_events.h"
 #include "touch_input.h"
 #include "../game/text_filter.h"
 #ifdef HALO_METAL
@@ -226,7 +229,7 @@ BOOL platform_sdl_initialize(void)
 	one already running, and goes */
 	if (p2p_hand_off_invite())
 		exit(EXIT_SUCCESS);
-	SDL_SetHint(SDL_HINT_APP_NAME, "Halo");
+	SDL_SetHint(SDL_HINT_APP_NAME, "CoreCE");
 #if defined(__linux__) && !defined(HALO_ARM64_GUEST) && !defined(HALO_ANDROID)
 	platform_choose_video_driver();
 #endif
@@ -339,7 +342,7 @@ static BOOL data_extract(const char *image, const char *destination, char *error
 	/* (waited for through extraction.finished; the Windows port's threads
 	cannot be joined) */
 	pthread_detach(thread);
-	window = SDL_CreateWindow("Halo", 640, 150, 0);
+	window = SDL_CreateWindow("CoreCE", 640, 150, 0);
 	if (window)
 	{
 		renderer = SDL_CreateRenderer(window, NULL);
@@ -516,7 +519,7 @@ BOOL platform_offer_game_data(const char *destination)
 	}
 	for (;;)
 	{
-		SDL_MessageBoxData question = { SDL_MESSAGEBOX_INFORMATION, NULL, "Halo", message, 2, buttons, NULL };
+		SDL_MessageBoxData question = { SDL_MESSAGEBOX_INFORMATION, NULL, "CoreCE", message, 2, buttons, NULL };
 		char image[1024];
 		char error[512];
 		int answer = 0;
@@ -556,22 +559,54 @@ BOOL platform_offer_game_data(const char *destination)
 		}
 		platform_log("extraction failed: %s", error);
 		image_found = FALSE;
-		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Halo", error, NULL);
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "CoreCE", error, NULL);
 	}
 }
 #endif
 
 int halo_interpolation_enabled(void)
 {
-	static int enabled;
+	static int interpolation;
 	static unsigned long read_at = (unsigned long)-1;
 
 	if (read_at != config_changes())
 	{
 		read_at = config_changes();
-		enabled = config_boolean("display.interpolation");
+		interpolation = config_boolean("display.interpolation");
 	}
-	return enabled;
+	return interpolation;
+}
+
+int halo_video_fullscreen_get(void)
+{
+#ifndef HALO_ANDROID
+	return platform_window && (SDL_GetWindowFlags(platform_window) & SDL_WINDOW_FULLSCREEN) != 0;
+#else
+	return 1;
+#endif
+}
+
+int halo_video_fullscreen_set(int enabled)
+{
+#ifndef HALO_ANDROID
+	return platform_window && SDL_SetWindowFullscreen(platform_window, enabled != 0);
+#else
+	return enabled != 0;
+#endif
+}
+
+int halo_video_apply_settings(void)
+{
+	extern void render_interpolation_reset(void);
+#ifdef HALO_METAL
+	host_metal_set_vsync(config_boolean("display.vsync"));
+#else
+	if (!platform_gl_context || !SDL_GL_SetSwapInterval(config_boolean("display.vsync") ? 1 : 0))
+		return 0;
+#endif
+	/* Previous snapshots can be minutes old when interpolation is re-enabled. */
+	render_interpolation_reset();
+	return 1;
 }
 
 #ifndef HALO_ANDROID
@@ -1077,7 +1112,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 
 		if (scale < 1)
 			scale = 1;
-		platform_window = SDL_CreateWindow("Halo", (int)(width * scale), (int)(height * scale),
+		platform_window = SDL_CreateWindow("CoreCE", (int)(width * scale), (int)(height * scale),
 			PLATFORM_WINDOW_DRAWING | SDL_WINDOW_FULLSCREEN);
 	}
 #else
@@ -1088,7 +1123,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	(void)width;
 	(void)height;
 	platform_window_size_setting(&platform_window_width, &platform_window_height);
-	platform_window = SDL_CreateWindow("Halo", (int)platform_window_width, (int)platform_window_height,
+	platform_window = SDL_CreateWindow("CoreCE", (int)platform_window_width, (int)platform_window_height,
 		PLATFORM_WINDOW_DRAWING | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
 		(config_boolean("debug.hidden_window") ? SDL_WINDOW_HIDDEN : 0) |
 		(platform_fullscreen_setting() ? SDL_WINDOW_FULLSCREEN : 0));
@@ -1365,6 +1400,39 @@ void platform_mouse_capture(BOOL capture)
 #endif
 }
 
+/* Called with input_lock held; discard both held and queued input so a
+   native panel or Resume click cannot leak movement/fire into gameplay. */
+static void platform_input_clear(void)
+{
+	memset(input_state.keys, 0, sizeof(input_state.keys));
+	memset(keys_pressed, 0, sizeof(keys_pressed));
+	memset(input_state.mouse_buttons, 0, sizeof(input_state.mouse_buttons));
+	input_state.mouse_dx = input_state.mouse_dy = input_state.mouse_wheel = 0.0f;
+	input_state.pause_pressed = input_state.menu_back_pressed = FALSE;
+	keystroke_head = keystroke_count = 0;
+}
+
+static void platform_mouse_released_set(BOOL released)
+{
+	platform_input_clear();
+	input_state.mouse_released = released;
+	platform_mouse_capture(!released && !input_state.ui_pointer);
+}
+
+void platform_mouse_release_gameplay(void)
+{
+	pthread_mutex_lock(&input_lock);
+	platform_mouse_released_set(TRUE);
+	pthread_mutex_unlock(&input_lock);
+}
+
+void platform_mouse_resume_gameplay(void)
+{
+	pthread_mutex_lock(&input_lock);
+	platform_mouse_released_set(FALSE);
+	pthread_mutex_unlock(&input_lock);
+}
+
 /* ---------- keyboard translation */
 
 /* Windows virtual key code for an SDL scancode (the Xbox debug keyboard
@@ -1487,7 +1555,8 @@ static void queue_keystroke(const SDL_KeyboardEvent *event)
 	if (event->mod & SDL_KMOD_NUM) flags |= 0x10;
 	if (!event->down) flags |= 0x40;
 	if (event->repeat) flags |= 0x80;
-	keystroke->virtual_key = virtual_key_from_scancode(event->scancode);
+	keystroke->virtual_key = input_binding_console_key(event->scancode,
+		virtual_key_from_scancode(event->scancode));
 	keystroke->ascii = event->down ? ascii_from_key(event->key, event->mod) : 0;
 	keystroke->flags = flags;
 	keystroke_count++;
@@ -1562,7 +1631,9 @@ static void platform_invite_clipboard(BOOL look)
 	static char seen[256];
 	const char *invite = p2p_take_clipboard_text();
 
-	if (invite)
+	/* Automated sessions use isolated saves and logs; leave the player's
+	clipboard alone rather than handing a test room to their running game. */
+	if (invite && !*config_string("debug.network_test"))
 	{
 #ifdef HALO_WEB
 		/* (a page may write the clipboard only when it is clicked: the page
@@ -1931,7 +2002,7 @@ void platform_pump_events(void)
 			exit(EXIT_SUCCESS);
 		case SDL_EVENT_KEY_DOWN:
 		case SDL_EVENT_KEY_UP:
-			if (event.key.scancode < SDL_SCANCODE_COUNT)
+			if (event.key.scancode < SDL_SCANCODE_COUNT && (!event.key.down || !event.key.repeat))
 			{
 				input_state.keys[event.key.scancode] = event.key.down;
 				if (event.key.down)
@@ -1953,8 +2024,8 @@ void platform_pump_events(void)
 			{
 				scoreboard_pages += event.key.scancode == SDL_SCANCODE_PAGEDOWN ? 1 : -1;
 			}
-			/* F12 releases or recaptures the mouse */
-			if (event.key.down && !event.key.repeat && event.key.scancode == SDL_SCANCODE_F12)
+			/* The configured mouse-release key releases or recaptures it. */
+			if (event.key.down && !event.key.repeat && input_binding_matches_key(_binding_release_mouse, event.key.scancode))
 			{
 				input_state.mouse_released = !input_state.mouse_released;
 				platform_mouse_capture(!input_state.mouse_released && !input_state.ui_pointer &&
@@ -2457,6 +2528,8 @@ void platform_input_read(struct platform_input_state *state, BOOL consume_motion
 		input_state.mouse_dx = 0;
 		input_state.mouse_dy = 0;
 		input_state.mouse_wheel = 0;
+		input_state.pause_pressed = FALSE;
+		input_state.menu_back_pressed = FALSE;
 	}
 	pthread_mutex_unlock(&input_lock);
 }

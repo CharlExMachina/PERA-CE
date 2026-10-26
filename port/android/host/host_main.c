@@ -390,6 +390,22 @@ static void *game_main(void *unused)
 			host_logf(HOST_LOG_ERROR, "cannot write %s: %s", path, SDL_GetError());
 		SDL_free(brokers);
 	}
+	/* the match and campaign loading film, written into maps once */
+	{
+		char film_path[1024];
+		struct stat film_info;
+		size_t film_size = 0;
+		void *film;
+
+		snprintf(film_path, sizeof(film_path), "%s/maps/opening_frames.bin", data_root);
+		if (stat(film_path, &film_info) != 0)
+		{
+			film = SDL_LoadFile("opening_frames.bin", &film_size);
+			if (!film || !film_size || !SDL_SaveFile(film_path, film, film_size))
+				host_logf(HOST_LOG_ERROR, "cannot install the opening film: %s", SDL_GetError());
+			SDL_free(film);
+		}
+	}
 	snprintf(path, sizeof(path), "%s/config.toml", data_root);
 
 	image = SDL_LoadFile("halo_guest.elf", &image_size);

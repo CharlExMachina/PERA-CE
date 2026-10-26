@@ -354,6 +354,10 @@ symbols in this file:
 #include "saved games/playlist_profile.h"
 #include "text/text_group.h"
 #include "text/unicode.h"
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+#include "halo_custom_maps.h"
+#include "game/performance_variant.h"
+#endif
 #include "custom_edition_maps.h" /* port: port/linux/game/custom_edition_maps.c */
 #include "halo_menus.h" /* port: PC_MENU_FUNCTION_BASE */
 
@@ -700,6 +704,27 @@ static short custom_edition_map_display_index(
 
 /* ---------- public code */
 
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+static void custom_map_text(struct widget_instance *widget, char const *caption)
+{
+	unsigned int i;
+	int capitalize = TRUE;
+	widget->parameters.text_box.text = ui_widget_realloc(widget->parameters.text_box.text,
+		HALO_CUSTOM_MAP_NAME_SIZE * sizeof(wchar_t), __FILE__, __LINE__);
+	if (!widget->parameters.text_box.text) return;
+	for (i = 0; i < HALO_CUSTOM_MAP_NAME_SIZE - 1 && caption[i]; i++)
+	{
+		unsigned char c = (unsigned char)caption[i];
+		if (c == '_') c = ' ';
+		if (capitalize && c >= 'a' && c <= 'z') c -= 'a' - 'A';
+		widget->parameters.text_box.text[i] = c;
+		capitalize = c == ' ';
+	}
+	widget->parameters.text_box.text[i] = 0;
+	widget->parameters.text_box.string_list_index = HALO_CUSTOM_MAP_TEXT;
+}
+#endif
+
 void ui_widget_game_data_function_invoke(
 	struct widget_instance *widget,
 	word function)
@@ -775,6 +800,12 @@ static void settings_menu_update_extended_description(
 			"expected a text box widget for the settings select list extended description text");
 
 		description_picture->animation.current_frame_index = index;
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		/* The local settings chooser reuses the original profile artwork:
+		 * Spartans for Profile Settings, controller for Game Settings. */
+		if (!strcmp(tag_get_name(list_widget->definition_tag_index), "ui\\native_settings\\menu"))
+			description_picture->animation.current_frame_index = index ? 1 : 3;
+#endif
 		description_text->parameters.text_box.string_list_index = index;
 	}
 	return;
@@ -797,6 +828,10 @@ static void playlist_settings_menu_update_extended_description(
 	/* port: in the PC version's lists (port/assets/menus), the item's number
 	among those that take events, as its game counts them (past its labels) */
 	index = ui_widget_port_list_index(list_widget);
+	/* the button bar is a list of its own and has no card of its own */
+	if (pc_menu_tag(list_widget->definition_tag_index) &&
+		list_widget->focused_child->type == _ui_widget_type_column_list)
+		index = NONE;
 
 	if (index != NONE)
 	{
@@ -868,6 +903,10 @@ static void multiplayer_type_menu_update_extended_description(
 	/* port: in the PC version's lists (port/assets/menus), the item's number
 	among those that take events, as its game counts them (past its labels) */
 	index = ui_widget_port_list_index(list_widget);
+	/* the button bar is a list of its own and has no card of its own */
+	if (pc_menu_tag(list_widget->definition_tag_index) &&
+		list_widget->focused_child->type == _ui_widget_type_column_list)
+		index = NONE;
 
 	if (index != NONE)
 	{
@@ -1139,6 +1178,11 @@ static void server_list_menu_update(
 				}
 
 				map_name = server->map_name;
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+				if (native_map_is_custom(map_name))
+					map_bitmap->animation.current_frame_index = 13;
+				else
+#endif
 				if (strstr(map_name, "beavercreek"))
 					map_bitmap->animation.current_frame_index = 0;
 				else if (strstr(map_name, "sidewinder"))
@@ -1175,6 +1219,10 @@ static void server_list_menu_update(
 					(server->open == TRUE) ? 20 : 21;
 				map_name_text->parameters.text_box.string_list_index =
 					map_bitmap->animation.current_frame_index;
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+				if (native_map_is_custom(map_name))
+					custom_map_text(map_name_text, native_map_basename(map_name));
+#endif
 
 				switch (server->engine_type)
 				{
@@ -2428,6 +2476,13 @@ static void multiplayer_game_set_text_box_for_map_name(
 		widget->parameters.text_box.string_list_index = custom_edition_map_display_index(map_name);
 		return;
 	}
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		if (native_map_is_custom(map_name) && custom_edition_maps_display_index(map_name) == NONE)
+		{
+			custom_map_text(widget, native_map_basename(map_name));
+			return;
+		}
+#endif
 	if (strstr(map_name, "beavercreek"))
 	{
 		widget->parameters.text_box.string_list_index = 0;
@@ -2702,6 +2757,13 @@ static void multiplayer_game_set_bitmap_for_map(
 		widget->animation.current_frame_index = custom_edition_map_display_index(map_name);
 		return;
 	}
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		if (native_map_is_custom(map_name) && custom_edition_maps_display_index(map_name) == NONE)
+		{
+			widget->animation.current_frame_index = 13;
+			return;
+		}
+#endif
 	if (strstr(map_name, "beavercreek"))
 	{
 		widget->animation.current_frame_index = 0;
@@ -3232,6 +3294,28 @@ static void variant_profile_update_cache_for_nwide_list(
 	return;
 }
 
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+/* The card has 256 UTF-16 characters and room for one more small-ui line.
+Keep the indication generic as additional performance options are introduced. */
+static void playlist_profile_append_performance_status(
+	wchar_t *description,
+	struct playlist_profile const *profile)
+{
+	static wchar_t const status[] = L"\r\nPB options active";
+	unsigned long length;
+	wchar_t const *suffix;
+	unsigned long suffix_length;
+
+	if (!description || !performance_variant_get_flags((struct game_variant const *)profile))
+		return;
+	length = ustrnlen(description, 0x100);
+	suffix = description[0] ? status : status + 2;
+	suffix_length = ustrlen(suffix);
+	if (length + suffix_length < 0x100)
+		ustrncpy(description + length, suffix, suffix_length + 1);
+}
+#endif
+
 static void mutliplayer_settings_select_list_update_displayed_items(
 	struct widget_instance *list_widget)
 {
@@ -3386,6 +3470,9 @@ static void mutliplayer_settings_select_list_update_displayed_items(
 					label_box->parameters.text_box.text[0xFF] = 0;
 				}
 				description_container->visible = TRUE;
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+				playlist_profile_append_performance_status(label_box->parameters.text_box.text, profile);
+#endif
 				continue;
 			}
 
@@ -3498,6 +3585,9 @@ static void mutliplayer_settings_select_list_update_displayed_items(
 				break;
 			}
 
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+			playlist_profile_append_performance_status(label_box->parameters.text_box.text, profile);
+#endif
 			continue;
 		}
 
@@ -4256,6 +4346,15 @@ static void mp_level_select_list_update_displayed_items(
 			(short)displayed_item_indices[item_index];
 		map_description->parameters.text_box.string_list_index =
 			(short)displayed_item_indices[item_index];
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		if (displayed_item_indices[item_index] >= 13)
+		{
+			char *map = ((char **)list_widget->parameters.list.list_items)[displayed_item_indices[item_index]];
+			custom_map_text(map_name, native_map_basename(map));
+			custom_map_text(map_description, "Community map");
+			map_bitmap->animation.current_frame_index = 13;
+		}
+#endif
 	}
 	return;
 }

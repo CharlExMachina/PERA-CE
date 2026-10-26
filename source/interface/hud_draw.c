@@ -109,6 +109,7 @@ symbols in this file:
 #include "custom_edition_cache.h"
 #include "view_fov.h" /* port: port/linux/game/view_fov.c */
 #include "spectator.h" /* port: port/linux/game/spectator.c */
+#include "hardcore_views.h" /* port: a hardcore pane uses the local splitscreen hud */
 
 /* ---------- constants */
 
@@ -441,9 +442,18 @@ __attribute__((noinline)) long get_return_eip(
 	return (long)(__INTPTR_TYPE__)__builtin_return_address(1);
 }
 
+/* port: a hardcore team pane is one local split. the elements, the safe
+frame and the crosshair scale are that split's */
+boolean hud_split_screen(
+	void)
+{
+	return local_player_count() > 1 || hardcore_views_split();
+}
+
 real hud_globals_get_scale(
 	boolean in_multiplayer)
 {
+	(void)in_multiplayer;
 	return 1.0f;
 }
 
@@ -681,7 +691,7 @@ static void hud_draw_multitexture_overlay(
 	parameters.map_scale[0].j = 1.0f;
 	parameters.map_scale[0].i = 1.0f;
 	parameters.meter_parameters = NULL;
-	parameters.point_sampled = local_player_count() == 1;
+	parameters.point_sampled = !hud_split_screen();
 	parameters.map[0] = bitmap_group_get_bitmap_from_sequence(
 		overlay->map[0].index,
 		0,
@@ -807,12 +817,12 @@ static void hud_draw_multitexture_overlay(
 		{
 		case _hud_multitexture_overlay_effector_source_player_pitch:
 			{
-				long unit_index = local_player_get_view_unit_index(local_player_index);
-				real_vector3d direction;
+				/* port: the scope's ticks follow the view (a spectator's in
+				first person, the watched player's). The unit's aim changes once
+				a tick, so the ticks stepped across the picture. */
 				real_euler_angles2d angles;
 
-				unit_get_aiming_vector(unit_index, &direction);
-				euler_angles2d_from_vector3d(&angles, &direction);
+				euler_angles2d_from_vector3d(&angles, &render.camera.forward);
 				source_value = angles.pitch;
 			}
 			break;
@@ -1412,8 +1422,11 @@ split screen window its share) */
 void hud_zoomed_layout_begin(
 	rectangle2d *saved_window_bounds)
 {
-	long width = render.camera.window_bounds.x1 - render.camera.window_bounds.x0;
-	short inset = (short)((width - width * 640 / halo_screen_width()) / 2);
+	long width;
+	short inset;
+
+	width = render.camera.window_bounds.x1 - render.camera.window_bounds.x0;
+	inset = (short)((width - width * 640 / halo_screen_width()) / 2);
 
 	*saved_window_bounds = render.camera.window_bounds;
 	render.camera.window_bounds.x0 += inset;
@@ -1620,12 +1633,15 @@ static void hud_draw_bitmap_internal(
 	parameters.map_scale[0].j = 1.0f;
 	parameters.map_scale[0].i = 1.0f;
 	parameters.meter_parameters = meter_parameters;
-	parameters.point_sampled = meter_parameters && local_player_count()==1;
+	parameters.point_sampled = meter_parameters && !hud_split_screen();
 	parameters.framebuffer_blend_function =
 		_shader_framebuffer_blend_function_alpha_multiply_add;
 	parameters.map[0] = (struct bitmap_data *)bitmap;
 
+	/* port: a shared Custom Edition sheet is a meter only for this draw */
+	halo_custom_edition_hud_meter(meter_parameters && custom_edition_cache_tags_loaded());
 	rasterizer_psuedo_dynamic_screen_quad_draw(&parameters, vertices);
+	halo_custom_edition_hud_meter(FALSE);
 
 	match_assert_stack_frame("c:\\halo\\SOURCE\\interface\\hud_draw.c", 985);
 
@@ -1972,6 +1988,11 @@ void hud_draw_meter(
 		meter_parameters.tint_color = real_alpha_intensity_to_pixel32(
 			PIN(meter->fade, 0.0f, 1.0f),
 			PIN(1.0f-meter->opacity, 0.0f, 1.0f));
+		/* port: a Custom Edition map that relies on Gearbox's meters keeps
+		this tint's color channels full, so the meter's own colors stay.
+		The fade and opacity remain in the alpha. */
+		if (custom_edition_cache_relies_on(_custom_edition_behaviour_gearbox_meters))
+			meter_parameters.tint_color |= 0x00FFFFFF;
 		meter_parameters.gradient = 1.0f;
 		meter_parameters.flash_color_is_negative = FALSE;
 		meter_parameters.tint_mode_2 = TRUE;

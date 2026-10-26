@@ -6,8 +6,8 @@ The native ports' settings (port_config.h), parsed with tomlc17
 type, default, the HALO_* environment variable that overrides it and the
 comment written into a new file. The file is read once, on the first
 question; unknown keys and values of the wrong type are reported in the log
-and the defaults used instead, and the file itself is never rewritten once
-it exists, so that the player's edits and comments stay.
+and the defaults used instead. Missing defaults and explicitly saved settings
+preserve the player's other values, edits and comments.
 */
 
 #include "platform.h"
@@ -16,11 +16,14 @@ it exists, so that the player's edits and comments stay.
 
 #include <SDL3/SDL.h>
 #include <ctype.h>
+#include <limits.h>
+#include <math.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #ifndef _WIN32
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -109,6 +112,7 @@ static const struct config_setting config_settings[] =
 		"Xbox's 4:3." },
 	{ "display.vsync", _config_boolean, "true", "HALO_NO_VSYNC", _environment_set_is_false, _platform_all,
 		"Wait for the display between frames; false draws as fast as possible." },
+	/* Original Xbox presentation is the fork's baseline; enhancements are opt-in. */
 	{ "display.max_fps", _config_integer, "0", "HALO_MAX_FPS", _environment_value, _platform_desktop,
 		"With vsync off, the most frames a second: 0 for twice the display's\n"
 		"refresh rate, -1 for no limit (which can hang some Intel graphics)." },
@@ -121,14 +125,17 @@ static const struct config_setting config_settings[] =
 	{ "display.interpolation", _config_boolean, "true", "HALO_INTERPOLATION", _environment_value, _platform_all,
 		"Draw a frame for every display refresh, blending between the game's 30\n"
 		"ticks a second; false keeps the original 30 frames a second." },
+	{ "display.timer_position", _config_integer, "0", "HALO_TIMER_POSITION", _environment_value, _platform_all,
+		"PB timer position: 0 is top center, 1 bottom center, 2 bottom right." },
+	{ "display.timer_scale", _config_real, "1.0", "HALO_TIMER_SCALE", _environment_value, _platform_all,
+		"PB timer size, 0.5 to 1.0. These preferences do not enable the timer." },
 	{ "display.direct_camera", _config_boolean, "true", "HALO_DIRECT_CAMERA", _environment_value, _platform_desktop,
 		"In first person, point the view where the player aims now instead of\n"
 		"where the last tick left it: the view turns the frame the mouse moves,\n"
 		"not up to two ticks (66 ms) later." },
 	{ "display.fov", _config_real, "0.0", "HALO_FOV", _environment_value, _platform_all,
-		"The first-person view's field of view on foot, in degrees across at\n"
-		"16:9 (20 to 150); 0 keeps the stock view. Vehicles, cinematics and\n"
-		"scripted cameras keep their own." },
+		"On-foot first-person horizontal FOV at 16:9, in degrees (20 to 150);\n"
+		"0 keeps the authored view. Other cameras keep their own FOV." },
 	{ "display.viewmodel_fov", _config_real, "0.0", "HALO_VIEWMODEL_FOV", _environment_value, _platform_all,
 		"The first-person weapon's and hands' field of view, in degrees across\n"
 		"at 16:9 (20 to 150); 0 keeps the weapon's stock view, also when\n"
@@ -146,6 +153,9 @@ static const struct config_setting config_settings[] =
 		"High-res gameplay controller buttons: classic uses plain Xbox faces;\n"
 		"gems uses shaded Xbox faces; menu_gems uses the menu's button art.\n"
 		"Requires display.high_res_hud." },
+	{ "display.campaign_hud", _config_boolean, "false", "HALO_CAMPAIGN_HUD", _environment_value, _platform_all,
+		"On a Custom Edition map, draw the campaign HUD. The reticle stays\n"
+		"the map's. false draws the map's HUD. The next map loaded uses the choice." },
 	{ "display.high_res_text", _config_boolean, "true", "HALO_HIGH_RES_TEXT", _environment_value, _platform_all,
 		"Draw the menus' and HUD's text with the fonts in port/assets/fonts\n"
 		"(Overpass) at the resolution the game draws at, and the menus' titles\n"
@@ -162,19 +172,28 @@ static const struct config_setting config_settings[] =
 		"whose loc.map is in custom_maps (as that edition shows them; English\n"
 		"without one), \"english\" for English. The port's own lines are English." },
 	{ "display.player_names", _config_string, "\"all\"", "HALO_PLAYER_NAMES", _environment_value, _platform_all,
-		"In multiplayer, whose names are drawn above their heads: \"all\",\n"
-		"\"allies\", \"enemies\" or \"none\". An enemy's shows only within the\n"
-		"motion sensor's reach, in sight and not camouflaged; none show if the\n"
-		"gametype's motion tracker shows no players, only allies' if it shows\n"
-		"only friends." },
+		"Kept so an older config file still loads. Names are not drawn above\n"
+		"players. Teammates use the game's marker." },
 	{ "display.player_name_scale", _config_real, "1.0", "HALO_PLAYER_NAME_SCALE", _environment_value, _platform_all,
 		"How large the players' names are drawn: 1.0 three quarters of the size of\n"
 		"the HUD's text, 0.25 to 4." },
-	{ "display.match_timer", _config_boolean, "false", "HALO_MATCH_TIMER", _environment_value, _platform_all,
-		"Draw the match clock at the bottom right in multiplayer. It counts up\n"
-		"from the game's first tick, which the items' respawn periods count from\n"
-		"too: a weapon is back on the map at every multiple of its period on the\n"
-		"clock." },
+	{ "display.match_timer", _config_string, "\"off\"", "HALO_MATCH_TIMER", _environment_value, _platform_all,
+		"The match clock at the bottom right in multiplayer: \"off\", \"on\", or\n"
+		"\"voice\". On counts up from the game's first tick. Voice plays this\n"
+		"machine's countdown. A map with talking_timer keeps its own announcer.\n"
+		"A file that still has true or false is read as on or off, and true with\n"
+		"the old timer voice becomes voice." },
+	{ "display.teammate_views", _config_boolean, "false", "HALO_TEAMMATE_VIEWS", _environment_value, _platform_all,
+		"In a team game, split this screen so one local player can see teammates\n"
+		"from their own eyes, up to four panes, for the whole match. A dead\n"
+		"teammate keeps the pane. Off leaves the view as it is. A free-for-all\n"
+		"does not split, and Add Player is still a second local player." },
+	{ "display.teammate_view_slot", _config_string, "\"top_left\"", "HALO_TEAMMATE_VIEW_SLOT", _environment_value,
+		_platform_all,
+		"Which pane is yours when teammate views are on, on this machine:\n"
+		"\"top\", \"bottom\", \"top_left\", \"top_right\", \"bottom_left\" or\n"
+		"\"bottom_right\". Two panes are top and bottom. Three give a wide top\n"
+		"and two bottoms. Four are the corners." },
 	{ "display.scoreboard_team_layout", _config_string, "\"teams\"", "HALO_SCOREBOARD_TEAM_LAYOUT", _environment_value,
 		_platform_all,
 		"How the scoreboard lists a team game's players: \"teams\" in a column for\n"
@@ -245,8 +264,9 @@ static const struct config_setting config_settings[] =
 	{ "audio.music_volume", _config_real, "1.0", "HALO_MUSIC_VOLUME", _environment_value, _platform_all,
 		"The music's volume, 0.0 to 1.0 (of audio.volume)." },
 	{ "audio.effects_volume", _config_real, "1.0", "HALO_EFFECTS_VOLUME", _environment_value, _platform_all,
-		"The volume of every other sound (effects and speech), 0.0 to 1.0 (of\n"
-		"audio.volume)." },
+		"The volume of the sound effects and the multiplayer announcer, 0.0 to\n"
+		"1.0 (of audio.volume); the units' and scripts' dialogue is\n"
+		"audio.dialogue_volume's." },
 	{ "audio.buffer_frames", _config_integer, "512", "HALO_AUDIO_BUFFER_FRAMES", _environment_value,
 		_platform_desktop,
 		"The audio device's buffer, in sample frames at 48 kHz (64 to 8192): larger\n"
@@ -255,6 +275,25 @@ static const struct config_setting config_settings[] =
 	{ "audio.channels", _config_string, "\"stereo\"", "HALO_AUDIO_CHANNELS", _environment_value, _platform_desktop,
 		"\"stereo\", \"5.1\" (surround, as the Xbox's Dolby Digital), or \"auto\"\n"
 		"for 5.1 when the sound device has six or more channels." },
+	{ "audio.dialogue_volume", _config_real, "1.0", "HALO_DIALOGUE_VOLUME", _environment_value, _platform_all,
+		"Unit and scripted dialogue volume, 0.0 to 1.0." },
+	{ "audio.timer_volume", _config_real, "1.0", "HALO_TIMER_VOLUME", _environment_value, _platform_all,
+		"Optional Performance Build timer recordings volume, 0.0 to 1.0." },
+	{ "audio.timer_countdown", _config_boolean, "true", "HALO_TIMER_COUNTDOWN", _environment_value, _platform_all,
+		"Play countdown announcements when the host enables PB Timer Sounds." },
+	{ "audio.timer_beeps", _config_boolean, "true", "HALO_TIMER_BEEPS", _environment_value, _platform_all,
+		"Play countdown beeps when the host enables PB Timer Sounds." },
+	{ "audio.timer_minutes", _config_boolean, "true", "HALO_TIMER_MINUTES", _environment_value, _platform_all,
+		"Announce elapsed minutes when the host enables PB Timer Sounds." },
+	{ "audio.timer_items", _config_boolean, "false", "HALO_TIMER_ITEMS", _environment_value, _platform_all,
+		"Announce scheduled rockets and powerups on supported maps when the\n"
+		"host enables PB Timer Sounds. Off preserves the existing timer audio." },
+	{ "audio.hardcore_timer_voice", _config_boolean, "true", "HALO_HARDCORE_TIMER_VOICE", _environment_value, _platform_all,
+		"Kept so an old file can move onto display.match_timer. The match clock's\n"
+		"Voice choice plays this machine's countdown." },
+	{ "audio.menu_music", _config_boolean, "true", "HALO_MENU_MUSIC", _environment_value, _platform_all,
+		"Play the main menu title music. False keeps menu effects and gameplay\n"
+		"audio enabled. In-game audio settings apply immediately when accepted." },
 	{ "audio.reverb", _config_boolean, "true", "HALO_REVERB", _environment_value, _platform_all,
 		"Reverberate the world's sounds as the place the player is in does (the\n"
 		"maps' sound environments, as the Xbox's I3DL2 reverb did); false keeps\n"
@@ -332,8 +371,7 @@ static const struct config_setting config_settings[] =
 	{ "controls.fire", _config_string, "\"Mouse Left\"", "HALO_KEY_FIRE", _environment_value, _platform_all,
 		"Firing." },
 	{ "controls.throw_grenade", _config_string, "\"Mouse Right, G\"", "HALO_KEY_THROW_GRENADE", _environment_value,
-		_platform_all,
-		"Throwing a grenade." },
+		_platform_all, "Throwing a grenade." },
 	{ "controls.melee", _config_string, "\"F, Mouse 4\"", "HALO_KEY_MELEE", _environment_value, _platform_all,
 		"Melee attack." },
 	{ "controls.reload", _config_string, "\"R\"", "HALO_KEY_RELOAD", _environment_value, _platform_all,
@@ -341,18 +379,15 @@ static const struct config_setting config_settings[] =
 	{ "controls.zoom", _config_string, "\"Z, Mouse Middle\"", "HALO_KEY_ZOOM", _environment_value, _platform_all,
 		"Zooming the scope." },
 	{ "controls.switch_weapon", _config_string, "\"Wheel, 1\"", "HALO_KEY_SWITCH_WEAPON", _environment_value,
-		_platform_all,
-		"Switching weapons." },
+		_platform_all, "Switching weapons." },
 	{ "controls.switch_grenade", _config_string, "\"X\"", "HALO_KEY_SWITCH_GRENADE", _environment_value, _platform_all,
 		"Switching grenades." },
 	{ "controls.action", _config_string, "\"E\"", "HALO_KEY_ACTION", _environment_value, _platform_all,
-		"The action: picking up (held: swapping weapons), entering and leaving\n"
-		"vehicles, pressing switches; never reloading (the controller's X does\n"
-		"when there is nothing to act on)." },
+		"Picking up, entering and leaving vehicles, and pressing switches." },
 	{ "controls.flashlight", _config_string, "\"Q\"", "HALO_KEY_FLASHLIGHT", _environment_value, _platform_all,
 		"The flashlight." },
 	{ "controls.scoreboard", _config_string, "\"Tab\"", "HALO_KEY_SCOREBOARD", _environment_value, _platform_all,
-		"Showing the scores (the controller's Back)." },
+		"Showing the scores." },
 	{ "controls.pause", _config_string, "\"Escape\"", "HALO_KEY_PAUSE", _environment_value, _platform_all,
 		"The pause menu (the controller's Start)." },
 	{ "controls.screenshot", _config_string, "\"F10\"", "HALO_KEY_SCREENSHOT", _environment_value, _platform_all,
@@ -364,6 +399,11 @@ static const struct config_setting config_settings[] =
 		"Escape lets it go)." },
 	{ "controls.team_chat", _config_string, "\"Y\"", "HALO_KEY_TEAM_CHAT", _environment_value, _platform_all,
 		"Network games' text chat: type a line to your team." },
+
+	/* Bindings are config-only: they do not need application environment variables. */
+#define BINDING(name, mac, other, comment) { "bindings." #name, _config_string, "\"" other "\"", NULL, _environment_value, _platform_all, comment },
+#include "input_bindings.def"
+#undef BINDING
 
 	{ "game.console_log", _config_string, "\"important\"", "HALO_CONSOLE_LOG", _environment_value, _platform_all,
 		"What the game's console shows on screen of what it logs: \"important\"\n"
@@ -455,7 +495,9 @@ static const struct config_setting config_settings[] =
 		"single quotes: 'C:\\Games\\Halo'." },
 	{ "paths.saves", _config_string, "\"\"", "HALO_SAVE_ROOT", _environment_value, _platform_desktop,
 		"Where saved games and profiles go; empty for the usual place\n"
-		"(~/.local/share/halo-linux, or %APPDATA%\\halo on Windows)." },
+		"(~/.local/share/halo-og, or %APPDATA%\\Halo OG on Windows).\n"
+		"Legacy default saves are copied without replacing existing files;\n"
+		"if migration fails, the game reports it and keeps the legacy folder." },
 	{ "paths.photos", _config_string, "\"\"", "HALO_PHOTOS_ROOT", _environment_value, _platform_desktop,
 		"Where photo mode's photos go; empty for the usual place (the Pictures\n"
 		"folder's OpenCE folder)." },
@@ -489,9 +531,8 @@ static const struct config_setting config_settings[] =
 		"machine's game, and when joining a game takes too long. False never\n"
 		"asks." },
 	{ "network.public_lobby", _config_boolean, "true", "HALO_NET_PUBLIC_LOBBY", _environment_value, _platform_all,
-		"The server browser: public games are listed through the signalling\n"
-		"brokers, and Join Game > Server Browser shows them. False lists no\n"
-		"game of this machine's and shows none." },
+		"The server browser: public games are listed, and Join Game > Server\n"
+		"Browser shows them. False lists no game and shows none." },
 	{ "network.host_public", _config_boolean, "true", "HALO_NET_HOST_PUBLIC", _environment_value, _platform_all,
 		"Whether a new game of Create Game > Internet starts as PUBLIC (listed\n"
 		"in everyone's server browser: anyone can see and join it) or, false,\n"
@@ -752,6 +793,12 @@ static const struct config_setting config_settings[] =
 	{ "debug.exit_after", _config_real, "0.0", "HALO_EXIT_AFTER", _environment_value, _platform_all,
 		"Quit this many seconds after the window opens (without a window, after\n"
 		"the first frame); 0 never." },
+	{ "debug.menu_open", _config_string, "\"\"", "HALO_MENU_OPEN", _environment_value, _platform_all,
+		"Start on this screen of the menus instead of the main menu; empty for\n"
+		"the main menu." },
+	{ "debug.gpu_flush_draws", _config_integer, "-1", "HALO_GPU_FLUSH_DRAWS", _environment_value, _platform_desktop,
+		"Flush the GPU's pipeline every this many draws: -1 for every 3 on Intel\n"
+		"graphics with Mesa's driver, 0 never." },
 	{ "debug.hidden_window", _config_boolean, "false", "HALO_HIDDEN_WINDOW", _environment_set_is_true, _platform_desktop,
 		"Keep the window hidden (and never fullscreen)." },
 	{ "debug.voice_test", _config_boolean, "false", "HALO_VOICE_TEST", _environment_set_is_true, _platform_all,
@@ -761,12 +808,6 @@ static const struct config_setting config_settings[] =
 		"Run without a window, drawing nothing." },
 	{ "debug.gl_debug", _config_boolean, "false", "HALO_GL_DEBUG", _environment_set_is_true, _platform_all,
 		"Report OpenGL errors in the log." },
-	{ "debug.menu_open", _config_string, "\"\"", "HALO_MENU_OPEN", _environment_value, _platform_all,
-		"Start on this screen of the menus (port/assets/menus) instead of the main\n"
-		"menu, a player profile being edited; empty for the main menu." },
-	{ "debug.gpu_flush_draws", _config_integer, "-1", "HALO_GPU_FLUSH_DRAWS", _environment_value, _platform_desktop,
-		"Flush the GPU's pipeline every this many draws: -1 for every 3 on Intel\n"
-		"graphics with Mesa's driver (which can hang without), 0 never." },
 	{ "debug.gpu_stats", _config_boolean, "false", "HALO_GPU_STATS", _environment_set_is_true, _platform_all,
 		"Log the renderer's draw counts once a second." },
 	{ "debug.gpu_trace_frame", _config_integer, "-1", "HALO_GPU_TRACE", _environment_value, _platform_all,
@@ -820,7 +861,7 @@ static const struct config_setting config_settings[] =
 
 #define NUMBER_OF_CONFIG_SETTINGS (sizeof(config_settings) / sizeof(config_settings[0]))
 
-#ifdef HALO_ANDROID
+#if defined(HALO_ANDROID)
 #define CONFIG_PLATFORM _platform_android
 #elif defined(HALO_WEB)
 #define CONFIG_PLATFORM (_platform_desktop | _platform_web)
@@ -840,13 +881,24 @@ struct config_value
 
 static struct config_value config_values[NUMBER_OF_CONFIG_SETTINGS];
 static int config_loaded = 0;
+/* display.match_timer used to be true or false. -1: the file had a string
+or no value. 0 or 1: the file had that boolean, so a true can become
+"voice" once audio.hardcore_timer_voice has been read. */
+static int match_timer_file_boolean = -1;
+static volatile unsigned long config_change_count;
 static pthread_mutex_t config_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* ---------- the file */
 
 static void config_path(char *path, size_t size)
 {
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#if defined(HALO_IOS)
+	/* Apple app bundles are read-only on iOS. Keep settings with the saves
+	in the writable Application Support directory selected by the host. */
+	const char *root = getenv("HALO_SAVE_ROOT");
+
+	snprintf(path, size, "%s/config.toml", root && *root ? root : ".");
+#elif defined(HALO_ANDROID) || defined(HALO_WEB)
 	/* the data folder, which the app names (port/android/host/host_main.c;
 	on the web, port/web/src/web_main.c) */
 	const char *root = getenv("HALO_DATA_ROOT");
@@ -977,19 +1029,22 @@ static void config_append_setting(struct config_text *text, const struct config_
 	}
 #ifndef HALO_ANDROID
 	/* (Android apps have no environment to set) */
-	switch (setting->environment_style)
+	if (setting->environment)
 	{
-	case _environment_value:
-		snprintf(buffer, sizeof(buffer), "# (for one run: %s=<value>)\n", setting->environment);
-		break;
-	case _environment_set_is_true:
-		snprintf(buffer, sizeof(buffer), "# (for one run: %s=1 makes it true)\n", setting->environment);
-		break;
-	case _environment_set_is_false:
-		snprintf(buffer, sizeof(buffer), "# (for one run: %s=1 makes it false)\n", setting->environment);
-		break;
+		switch (setting->environment_style)
+		{
+		case _environment_value:
+			snprintf(buffer, sizeof(buffer), "# (for one run: %s=<value>)\n", setting->environment);
+			break;
+		case _environment_set_is_true:
+			snprintf(buffer, sizeof(buffer), "# (for one run: %s=1 makes it true)\n", setting->environment);
+			break;
+		case _environment_set_is_false:
+			snprintf(buffer, sizeof(buffer), "# (for one run: %s=1 makes it false)\n", setting->environment);
+			break;
+		}
+		config_append(text, buffer);
 	}
-	config_append(text, buffer);
 #endif
 	snprintf(buffer, sizeof(buffer), "%s = %s\n", dot + 1, setting->default_value);
 	config_append(text, buffer);
@@ -1247,8 +1302,7 @@ static void config_set_from_text(struct config_value *value, enum config_type ty
 		value->real = strtod(text, NULL);
 		break;
 	case _config_string:
-		/* (the old string is kept, not freed: config_string's callers hold
-		its pointer, and Settings writes few, seldom) */
+		free(value->string);
 		value->string = strdup(text);
 		break;
 	}
@@ -1291,6 +1345,12 @@ static void config_set_from_file(struct config_value *value, const struct config
 			free(value->string);
 			value->string = strdup(datum.u.s);
 		}
+		else if (datum.type == TOML_BOOLEAN && !strcmp(setting->name, "display.match_timer"))
+		{
+			free(value->string);
+			value->string = strdup(datum.u.boolean ? "on" : "off");
+			match_timer_file_boolean = datum.u.boolean ? 1 : 0;
+		}
 		else
 		{
 			wrong_type = 1;
@@ -1305,10 +1365,6 @@ static void config_set_from_file(struct config_value *value, const struct config
 			expected[setting->type], setting->default_value);
 	}
 }
-
-/* how many times a setting has been written (config_write): readers that
-keep a setting watch this, to read it again */
-static volatile unsigned long config_change_count;
 
 static long config_setting_index(const char *name)
 {
@@ -1527,6 +1583,9 @@ static const struct
 	{ "display.player_names", { "all", "allies", "enemies", "none", NULL }, NULL },
 	{ "display.scoreboard_team_layout", { "teams", "score", NULL }, NULL },
 	{ "display.chat_style", { "colors", "white", NULL }, NULL },
+	{ "display.match_timer", { "off", "on", "voice", NULL }, "on" },
+	{ "display.teammate_view_slot", { "top", "bottom", "top_left", "top_right", "bottom_left", "bottom_right", NULL },
+		NULL },
 	{ "display.shield_glow_intensity", { "default", "light_show", NULL }, NULL },
 	{ "display.shield_color", { "default", "white", "black", "red", "blue", "gray", "yellow", "green", "pink",
 		"purple", "cyan", "cobalt", "orange", "teal", "sage", "brown", "tan", "maroon", "salmon", NULL }, NULL },
@@ -1595,7 +1654,7 @@ static void config_check_words(void)
 	}
 }
 
-static void config_load(void)
+static void config_load(int complete_file)
 {
 	char path[1024];
 	size_t size = 0;
@@ -1659,6 +1718,20 @@ static void config_load(void)
 			}
 			for (index = 0; index < NUMBER_OF_CONFIG_SETTINGS; index++)
 				config_set_from_file(&config_values[index], &config_settings[index], result.toptab);
+			/* an old true, and the old timer voice still on, is On with Voice.
+			an explicit string "on" is left on, even when that voice key is true */
+			if (match_timer_file_boolean == 1)
+			{
+				long voice = config_setting_index("audio.hardcore_timer_voice");
+				long timer = config_setting_index("display.match_timer");
+
+				if (voice >= 0 && timer >= 0 && config_values[voice].boolean && config_values[timer].string)
+				{
+					free(config_values[timer].string);
+					config_values[timer].string = strdup("voice");
+				}
+			}
+			match_timer_file_boolean = -1;
 			config_report_unknown_keys(result.toptab);
 			platform_log("settings: %s", path);
 			/* (a file with lines skipped is left as the player wrote it, to
@@ -1668,7 +1741,7 @@ static void config_load(void)
 				platform_log("settings: %d line%s of config.toml skipped; every other setting in it is used", skipped,
 					skipped == 1 ? "" : "s");
 			}
-			else
+			else if (complete_file)
 			{
 				completed = config_add_missing(text, result.toptab);
 				if (completed && !config_write_file(path, completed))
@@ -1684,7 +1757,7 @@ static void config_load(void)
 		toml_free(result);
 		free(text);
 	}
-	else
+	else if (complete_file)
 	{
 		char *defaults = config_default_text();
 
@@ -1718,30 +1791,307 @@ static void config_load(void)
 	config_check_words();
 }
 
-static const struct config_value *config_value(const char *name, enum config_type type)
+static struct config_value config_value(const char *name, enum config_type type)
 {
-	static const struct config_value none = { 0, 0, 0.0, "" };
-	long index;
+	struct config_value result = { 0, 0, 0.0, "" };
+	long index = config_setting_index(name);
 
 	pthread_mutex_lock(&config_lock);
 	if (!config_loaded)
 	{
-		config_load();
+		config_load(1);
 		config_loaded = 1;
 	}
-	pthread_mutex_unlock(&config_lock);
-	index = config_setting_index(name);
-	if (index < 0 || config_settings[index].type != type)
-	{
+	if (index >= 0 && config_settings[index].type == type)
+		result = config_values[index];
+	else
 		platform_log("settings: no %s setting %s", type == _config_string ? "string" : "such", name);
-		return &none;
-	}
-	return &config_values[index];
+	pthread_mutex_unlock(&config_lock);
+	/* Scalar reads are copied while locked, so saves cannot race the mixer
+	or other native callers. Strings are immutable after the initial load. */
+	return result;
 }
 
 /* ---------- writing a setting */
 
-/* the line's key, if it is "key = ..." (after spaces), in key */
+/* Source locations come from the parsed TOML, so comments, quoted keys and
+inline tables are preserved rather than recognized by a line-shaped guess. */
+static const char *config_source_line(const char *text, int number)
+{
+	if (number < 1)
+		return NULL;
+	while (--number)
+	{
+		text = strchr(text, '\n');
+		if (!text)
+			return NULL;
+		text++;
+	}
+	return text;
+}
+
+static char *config_replace_text(const char *text, size_t size, size_t offset, size_t length, const char *replacement)
+{
+	size_t added = strlen(replacement);
+	char *updated;
+
+	if (offset > size || length > size - offset || added > SIZE_MAX - size - 1)
+		return NULL;
+	updated = malloc(size - length + added + 1);
+	if (!updated)
+		return NULL;
+	memcpy(updated, text, offset);
+	memcpy(updated + offset, replacement, added);
+	memcpy(updated + offset + added, text + offset + length, size - offset - length);
+	updated[size - length + added] = 0;
+	return updated;
+}
+
+/* Replace the complete file only after its temporary sibling has been written
+and closed successfully. A failed write must leave the original file intact. */
+static int config_write_file_atomic(const char *path, const char *text)
+{
+	char temporary[1100];
+	int succeeded = 0;
+#ifdef _WIN32
+	SDL_IOStream *file;
+	size_t size = strlen(text);
+
+	snprintf(temporary, sizeof(temporary), "%s.%llu.tmp", path,
+		(unsigned long long)SDL_GetPerformanceCounter());
+	file = SDL_IOFromFile(temporary, "wbx");
+	if (!file)
+		return 0;
+	succeeded = SDL_WriteIO(file, text, size) == size;
+	if (!SDL_CloseIO(file))
+		succeeded = 0;
+	if (succeeded)
+		succeeded = SDL_RenamePath(temporary, path);
+	if (!succeeded)
+		SDL_RemovePath(temporary);
+#else
+	struct stat attributes;
+	FILE *file;
+	int descriptor;
+
+	/* Respect a deliberately read-only config, even though replacing a file
+	would otherwise require only write access to its parent directory. */
+	if (stat(path, &attributes) || !S_ISREG(attributes.st_mode) || access(path, W_OK))
+		return 0;
+	snprintf(temporary, sizeof(temporary), "%s.XXXXXX", path);
+	descriptor = mkstemp(temporary);
+	if (descriptor < 0)
+		return 0;
+	file = fdopen(descriptor, "wb");
+	if (file)
+	{
+		size_t size = strlen(text);
+
+		succeeded = !fchmod(descriptor, attributes.st_mode & 0777) &&
+			fwrite(text, 1, size, file) == size && !fflush(file) && !fsync(descriptor);
+		if (fclose(file))
+			succeeded = 0;
+	}
+	else
+		close(descriptor);
+	if (succeeded)
+		succeeded = !rename(temporary, path);
+	if (!succeeded)
+		unlink(temporary);
+#endif
+	return succeeded;
+}
+
+static int config_number_matches(toml_datum_t datum, enum config_type type, double value)
+{
+	switch (type)
+	{
+	case _config_boolean:
+		return datum.type == TOML_BOOLEAN && datum.u.boolean == (value != 0.0);
+	case _config_integer:
+		return datum.type == TOML_INT64 && datum.u.int64 == (long)value;
+	case _config_real:
+		return (datum.type == TOML_FP64 && datum.u.fp64 == value) ||
+			(datum.type == TOML_INT64 && (double)datum.u.int64 == value);
+	default:
+		return 0;
+	}
+}
+
+/* Source locations come from TOML, including dotted/quoted keys and inline
+ tables. Only the value token is replaced; all surrounding text is retained. */
+static char *config_edit_number(const char *text, size_t size, const struct config_setting *setting, double value)
+{
+	const char *name = setting->name, *dot = strchr(name, '.');
+	char section[64], addition[256], number[64];
+	char *updated = NULL;
+	toml_result_t parsed = toml_parse(text, (int)size);
+	toml_datum_t datum;
+
+	if (!parsed.ok || !dot || (size_t)(dot - name) >= sizeof(section))
+		goto done;
+	if (setting->type == _config_boolean)
+		snprintf(number, sizeof(number), "%s", value ? "true" : "false");
+	else if (setting->type == _config_integer)
+		snprintf(number, sizeof(number), "%ld", (long)value);
+	else
+	{
+		snprintf(number, sizeof(number), "%.17g", value);
+		if (!strpbrk(number, ".eE"))
+			strcat(number, ".0");
+	}
+	datum = toml_seek(parsed.toptab, name);
+	if ((setting->type == _config_boolean && datum.type == TOML_BOOLEAN) ||
+		(setting->type == _config_integer && datum.type == TOML_INT64) ||
+		(setting->type == _config_real && (datum.type == TOML_FP64 || datum.type == TOML_INT64)))
+	{
+		const char *line = config_source_line(text, datum.lineno);
+
+		if (line && datum.colno > 0 && (size_t)(datum.colno - 1) < strcspn(line, "\r\n"))
+		{
+			const char *token = line + datum.colno - 1;
+			size_t length = strcspn(token, " \t\r\n,#}]");
+
+			if (length)
+				updated = config_replace_text(text, size, (size_t)(token - text), length, number);
+		}
+	}
+	else if (datum.type == TOML_UNKNOWN)
+	{
+		toml_datum_t table;
+		const char *line;
+
+		snprintf(section, sizeof(section), "%.*s", (int)(dot - name), name);
+		table = toml_get(parsed.toptab, section);
+		line = config_source_line(text, table.lineno);
+		if (line)
+			while (*line == ' ' || *line == '\t') line++;
+		if (table.type == TOML_UNKNOWN)
+		{
+			snprintf(addition, sizeof(addition), "%s[%s]\n%s = %s\n",
+				size && text[size - 1] != '\n' ? "\n" : "", section, dot + 1, number);
+			updated = config_replace_text(text, size, size, 0, addition);
+		}
+		else if (table.type == TOML_TABLE && line && *line == '[' && line[1] != '[')
+		{
+			const char *end = strchr(line, '\n');
+			size_t offset = end ? (size_t)(end + 1 - text) : size;
+
+			snprintf(addition, sizeof(addition), "%s%s = %s\n", end ? "" : "\n", dot + 1, number);
+			updated = config_replace_text(text, size, offset, 0, addition);
+		}
+		else if (table.type == TOML_TABLE)
+		{
+			/* Dotted-key tables can be extended at top level. Inline tables
+			are closed; the final parse rejects extending them. */
+			snprintf(addition, sizeof(addition), "%s = %s\n", name, number);
+			updated = config_replace_text(text, size, 0, 0, addition);
+		}
+	}
+ done:
+	toml_free(parsed);
+	return updated;
+}
+
+int config_write_numbers(const char *const *names, const double *values, unsigned count)
+{
+	long indices[NUMBER_OF_CONFIG_SETTINGS];
+	char path[1024], *text = NULL;
+	size_t size = 0;
+	unsigned item;
+	int succeeded = 0;
+
+	if (count > NUMBER_OF_CONFIG_SETTINGS || (count && (!names || !values)))
+		return 0;
+	if (!count)
+		return 1;
+	for (item = 0; item < count; item++)
+	{
+		long index = names[item] ? config_setting_index(names[item]) : -1;
+		double value = values[item];
+		unsigned previous;
+
+		if (index < 0 || !isfinite(value) || config_settings[index].type == _config_string)
+			return 0;
+		if (config_settings[index].type == _config_boolean && value != 0.0 && value != 1.0)
+			return 0;
+		if (config_settings[index].type == _config_integer &&
+			(value < (double)LONG_MIN || value >= -(double)LONG_MIN || (double)(long)value != value))
+			return 0;
+		for (previous = 0; previous < item; previous++)
+			if (indices[previous] == index)
+				return 0;
+		indices[item] = index;
+	}
+	pthread_mutex_lock(&config_lock);
+	if (!config_loaded)
+	{
+		/* A save as the first config operation must not rewrite missing
+		defaults before the requested batch has been validated and committed. */
+		config_load(0);
+		config_loaded = 1;
+	}
+	config_path(path, sizeof(path));
+	text = config_read_file(path, &size);
+	if (!text || size > INT_MAX)
+		goto done;
+	for (item = 0; item < count; item++)
+	{
+		char *updated = config_edit_number(text, size, &config_settings[indices[item]], values[item]);
+
+		if (!updated)
+			goto done;
+		free(text);
+		text = updated;
+		size = strlen(text);
+		if (size > INT_MAX)
+			goto done;
+	}
+	{
+		toml_result_t check = toml_parse(text, (int)size);
+		int valid = check.ok;
+
+		for (item = 0; valid && item < count; item++)
+			valid = config_number_matches(toml_seek(check.toptab, names[item]),
+				config_settings[indices[item]].type, values[item]);
+		toml_free(check);
+		if (valid)
+			succeeded = config_write_file_atomic(path, text);
+	}
+	if (succeeded)
+	{
+		for (item = 0; item < count; item++)
+		{
+			struct config_value *saved = &config_values[indices[item]];
+
+			switch (config_settings[indices[item]].type)
+			{
+			case _config_boolean: saved->boolean = values[item] != 0.0; break;
+			case _config_integer: saved->integer = (long)values[item]; break;
+			case _config_real: saved->real = values[item]; break;
+			default: break;
+			}
+		}
+		config_change_count++;
+	}
+ done:
+	pthread_mutex_unlock(&config_lock);
+	free(text);
+	return succeeded;
+}
+
+int config_write_boolean(const char *name, int value)
+{
+	long index = name ? config_setting_index(name) : -1;
+	double number = value != 0;
+
+	if (index < 0 || config_settings[index].type != _config_boolean)
+		return 0;
+	return config_write_numbers(&name, &number, 1);
+}
+
+
+/* the line's key, if it is "key = ..." (after spaces) */
 static int config_line_key(const char *line, const char *end, const char *key)
 {
 	size_t length = strlen(key);
@@ -1756,7 +2106,6 @@ static int config_line_key(const char *line, const char *end, const char *key)
 	return line < end && *line == '=';
 }
 
-/* the section the line opens, if it is "[section]" (after spaces) */
 static int config_line_section(const char *line, const char *end, char *section, size_t size)
 {
 	const char *close;
@@ -1773,9 +2122,6 @@ static int config_line_section(const char *line, const char *end, char *section,
 	return 1;
 }
 
-/* sets a setting, for now and in config.toml, from its value as text
-("true", "60", "1.5", "all"): its line there is changed (or added), the rest
-of the file kept as it is */
 int config_write(const char *name, const char *value)
 {
 	const char *dot = strchr(name, '.');
@@ -1783,13 +2129,12 @@ int config_write(const char *name, const char *value)
 	char section[64], key[64], wanted[80], current[64] = "", line_text[600], path[1024];
 	struct config_text out = { 0 };
 	size_t size = 0;
-	char *text;
+	char *file_text;
 	const char *line;
 	int written = 0, in_section = 0, succeeded;
 
 	if (index < 0 || !dot || (size_t)(dot - name) >= sizeof(section) || strlen(value) > 256)
 		return 0;
-	/* (the file read first, as the other settings are) */
 	config_value(name, config_settings[index].type);
 	pthread_mutex_lock(&config_lock);
 	config_set_from_text(&config_values[index], config_settings[index].type, value);
@@ -1804,7 +2149,6 @@ int config_write(const char *name, const char *value)
 		snprintf(line_text, sizeof(line_text), "%s = %ld\n", key, config_values[index].integer);
 		break;
 	case _config_real:
-		/* (with its point: TOML reads 1 as an integer) */
 		snprintf(line_text, sizeof(line_text), "%s = %.15g", key, config_values[index].real);
 		if (!strpbrk(line_text + strlen(key) + 3, ".en"))
 			strcat(line_text, ".0");
@@ -1827,15 +2171,14 @@ int config_write(const char *name, const char *value)
 	}
 	snprintf(wanted, sizeof(wanted), "%s", section);
 	config_path(path, sizeof(path));
-	text = config_read_file(path, &size);
-	for (line = text ? text : ""; *line;)
+	file_text = config_read_file(path, &size);
+	for (line = file_text ? file_text : ""; *line;)
 	{
 		const char *end = line + strcspn(line, "\n");
 		const char *next = *end ? end + 1 : end;
 
 		if (config_line_section(line, end, current, sizeof(current)))
 		{
-			/* (leaving the section without the key: it goes at its end) */
 			if (in_section && !written)
 			{
 				config_append(&out, line_text);
@@ -1878,23 +2221,14 @@ int config_write(const char *name, const char *value)
 	config_change_count++;
 	pthread_mutex_unlock(&config_lock);
 	free(out.buffer);
-	free(text);
+	free(file_text);
 	return succeeded;
 }
 
-int config_write_boolean(const char *name, int value)
-{
-	long index = config_setting_index(name);
-
-	return index >= 0 && config_settings[index].type == _config_boolean && config_write(name, value ? "true" : "false");
-}
-
-/* a setting's value as text ("true", "60", "1.5", "all"): 0 if there is no
-such setting */
 int config_text(const char *name, char *text, size_t size)
 {
 	long index = config_setting_index(name);
-	const struct config_value *value;
+	struct config_value value;
 
 	if (index < 0)
 		return 0;
@@ -1902,16 +2236,16 @@ int config_text(const char *name, char *text, size_t size)
 	switch (config_settings[index].type)
 	{
 	case _config_boolean:
-		snprintf(text, size, "%s", value->boolean ? "true" : "false");
+		snprintf(text, size, "%s", value.boolean ? "true" : "false");
 		break;
 	case _config_integer:
-		snprintf(text, size, "%ld", value->integer);
+		snprintf(text, size, "%ld", value.integer);
 		break;
 	case _config_real:
-		snprintf(text, size, "%.15g", value->real);
+		snprintf(text, size, "%.15g", value.real);
 		break;
 	case _config_string:
-		snprintf(text, size, "%s", value->string ? value->string : "");
+		snprintf(text, size, "%s", value.string ? value.string : "");
 		break;
 	}
 	return 1;
@@ -1935,8 +2269,6 @@ void config_folder(char *path, size_t size)
 	snprintf(path, size, "%s", file);
 }
 
-/* ---------- public code */
-
 char *config_file_read(const char *path, size_t *size)
 {
 	return config_read_file(path, size);
@@ -1957,7 +2289,6 @@ int config_default(const char *name, char *text, size_t size)
 		return 0;
 	value = config_settings[index].default_value;
 	length = strlen(value);
-	/* (a string's without its quotes: the defaults have no escapes) */
 	if (config_settings[index].type == _config_string && length >= 2 && value[0] == '"')
 	{
 		value++;
@@ -1967,9 +2298,11 @@ int config_default(const char *name, char *text, size_t size)
 	return 1;
 }
 
+/* ---------- public code */
+
 int config_boolean(const char *name)
 {
-	return config_value(name, _config_boolean)->boolean;
+	return config_value(name, _config_boolean).boolean;
 }
 
 int halo_fixed_step(void)
@@ -1983,17 +2316,17 @@ int halo_fixed_step(void)
 
 long config_integer(const char *name)
 {
-	return config_value(name, _config_integer)->integer;
+	return config_value(name, _config_integer).integer;
 }
 
 double config_real(const char *name)
 {
-	return config_value(name, _config_real)->real;
+	return config_value(name, _config_real).real;
 }
 
 const char *config_string(const char *name)
 {
-	const char *string = config_value(name, _config_string)->string;
+	const char *string = config_value(name, _config_string).string;
 
 	return string ? string : "";
 }

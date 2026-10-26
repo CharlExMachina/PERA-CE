@@ -34,10 +34,10 @@ enum
 	/* port: the native builds' larger pool (halo_port_capacity.h) */
 	RASTERIZER_MAXIMUM_TRANSPARENT_GEOMETRY_GROUPS = HALO_PORT_MAXIMUM_TRANSPARENT_GEOMETRY_GROUPS,
 	RASTERIZER_MAXIMUM_TRANSPARENT_GEOMETRY_GROUPS2 = 32,
-	/* port: the structure's 32768 triangles (render.h) and, past them, as
-	much again as the Xbox's 16384 left a frame for its lights, shadows and
-	contrails (a request that would fill the buffer is refused) */
-	RASTERIZER_MAXIMUM_DYNAMIC_TRIANGLES = 49152,
+	/* port: twice the buffer that held the structure's 32768 triangles
+	(render.h) and the Xbox's 16384 left for lights, shadows and contrails.
+	A request that would fill the buffer is refused. */
+	RASTERIZER_MAXIMUM_DYNAMIC_TRIANGLES = 98304,
 	RASTERIZER_MAXIMUM_DYNAMIC_TRIANGLE_BUFFERS = 1024,
 	/* four per particle (build_sprites_begin), for the native builds' larger
 	particle pool (halo_port_capacity.h) */
@@ -903,6 +903,33 @@ void rasterizer_text_set_scale(
 	real scale,
 	real origin_x,
 	real origin_y);
+/* port: the 640x480 menus drawn into one pane. quads and text shrink
+about the origin, and the pointer is turned back on the next test */
+void rasterizer_screen_fit_begin(
+	real scale,
+	real origin_x,
+	real origin_y,
+	real pane_x,
+	real pane_y,
+	real pane_w,
+	real pane_h,
+	real ui_offset);
+void rasterizer_screen_fit_pane(
+	short *width,
+	short *height);
+void rasterizer_screen_fit_end(
+	void);
+void rasterizer_screen_fit_clear(
+	void);
+void rasterizer_screen_fit_suspend(
+	boolean suspend);
+boolean rasterizer_screen_fit_drawing(
+	void);
+boolean rasterizer_screen_fit_pointer(
+	real *x,
+	real *y);
+void rasterizer_screen_fit_vertices(
+	struct dynamic_screen_vertex *vertices);
 void rasterizer_text_cache_flush(
 	void);
 void rasterizer_text_cache_dispose(

@@ -913,6 +913,7 @@ symbols in this file:
 #include "bungie_net/network/transport_endpoint_winsock.h"
 #include "cseries/errors.h"
 #include "game/game_engine.h"
+#include "hardcore_rules.h"
 #include "game/players.h"
 #include "interface/marketing_and_strategic_business_development.h"
 #include "interface/player_ui.h"
@@ -930,6 +931,9 @@ symbols in this file:
 #include "custom_edition_maps.h" /* port: port/linux/game/custom_edition_maps.c */
 #include "saved games/saved_game_files.h"
 #include "text/unicode.h"
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+#include "halo_custom_maps.h"
+#endif
 #include "halo_menus.h" /* port: PC_MENU_FUNCTION_BASE */
 
 /* ---------- constants */
@@ -3005,12 +3009,16 @@ static boolean multiplayer_level_list_initialize(
 	match_vassert("c:\\halo\\SOURCE\\interface\\ui_widget_event_handler_functions.c", 1229,
 		definition->child_count == 3,
 		"expected 3 list items for 'multiplayer level list' widget");
-	/* port: the Xbox levels, then the Custom Edition maps in the maps
-	folders, looked for again as the list opens
-	(port/linux/game/custom_edition_maps.c) */
+	/* Community maps follow the Xbox levels. Custom Edition maps follow those
+	when the combined list still fits the Custom Edition list's leading slots. */
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	levels = native_multiplayer_map_list(event_handler_functions.multiplayer_levels, level_count, &level_count);
+#else
+	levels = event_handler_functions.multiplayer_levels;
+#endif
 	custom_edition_maps_look_again();
-	levels = custom_edition_maps_level_list(event_handler_functions.multiplayer_levels, level_count,
-		&level_count);
+	if (level_count <= 16)
+		levels = custom_edition_maps_level_list(levels, level_count, &level_count);
 	widget->generated_list = levels;
 	widget->generated_count = level_count;
 	if (saved_game_file_retrieve_last_used_multiplayer_map(map_name))
@@ -5839,6 +5847,8 @@ static boolean multiplayer_profile_set_for_game(
 		player_ui_set_game_variant(&profile);
 		if (server)
 			network_game_server_change_game_variant(server, &profile);
+		/* The port list loads the sheet with the game type. This list does too. */
+		hardcore_rules_choose(profile_index);
 		return TRUE;
 	}
 	error(2, "failed to retrieve user selected game variant");
@@ -6036,6 +6046,14 @@ short ui_widget_port_gametypes(
 				*last_used = index;
 		}
 	}
+		/* Comp 2v2 is a normal built-in. It edits as a copy. */
+		for (index = 0; index < (short)count; index++)
+		{
+			wchar_t *name = saved_game_file_get_display_name(indices[index]);
+
+		if (name && !ustrcmp(name, L"Comp 2v2"))
+			indices[index] |= FLAG(_saved_game_file_index_read_only_bit);
+	}
 	return (short)count;
 }
 
@@ -6084,14 +6102,31 @@ boolean ui_widget_port_gametype_choose(
 	server = global_network_game_server_get();
 	if (saved_game_file_get_path_to_enclosing_directory(profile_index, directory_path))
 		saved_game_file_remember_last_used_multiplayer_variant_directory(directory_path);
-	player_ui_set_game_variant(&profile);
-	/* (and its PC options: game_engine.h) */
+	/* (and its PC options: game_engine.h. Choosing this gametype again, after
+	a match, keeps the vehicles already set instead of the file's.) */
 	{
+		struct game_variant kept_variant;
 		struct game_variant_options options;
+		boolean keep_vehicles = profile_index == player_ui_get_chosen_variant_index() &&
+			player_ui_game_variant_specified(&kept_variant);
+		struct game_variant_options kept_options;
 
+		if (keep_vehicles)
+			kept_options = *player_ui_get_game_variant_options();
 		playlist_profile_get_options(profile_index, &options);
+		if (keep_vehicles)
+		{
+			options.vehicle_respawn_time = kept_options.vehicle_respawn_time;
+			csmemcpy(options.vehicle_set, kept_options.vehicle_set, sizeof(options.vehicle_set));
+			csmemcpy(options.vehicle_counts, kept_options.vehicle_counts, sizeof(options.vehicle_counts));
+			profile.universal_variant.vehicle_set = kept_variant.universal_variant.vehicle_set;
+		}
+		/* set_game_variant fills the options with this variant's defaults */
+		player_ui_set_game_variant(&profile);
 		player_ui_set_game_variant_options(&options);
 	}
+	player_ui_set_chosen_variant_index(profile_index);
+	hardcore_rules_choose(profile_index);
 	if (server)
 		network_game_server_change_game_variant(server, &profile);
 	return TRUE;
@@ -6275,6 +6310,7 @@ boolean ui_widget_port_gametype_save(
 	struct widget_instance *widget,
 	boolean *widget_deleted)
 {
+	/* Match rules count here too: player_ui_edit_profile_is_dirty. */
 	if (!player_ui_edit_profile_is_dirty())
 	{
 		player_ui_end_editing_profile();

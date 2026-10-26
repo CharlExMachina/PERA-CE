@@ -1,42 +1,42 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- The PC version's menus: ui\shell\main_menu\settings_select\player_setup\player_profile_edit (tools/ce_menus.py) -->
 <menus>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/about_item" type="text" left="51" top="310" width="232" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="9" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/about_item" type="text" left="51" top="342" width="226" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="9" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
 		<on event="left_mouse" run="NULL"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/audio_settings_profile_item" type="text" left="51" top="210" width="232" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="4" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/audio_settings_profile_item" type="text" left="51" top="210" width="226" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="4" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
 		<on event="a" open="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/audio_settings_screen"/>
 		<on event="start" open="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/audio_settings_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/color_profile_item" type="text" left="51" top="277" width="232" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="6" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/color_profile_item" type="text" left="51" top="309" width="226" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="6" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
 		<on event="a" open="main_menu/settings_select/player_setup/player_profile_edit/color_edit/color_select_screen"/>
 		<on event="start" open="main_menu/settings_select/player_setup/player_profile_edit/color_edit/color_select_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/controller_setup_profile_item" type="text" left="51" top="111" width="232" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="1" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/controller_setup_profile_item" type="text" left="51" top="111" width="238" height="32" bitmap="bitmaps/list_item_bkd_top" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="1" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
 		<on event="a" open="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/controls_settings_screen"/>
 		<on event="start" open="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/controls_settings_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepads_profile_item" type="text" left="51" top="144" width="232" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="2" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepads_profile_item" type="text" left="51" top="144" width="226" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="2" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
 		<on event="a" open="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gamepad_setup_screen"/>
 		<on event="start" open="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gamepad_setup_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/header_profile_settings" controller="1" left="35" top="11" width="605" height="59" bitmap="main_menu/settings_select/player_setup/player_profile_edit/header_edit_profile_settings">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings_profile_item" type="text" left="51" top="177" width="232" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="3" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings_profile_item" type="text" left="51" top="177" width="226" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="3" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
 		<on event="a" open="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_settings_screen"/>
 		<on event="start" open="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_settings_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/name_profile_item" type="text" left="51" top="78" width="232" height="32" bitmap="bitmaps/list_item_bkd_top" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/name_profile_item" type="text" left="51" top="78" width="238" height="32" bitmap="bitmaps/list_item_bkd_top" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
 		<on event="a" run="player profile change name" open="main_menu/settings_select/player_setup/player_profile_edit/name_edit/profile_name_screen"/>
 		<on event="start" run="player profile change name" open="main_menu/settings_select/player_setup/player_profile_edit/name_edit/profile_name_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/network_settings_profile_item" type="text" left="51" top="277" width="232" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="8" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/network_settings_profile_item" type="text" left="51" top="276" width="226" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="8" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
 		<on event="a" open="main_menu/settings_select/player_setup/player_profile_edit/network_setup/network_settings_screen"/>
 		<on event="start" open="main_menu/settings_select/player_setup/player_profile_edit/network_setup/network_settings_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -72,6 +72,7 @@
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_select_list" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child up_down_tabs_items" description="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_extended_description">
 		<data input="plyr prof edit select menu upd8"/>
+		<data input="port profile rows"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/name_profile_item"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/controller_setup_profile_item"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepads_profile_item"/>
@@ -79,14 +80,14 @@
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/audio_settings_profile_item"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings_profile_item"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/network_settings_profile_item"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/color_profile_item" y="32"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/about_item" y="32"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/color_profile_item"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/about_item"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_button_bar" y="414"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/profile_label" type="text" controller="1" width="400" height="22" font="ui\large_ui" color="#FFFFFFFF">
 		<data input="get edit plyr profile name"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings_profile_item" type="text" left="51" top="243" width="232" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="5" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings_profile_item" type="text" left="51" top="243" width="226" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/settings_select/player_setup/player_profile_edit/profile_edit_options" string_index="5" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
 		<on event="a" open="main_menu/settings_select/player_setup/player_profile_edit/video_settings/video_settings_screen"/>
 		<on event="start" open="main_menu/settings_select/player_setup/player_profile_edit/video_settings/video_settings_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>

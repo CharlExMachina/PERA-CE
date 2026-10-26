@@ -456,12 +456,16 @@ unsigned long p2p_now(void)
 	return GetTickCount();
 }
 
+/* whether time milliseconds have passed since since; 0 is "never", which
+is long ago (a machine up more than 24.8 days has a clock past 2^31
+milliseconds, where the signed difference from 0 is negative and nothing
+that starts from 0 would ever happen) */
 static int elapsed(unsigned long since, unsigned long time)
 {
 	/* (unsigned, as the clock wraps: a signed difference is negative for
 	half of it, which had nothing lapse from a time of 0 from 24.8 days of
 	uptime on) */
-	return (unsigned int)(p2p_now() - since) >= (unsigned int)time;
+	return !since || (unsigned int)(p2p_now() - since) >= (unsigned int)time;
 }
 
 unsigned long p2p_resolve(const char *host)
@@ -3395,8 +3399,14 @@ static void poll_invite_file(void)
 	if (!elapsed(checked_time, 1000))
 		return;
 	checked_time = p2p_now();
+#ifdef HALO_IOS
+	/* (the iOS app's host writes it in the saves folder: port/apple/host/host_invite.c) */
+	snprintf(path, sizeof(path), "%s/join_link.txt", platform_save_root());
+	snprintf(taken, sizeof(taken), "%s/join_link.taken", platform_save_root());
+#else
 	snprintf(path, sizeof(path), "%s/join_link.txt", platform_data_root());
 	snprintf(taken, sizeof(taken), "%s/join_link.taken", platform_data_root());
+#endif
 	/* (taken first: a link the launcher writes while this reads is left for
 	the next look, not removed unread) */
 	if (rename(path, taken) != 0)

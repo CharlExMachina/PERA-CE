@@ -169,7 +169,8 @@ tags to a file, as they would sit at `0x40440000`.
 
 Loading, step by step (`custom_edition_cache_load`):
 
-1. The header: signatures, version 609, terminated strings, file length (0,
+1. The header: signatures, version 609 or Halo PC's 7 (competitive maps are
+   version 7; both share this header and `0x40440000`), terminated strings, file length (0,
    as Invader leaves it, for the whole file) within the file and the size
    limit (`0x30000000`: Halo PC's was `0x18000000`, and Invader builds
    larger maps, which Chimera runs), no compression, tag data within the

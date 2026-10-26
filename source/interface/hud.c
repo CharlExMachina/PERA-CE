@@ -82,6 +82,9 @@ symbols in this file:
 #include "cutscene/cinematics.h"
 #include "devices/device_controls.h"
 #include "game/game_engine.h"
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+#include "../../port/linux/game/performance_options.h"
+#endif
 #include "game/game_globals.h"
 #include "game/players.h"
 #include "interface/hud.h"
@@ -89,6 +92,7 @@ symbols in this file:
 #include "interface/hud_messaging.h"
 #include "interface/hud_unit.h"
 #include "interface/hud_weapon.h"
+#include "interface/hud_draw.h"
 #include "interface/interface.h"
 #include "interface/motion_sensor.h"
 #include "interface/weapon_hud_interface_definition.h"
@@ -109,6 +113,8 @@ symbols in this file:
 #include "text/draw_string.h"
 #include "coop_spectate.h" /* port: port/linux/game/coop_spectate.c */
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
+#include "hardcore_timer.h" /* port: the match clock, on each pane */
+#include "hardcore_views.h" /* port: a teammate pane draws that player's HUD */
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
 #include "spectator.h" /* port: port/linux/game/spectator.c */
 #include "text/font_group.h"
@@ -1404,62 +1410,13 @@ static void temporary_hud_draw(
 	return;
 }
 
-/* port: the match clock (display.match_timer, off by default: Custom
-Edition's HUD has none), counting up from the game's
-first tick, which the items' respawn periods count from as well
-(game_engine_update_item_spawn's game_time_get() % respawn_period): an item
-is back on the map at every multiple of its period on the clock. */
-static boolean hud_match_timer_setting(
-	void)
-{
-	static boolean setting = FALSE;
-	static unsigned long read_at = (unsigned long)-1;
-
-	/* (read again when Settings changes it) */
-	if (read_at != config_changes())
-	{
-		read_at = config_changes();
-		setting = config_boolean("display.match_timer") != 0;
-	}
-
-	return setting;
-}
-
+/* port: the white HUD clock is gone. Graphics' Match Timer
+(display.match_timer) draws the blue clock from hardcore_timer_render
+(port/linux/game/hardcore_timer.c) when it is on, and nothing when it is
+off. */
 static void hud_draw_match_timer(
 	void)
 {
-	long font_index = hud_get_font_index();
-	wchar_t time_string[32];
-	real_argb_color color;
-	rectangle2d bounds;
-	struct font_header *font;
-
-	if (!hud_match_timer_setting() || font_index == NONE)
-		return;
-	ticks_to_unicode_time_string(game_time_get(), NUMBEROF(time_string), time_string);
-	/* (a time under a minute is drawn with no minutes digit, which a clock
-	counting up from zero starts at: " :07") */
-	if (time_string[0] == L' ')
-		time_string[0] = L'0';
-	font = font_definition_get(font_index);
-	/* (the HUD's window, which a wide screen widens and a split screen
-	divides, in the view's coordinates; into the corner, where the first
-	person's weapon is not drawn) */
-	bounds.x1 = render.camera.window_bounds.x1 - render.camera.viewport_bounds.x0 - 5;
-	bounds.x0 = bounds.x1 - 320;
-	bounds.y1 = render.camera.window_bounds.y1 - render.camera.viewport_bounds.y0 - 14;
-	bounds.y0 = bounds.y1 - (font->ascending_height + font->descending_height);
-	hud_get_text_color(&color);
-	/* (lifted toward white, and whole: the HUD's own text colour is lost
-	against a map as bright as it) */
-	color.red += (1.0f - color.red) * 0.65f;
-	color.green += (1.0f - color.green) * 0.65f;
-	color.blue += (1.0f - color.blue) * 0.65f;
-	color.alpha = 1.0f;
-	/* (right justified: 1) */
-	draw_string_set_draw_mode(font_index, NONE, 1, 0, &color);
-	rasterizer_draw_unicode_string(&bounds, NULL, NULL, 0, time_string);
-
 	return;
 }
 
@@ -1468,6 +1425,9 @@ void hud_draw_screen(
 {
 	long player_index = local_player_get_player_index(render.local_player_index);
 	director_perspective perspective = director_get_perspective(render.local_player_index);
+	/* port: the spare slot has no director, so the first-person test would
+	skip their weapon, shield and reticle. their sounds stay off this machine */
+	boolean teammate_pane = hardcore_views_is_teammate_window((short)render.window_index);
 
 	rasterizer_hud_begin();
 	if (player_index != NONE)
@@ -1475,6 +1435,12 @@ void hud_draw_screen(
 		/* port: the view's player (a spectator's, the player it watches in
 		first person, whose HUD it sees: port/linux/game/spectator.c) */
 		struct player_datum *player = local_player_get_view_player(render.local_player_index);
+		struct object_datum *body = player->unit_index == NONE
+			? NULL
+			: object_try_and_get(player->unit_index);
+		/* port: a teammate's corpse is the death camera, not their weapon */
+		boolean unit_dead = !body ||
+			TEST_FLAG(body->object.damage_flags, _object_dead_bit);
 
 		if ((!game_engine_running() || game_engine_display_team_indicators()) &&
 			!cinematic_in_progress())
@@ -1511,31 +1477,54 @@ void hud_draw_screen(
 
 		if (hud_scripted_globals->show_hud)
 		{
-			if (perspective != _director_perspective_neutral &&
-				perspective != _director_perspective_scripted &&
-				player->unit_index != NONE)
+			if ((teammate_pane ||
+				(perspective != _director_perspective_neutral &&
+					perspective != _director_perspective_scripted)) &&
+				player->unit_index != NONE &&
+				!(teammate_pane && unit_dead))
 			{
 				hud_render_weapon_interface(player);
-				hud_show_action_response(player_index);
-				hud_play_unit_sounds(player, hud_scripted_globals->show_hud);
+				if (!teammate_pane)
+				{
+					hud_show_action_response(player_index);
+					hud_play_unit_sounds(player, hud_scripted_globals->show_hud);
+				}
 				hud_render_unit_interface(player);
-				hud_render_nav_points(render.local_player_index);
-				hud_render_damage_indicators(render.local_player_index);
+				if (!teammate_pane)
+				{
+					hud_render_nav_points(render.local_player_index);
+					hud_render_damage_indicators(render.local_player_index);
+				}
 			}
-			else
+			else if (!(teammate_pane && unit_dead && player->unit_index != NONE))
 			{
 				hud_show_action_response(player_index);
-				hud_play_unit_sounds(player, hud_scripted_globals->show_hud);
+				if (!teammate_pane)
+					hud_play_unit_sounds(player, hud_scripted_globals->show_hud);
 			}
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+			performance_options_render();
+#endif
 		}
-		else
+		else if (!teammate_pane)
 		{
 			hud_play_unit_sounds(player, FALSE);
 		}
 
-		hud_messaging_update(render.local_player_index);
-		/* port: network games' text chat, the lines this view's player hears */
-		network_chat_draw(render.local_player_index);
+		/* port: the blue match clock, bottom right of this pane. the
+		countdown is not played from here. */
+		hardcore_timer_render();
+
+		/* port: messages and chat stay on the local pane (network games'
+		text chat, the lines this view's player hears). a dead teammate pane
+		still draws that player's respawn line */
+		if (!teammate_pane)
+		{
+			hud_messaging_update(render.local_player_index);
+			network_chat_draw(render.local_player_index);
+		}
+		else if (player->unit_index == NONE)
+			hud_messaging_draw_state(render.local_player_index);
 	}
 
 	rasterizer_hud_end();

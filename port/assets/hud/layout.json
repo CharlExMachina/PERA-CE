@@ -3549,6 +3549,194 @@
      "kind": "alpha"
     }
    ]
+  },
+  {
+   "name": "hud_waypoints_powerups__0",
+   "tag": "ui\\hud\\bitmaps\\combined\\hud_waypoints_powerups",
+   "bitmap": 0,
+   "width": 256,
+   "height": 256,
+   "format": "a8r8g8b8",
+   "scale": 8,
+   "crc": 1501657632,
+   "cells": [
+    {
+     "xbox": [
+      0,
+      0,
+      256,
+      256
+     ],
+     "svg": "hud__bitmaps__combined__hud_waypoints_powerups.svg",
+     "source_scale": 8,
+     "source": [
+      0,
+      0
+     ],
+     "clip": [
+      0,
+      0,
+      2048,
+      2048
+     ],
+     "kind": "alpha",
+     "score": 1
+    },
+    {
+     "xbox": [
+      4,
+      4,
+      38,
+      38
+     ],
+     "svg": "hud__bitmaps__combined__hud_waypoints.svg",
+     "source_scale": 4,
+     "source": [
+      -2,
+      -2
+     ],
+     "clip": [
+      0,
+      0,
+      132,
+      132
+     ],
+     "kind": "alpha",
+     "score": 0.731
+    },
+    {
+     "xbox": [
+      43,
+      2,
+      77,
+      36
+     ],
+     "svg": "hud__bitmaps__combined__hud_waypoints.svg",
+     "source_scale": 4,
+     "source": [
+      129,
+      -3
+     ],
+     "clip": [
+      132,
+      0,
+      264,
+      132
+     ],
+     "kind": "alpha",
+     "score": 0.705
+    },
+    {
+     "xbox": [
+      83,
+      4,
+      117,
+      38
+     ],
+     "svg": "hud__bitmaps__combined__hud_waypoints.svg",
+     "source_scale": 4,
+     "source": [
+      261,
+      -2
+     ],
+     "clip": [
+      264,
+      0,
+      396,
+      132
+     ],
+     "kind": "alpha",
+     "score": 0.648
+    },
+    {
+     "xbox": [
+      83,
+      44,
+      117,
+      78
+     ],
+     "svg": "hud__bitmaps__combined__hud_waypoints.svg",
+     "source_scale": 4,
+     "source": [
+      -3,
+      132
+     ],
+     "clip": [
+      0,
+      133,
+      132,
+      265
+     ],
+     "kind": "alpha",
+     "score": 0.716
+    },
+    {
+     "xbox": [
+      163,
+      46,
+      197,
+      80
+     ],
+     "svg": "hud__bitmaps__combined__hud_waypoints.svg",
+     "source_scale": 4,
+     "source": [
+      129,
+      131
+     ],
+     "clip": [
+      132,
+      133,
+      264,
+      265
+     ],
+     "kind": "alpha",
+     "score": 0.652
+    },
+    {
+     "xbox": [
+      5,
+      85,
+      39,
+      119
+     ],
+     "svg": "hud__bitmaps__combined__hud_waypoints.svg",
+     "source_scale": 4,
+     "source": [
+      262,
+      131
+     ],
+     "clip": [
+      264,
+      133,
+      396,
+      265
+     ],
+     "kind": "alpha",
+     "score": 0.579
+    },
+    {
+     "xbox": [
+      125,
+      87,
+      159,
+      121
+     ],
+     "svg": "hud__bitmaps__combined__hud_waypoints.svg",
+     "source_scale": 4,
+     "source": [
+      -2,
+      263
+     ],
+     "clip": [
+      0,
+      266,
+      132,
+      398
+     ],
+     "kind": "alpha",
+     "score": 0.691
+    }
+   ]
   }
  ]
 }

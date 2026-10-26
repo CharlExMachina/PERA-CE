@@ -453,6 +453,12 @@ symbols in this file:
 #include "cseries/errors.h"
 #include "game/game.h"
 #include "game/game_engine.h"
+#include "../../port/linux/game/hardcore_rules.h"
+#include "game/performance_variant.h"
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+#include "../../port/linux/game/performance_options.h"
+#include "performance_audio.h"
+#endif
 #include "game/player_queues_new.h"
 #include "game/players.h"
 #include "interface/ui_widget.h"
@@ -465,6 +471,7 @@ symbols in this file:
 #include "networking/network_game_protocol.h"
 #include "networking/network_game_ui.h"
 #include "networking/network_messages.h"
+#include "networking/network_performance_protocol.h"
 #include "networking/network_server_manager.h"
 #include "networking/network_server_manager_internal.h"
 #include "networking/network_server_message_handler.h"
@@ -803,6 +810,10 @@ spawned them, and those whose machines left while the game loaded (whom no
 quit message reached, the server being in the pregame) are removed from the
 game once it has loaded (network_game_server_all_machines_have_loaded) */
 static struct network_player network_game_server_start_players[MAXIMUM_NETWORK_PLAYER_COUNT];
+/* port: Xbox grenade/light flags are fixed when the match starts; a late
+loader must see the same side of the five-player cutoff as the existing
+players */
+static boolean network_game_server_started_with_five_players;
 
 /* port: each joined client machine's IPv4 address (0: none), by slot, which
 a datagram is matched to without asking every connection for its address
@@ -872,6 +883,140 @@ static boolean network_game_server_map_pending[MAXIMUM_NETWORK_MACHINE_COUNT];
 put back when the download is done (they spawn then, not before) */
 static struct network_player network_game_server_held_players[MAXIMUM_NETWORK_PLAYER_COUNT];
 static long network_game_server_held_player_count;
+
+/* port: PB Options (port/linux/game/performance_options.c): what each client
+machine said it supports, before it joined (network_performance_protocol.h).
+A capability is attached to a connection slot, never a player or address. */
+static byte network_game_server_performance_capabilities[MAXIMUM_NETWORK_MACHINE_COUNT];
+
+void platform_show_message(char const *title, char const *message);
+
+void network_game_server_performance_capability(
+	struct network_game_server_client_machine *machine,
+	unsigned flags)
+{
+	if (machine && VALID_INDEX(machine->machine_index, MAXIMUM_NETWORK_MACHINE_COUNT))
+		network_game_server_performance_capabilities[machine->machine_index] =
+			(byte)(flags & NETWORK_PERFORMANCE_SUPPORTED_FLAGS);
+}
+
+boolean network_game_server_performance_supported(
+	struct network_game_server_client_machine *machine,
+	unsigned flags)
+{
+	unsigned supported = machine && VALID_INDEX(machine->machine_index, MAXIMUM_NETWORK_MACHINE_COUNT)
+		? network_game_server_performance_capabilities[machine->machine_index] : 0;
+	return network_performance_can_join(flags, supported);
+}
+
+static boolean network_game_server_original_grenade_peers_support(
+	struct network_game_server *server,
+	struct game_variant const *variant,
+	long player_count)
+{
+	long index;
+
+	if (!TEST_FLAG(variant->universal_variant.flags, _game_variant_infinite_grenades_bit))
+		return TRUE;
+	if (server->state == _network_game_server_state_ingame &&
+		network_game_server_started_with_five_players != (player_count >= 5))
+	{
+		platform_show_message("Halo: incompatible late-join grenade rules",
+			"Infinite Grenades uses the player count at the start of the match.\n\n"
+			"Adding this player would give a newly loading machine different grenade rules. "
+			"Start the next match with these players, or turn Infinite Grenades off in its game type.");
+		return FALSE;
+	}
+	if (player_count < 5)
+		return TRUE;
+	for (index = 0; index < MAXIMUM_NETWORK_MACHINE_COUNT; ++index)
+	{
+		struct network_game_server_client_machine *machine = &server->client_machines[index];
+
+		if (network_game_server_client_machine_is_joined_to_game(server, machine) &&
+			!network_game_server_client_machine_is_local(server, machine) &&
+			!network_game_server_performance_capabilities[index])
+		{
+			platform_show_message("Halo: incompatible grenade rules",
+				"This build preserves the Xbox infinite-grenade cutoff at five players.\n\n"
+				"A connected build uses different rules. Turn Infinite Grenades off, "
+				"or use this build on every machine for games with five or more players.");
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+
+static boolean network_game_server_performance_peers_support(
+	struct network_game_server *server,
+	unsigned flags)
+{
+	long index;
+
+	if (flags & _performance_option_timer_audio)
+	{
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		if (!halo_performance_audio_available())
+#endif
+		{
+			platform_show_message("Halo: timer recordings missing",
+				"Timer audio needs the complete timer recording pack in the game data folder.\n\n"
+				"Install the recordings and restart Halo, or turn Timer Audio off for this game type.");
+			return FALSE;
+		}
+	}
+	for (index = 0; flags && index < MAXIMUM_NETWORK_MACHINE_COUNT; ++index)
+	{
+		struct network_game_server_client_machine *machine = &server->client_machines[index];
+		if (network_game_server_client_machine_is_joined_to_game(server, machine) &&
+			!network_game_server_client_machine_is_local(server, machine) &&
+			!network_game_server_performance_supported(machine, flags))
+		{
+			platform_show_message("Halo: practice options unavailable",
+				"A connected player does not support these practice options.\n\n"
+				"Every player needs a compatible build and the timer recordings before Timer Audio can be enabled. "
+				"Turn off unsupported options, or have that player update or leave.");
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+boolean performance_options_set_host_flags(
+	unsigned long flags)
+{
+	struct network_game_server *server = global_network_game_server_get();
+	long index;
+
+	if (!server || (flags & ~((unsigned long)PERFORMANCE_OPTIONS_MASK)) ||
+		!network_game_server_performance_peers_support(server, (unsigned)flags))
+		return FALSE;
+
+	performance_variant_set_flags(&server->game.variant, (unsigned)flags);
+	performance_variant_set_flags(game_engine_get_variant(), (unsigned)flags);
+	game_engine_override_game_variant(&server->game.variant);
+	performance_options_apply_host_flags(flags);
+	if (server->state == _network_game_server_state_pregame)
+		network_game_server_send_game_data_pregame(server);
+
+	/* The control goes to loading clients too, after any earlier settings
+	 * and begin-game packets. Old peers see no extension controls when off. */
+	for (index = 0; index < MAXIMUM_NETWORK_MACHINE_COUNT; ++index)
+	{
+		struct network_game_server_client_machine *machine = &server->client_machines[index];
+		word message[NETWORK_PERFORMANCE_MESSAGE_SIZE / sizeof(word)];
+
+		if (!network_game_server_client_machine_is_joined_to_game(server, machine) ||
+			!network_game_server_performance_capabilities[index])
+			continue;
+		network_performance_encode((byte *)message, NETWORK_PERFORMANCE_SETTINGS, (unsigned)flags);
+		if (!network_game_server_send_message_to_client_machine(server, machine, message))
+			network_event("practice settings delivery failed for machine %ld; its failed connection will be removed", index);
+	}
+	return TRUE;
+}
+#endif
 enum
 {
 	NETWORK_GAME_SERVER_PLAYERLESS_MACHINE_TIMEOUT = 15 * MILLISECONDS_PER_SECOND,
@@ -1905,6 +2050,10 @@ boolean network_game_server_start_network_game(
 	boolean success = TRUE;
 
 	match_assert(NETWORK_SERVER_MANAGER_FILE, 0x2DE, server);
+	/* port: PB Options and the grenade cutoff every machine must play alike */
+	if (!network_game_server_performance_peers_support(server, performance_variant_get_flags(&server->game.variant)) ||
+		!network_game_server_original_grenade_peers_support(server, &server->game.variant, server->game.player_count))
+		return FALSE;
 
 	if (server->sent_start_game_message == FALSE)
 	{
@@ -1958,6 +2107,8 @@ boolean network_game_server_start_network_game(
 			else
 				network_event("signalling client machines to begin loading for network game (some machines missed it)");
 			server->sent_start_game_message = TRUE;
+			/* port: (network_game_server_original_grenade_peers_support) */
+			network_game_server_started_with_five_players = server->game.player_count >= 5;
 			csmemcpy(network_game_server_start_players, server->game.players,
 				sizeof(network_game_server_start_players));
 			success = TRUE;
@@ -2573,6 +2724,10 @@ boolean network_game_server_add_player_to_game(
 	match_assert(NETWORK_SERVER_MANAGER_FILE, 0x46C, server);
 	match_assert(NETWORK_SERVER_MANAGER_FILE, 0x46D, machine);
 	match_assert(NETWORK_SERVER_MANAGER_FILE, 0x46E, player);
+	/* port: (network_game_server_original_grenade_peers_support) */
+	if (!network_game_server_original_grenade_peers_support(server, &server->game.variant,
+		server->game.player_count + 1))
+		return FALSE;
 
 	if (machine->machine_index == player->machine_index)
 	{
@@ -3751,9 +3906,19 @@ void network_game_server_change_game_variant(
 	match_assert(NETWORK_SERVER_MANAGER_FILE, 0x7BE, server && variant);
 	match_assert(NETWORK_SERVER_MANAGER_FILE, 0x7BF,
 		server->state == _network_game_server_state_pregame);
+	/* port: PB Options and the grenade cutoff every machine must play alike */
+	if (!network_game_server_performance_peers_support(server, performance_variant_get_flags(variant)) ||
+		!network_game_server_original_grenade_peers_support(server, variant, server->game.player_count))
+		return;
 
 	csmemcpy(&server->game.variant, variant, sizeof(server->game.variant));
 	network_game_server_variant_options(&server->game.variant, &server->game.variant_options);
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	/* port: the gametype's PB Options */
+	performance_options_apply_host_flags(performance_variant_get_flags(variant));
+#endif
+	/* port: a classic gametype ends the mode in the lobby, before the map. */
+	hardcore_rules_host_variant(&server->game.variant);
 
 	if (!network_game_server_send_game_data_pregame(server))
 	{
@@ -3839,6 +4004,8 @@ boolean network_game_server_remove_client_machine_from_game(
 			}
 			server->client_machines[i].connection = NULL;
 			server->client_machines[i].last_received_update_sequence_number = 0;
+			/* port: (network_game_server_performance_capability) */
+			network_game_server_performance_capabilities[i] = 0;
 			server->client_machines[i].last_heard_time = 0;
 			server->client_machines[i].machine_index = NONE;
 			server->client_machines[i].flags = 0;
@@ -4584,6 +4751,14 @@ static boolean network_game_server_setup_game_from_playlist(
 	{
 		wchar_t machine_name[MAXIMUM_MACHINE_NAME_LENGTH] = L"<unknown>";
 
+		/* port: PB Options every machine must support */
+		if (!network_game_server_performance_peers_support(server, performance_variant_get_flags(&server->game.variant)))
+			return FALSE;
+
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		performance_options_apply_host_flags(performance_variant_get_flags(&server->game.variant));
+#endif
+
 		network_game_generate_local_machine_name(machine_name);
 		ustrncpy(server->game.name, machine_name, NETWORK_GAME_NAME_LENGTH - 1);
 		server->game.name[NETWORK_GAME_NAME_LENGTH - 1] = L'\0';
@@ -4678,6 +4853,8 @@ static boolean network_game_server_add_new_client(
 					else
 					{
 						server->client_machines[i].connection = new_connection;
+						/* port: (network_game_server_performance_capability) */
+						network_game_server_performance_capabilities[i] = 0;
 						network_game_invalidate_machine(&server->game, i);
 						server->client_machines[i].machine_index = (short)i;
 						server->client_machines[i].flags =

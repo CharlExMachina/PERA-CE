@@ -1,9 +1,10 @@
-# Halo: Combat Evolved for Linux, Windows, macOS, Android and the web
+# Halo: Combat Evolved for Linux, Windows, macOS, Android, iPhone and the web
 
 [![Join our Discord](https://invidget.switchblade.xyz/9gqcHyr5km)](https://discord.gg/9gqcHyr5km)
 
 This project is a port of the Halo: Combat Evolved decompilation to Linux,
-Windows, macOS, Android and web browsers. The decompilation is of the Xbox build 2342
+Windows, macOS, Android and web browsers, with a developer build for the
+iPhone. The decompilation is of the Xbox build 2342
 (`cachebeta.exe`, SHA-256
 `4cc87b45f721270392a96f1674ed2b5cd4a7bb4355faeab4531d1cf1884d9520`).
 
@@ -11,6 +12,16 @@ Windows, macOS, Android and web browsers. The decompilation is of the Xbox build
 
 The port starts from the decompilation of [bnunu/halo-1](https://github.com/bnunu/halo-1).
 That project is a fork of [punpckhdq/halo](https://github.com/punpckhdq/halo).
+It is [OpenCE](https://github.com/OpenCommunityEdition/OpenCE), with the
+work of [CoreCE](https://github.com/mastercheese-dev/CoreCE), a fork of
+OpenCE: its iPhone app, PB Options and Match Options, and its fixes.
+High-res redraw artists are in [AUTHORS.md](AUTHORS.md).
+
+You can play with up to 128 players, run campaign co-op online, load Custom
+Edition maps, change the field of view, browse servers, host peer-to-peer,
+download missing maps and use voice chat. With Smooth Motion on, the game
+draws a frame for every refresh of the display. The simulation stays at 30
+ticks a second, as on the Xbox.
 
 ## Download
 
@@ -28,6 +39,10 @@ Use the release build to play. The debug build stops at the first failed
 assertion and writes it to the log. Use the debug build to find and report
 problems.
 
+The experimental [iPhone port](port/ios/README.md) is a developer build:
+build it yourself with `tools/ios_build.py`. These releases have no iPhone
+package.
+
 The game updates itself. At start-up it looks for a newer release, and asks
 if you want to install it. Refer to "Updates" in
 [port/linux/README.md](port/linux/README.md#updates). The web site offers
@@ -41,6 +56,14 @@ an older build from that page.
 ### Arch-based Linux Distributions
 
 The above Linux binary release is available on the [AUR](https://aur.archlinux.org/packages/opence-bin).
+
+### Steam Deck
+
+On a Steam Deck, do the setup in Desktop Mode. Unzip the release, then in
+Steam open the Games menu, choose Add a Game, and add `halo` as a non-Steam
+game. It then starts from Game Mode as well. If the Deck sleeps while it is
+hosting, the other players lose the host after 15 seconds. Refer to "Steam
+Deck" in [port/linux/README.md](port/linux/README.md#steam-deck).
 
 ## Game data
 
@@ -90,6 +113,7 @@ Each platform has its own instructions:
 | macOS (Apple silicon app, Metal, SDL3) | [port/macos/README.md](port/macos/README.md) |
 | Android (arm64 app, OpenGL ES 3, SDL3) | [port/android/README.md](port/android/README.md) |
 | Web (WebAssembly, WebGL 2, SDL3; desktop Chrome, Edge and Firefox) | [port/web/README.md](port/web/README.md) |
+| iPhone (arm64 developer build, OpenGL ES 3 through ANGLE on Metal, SDL3) | [port/ios/README.md](port/ios/README.md) |
 
 The Linux README also gives the controls, the settings and the multiplayer
 functions. These are almost the same on all platforms.
@@ -110,6 +134,89 @@ The game can play system link games on a local network and on the internet:
 - The netcode is new. Each machine moves its own player at once,
   and the host makes the decisions for the game. Refer to
   [port/linux/NETCODE.md](port/linux/NETCODE.md).
+- Up to 4 players on one machine in split screen.
+- A host lists a game as public, or keeps it private for the players with
+  the invite. With Discord, the host can send the invite through Discord.
+- Online co-op campaign, with friendly fire, player collisions, and more
+  enemies as the player count grows.
+- Voice chat: push to talk (V) or an open microphone, changed in the audio
+  settings.
+- Map sharing: a player missing the game's Custom Edition map downloads it
+  from the other players.
+- Moderation: the host can kick and ban from the scoreboard, or with the
+  `kick` and `ban` console commands. Players can vote to kick.
+- The scoreboard scrolls (the mouse wheel, or Page Up and Page Down) through
+  a large lobby.
+
+## Custom Edition maps
+
+Put Halo Custom Edition maps in `custom_maps`, beside `maps`. That folder
+also needs `bitmaps.map`, `sounds.map` and `loc.map` from your installed copy
+of Halo Custom Edition.
+
+The Gearbox maps that shipped with Halo PC (Ice Fields, Death Island, Danger
+Canyon, Infinity, Timberland and Gephyrophobia) are a separate set. Copy them
+from a Halo Custom Edition install's `maps` folder into `custom_maps`. They
+then appear under Custom Singleplayer and Custom Multiplayer. A custom
+singleplayer map plays as a campaign level, alone or as online co-op. Maps
+that require OpenSauce do not load.
+
+The server browser and the LAN browser can download a missing custom map from
+the other players, including `bitmaps.map`, `sounds.map` and `loc.map`. This
+works on a LAN, and on the internet when the host has map sharing on (the
+default). Refer to [docs/custom_edition_caches.md](docs/custom_edition_caches.md).
+
+## Community maps and competitive options
+
+Community maps built for the Xbox's v5 NTSC data are installed by hand:
+refer to [the community-map setup](docs/playtesting.md#community-maps).
+
+**PB Options** offers spawn markers, timer announcements, and optional silent
+movement and weapon-ready sounds. Those modifications default off. The host
+chooses them. Use **Stock** for original-rule play. The match clock is each
+machine's Graphics setting: Off, On, or On with Voice. On with Voice plays
+the countdown shipped with the game. Refer to
+[PB Options](docs/performance-options.md).
+
+**Match Options**, on the game type, covers movement sounds, training,
+camouflage, team scores, weapon spread and field of view. The host's choices
+apply to the game. Default field of view leaves each player's Graphics
+setting.
+
+## Graphics
+
+The game keeps the Xbox look until a setting says otherwise. Every setting
+is in "Settings" in [port/linux/README.md](port/linux/README.md#settings).
+
+**Display**
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| DISPLAY MODE, RESOLUTION, WINDOW SIZE | Fullscreen, borderless, or windowed. F11 switches mode. | Borderless, at the display's resolution |
+| RESOLUTION SCALING | Draw at the window's resolution, or at the Xbox's 640x480 and scale it up | Native |
+| V-SYNC, FRAME RATE LIMIT | Wait for the display, or run free up to a frame cap | V-sync on |
+| SMOOTH MOTION | A frame for every refresh, blended between the game's 30 ticks a second | On |
+| INSTANT AIM | In first person, the view turns the frame the mouse moves | On |
+| FOV | On-foot field of view, from 80 to 150 degrees | Stock |
+
+**Image quality**
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| ANTI-ALIASING | FXAA, SMAA, MSAA, or SSAA | Off, as on the Xbox |
+| SHADOW RESOLUTION | Object shadows at 128 (the Xbox's), 256, 512, or 1024 pixels | 128 |
+| PER-PIXEL LIGHTING | Lights models for each pixel | Off |
+| MODEL DETAIL | Stock uses the Xbox's 480 lines. Native uses this display. Highest keeps the most detail. | Stock |
+| HIGH-RES HUD, BUTTON STYLE, HIGH-RES TEXT | Redrawn HUD art, button art, and text that stay sharp when scaled | On for the high-res HUD and text |
+| CAMPAIGN HUD | On a custom map, draw the campaign HUD. The reticle stays the map's. | Off |
+| MATCH TIMER | A clock at the bottom right in multiplayer. On with Voice also plays the countdown | Off |
+
+**Extras**
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| SHIELD GLOW, GLOW INTENSITY | Energy shields light what is around them as they flare | Off |
+| SHIELD COLOR | Your own shield in a multiplayer armor color, as your machine draws it | Default |
 
 ## Build the game
 
@@ -131,6 +238,7 @@ To build the game:
 | `ninja macos` (on a Mac) | `build/macos/OpenCE.app` |
 | `ninja android_apk` | `port/android/app/build/outputs/apk/debug/app-debug.apk` |
 | `ninja web` | `build/web/site/`, the web site (`python tools/web_serve.py` serves it) |
+| `python tools/ios_build.py` (on an Apple silicon Mac, not with ninja) | The iPhone app: refer to [port/ios/README.md](port/ios/README.md) |
 
 If you enter `ninja` without a target, ninja builds the game for the
 computer that you use.
@@ -266,3 +374,12 @@ version (`AGPL-3.0-or-later`). It comes with no warranty. The full text is in
   the web site's `licenses.txt` carry their notices.
 - **Halo is not covered.** The licence covers the work of OpenCE's authors.
   It gives no rights in Halo, its maps or anything else that Microsoft owns.
+
+## Disclaimer
+
+This is an unofficial fan project. It is not endorsed by or affiliated with
+Microsoft, Xbox Game Studios, Halo Studios, Activision, or Bungie. Halo and
+Halo: Combat Evolved are trademarks of Microsoft Corporation. Halo is
+copyright Microsoft Corporation.
+
+Bring your own copy of the game. The download has no game data.

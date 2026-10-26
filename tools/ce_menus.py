@@ -56,7 +56,7 @@ MENUS = ROOT / "port/assets/menus"
 CE = MENUS / "ce"
 SVG_COPIES = MENUS / "svg"
 MAIN_MENU = "ui\\shell\\main_menu\\main_menu"
-TITLE_FONT = ROOT / "port/assets/fonts/OpenCE-Regular.ttf"
+TITLE_FONT = ROOT / "port/assets/fonts/CoreCE-Regular.ttf"
 # the widgets left out, with their pictures (and all they alone lead to):
 # the server browser's GameSpy logo, which the port has no use for, and the
 # main menu's Credits, which the Xbox's game has not
@@ -324,7 +324,7 @@ class Art:
 
     def title(self, name: str, text: str) -> str:
         """a <bitmap> of a title this port has that the PC version has not:
-        the text set in OpenCE (the public-domain Newtown respaced, as the
+        the text set in CoreCE (the public-domain Newtown respaced, as the
         port's titles are: tools/title_assets.py) over the PC headers'
         backdrop"""
         from PIL import ImageDraw, ImageFont
@@ -384,15 +384,29 @@ class Art:
         for index in indices:
             width, height = data[index]["width"], data[index]["height"]
             name = self.frame_sources(relative, index, len(data))[-1]
+            card = port_settings.PORT_CARD_FRAMES.get(name)
+            if card and not any((self.redraws / f"{source}.svg").is_file()
+                                 for source in self.frame_sources(relative, index, len(data))):
+                source, frame, width, height, x, y = card
+                lines.append(f"\t\t<frame{attributes([('map', source), ('index', frame), ('width', width or None), ('height', height or None), ('x', x or None), ('y', y or None)])}/>")
+                continue
             if name in XBOX_FRAMES and not any((self.redraws / f"{source}.svg").is_file()
                                                for source in self.frame_sources(relative, index, len(data))):
                 self.xbox_frames.append((name, tag, XBOX_FRAMES[name]))
                 lines.append(f"\t\t<frame{attributes([('map', tag), ('index', XBOX_FRAMES[name])])}/>")
                 continue
             png = f"ce/{relative}__{index}.png"
+            if name in port_settings.PRESERVE_FRAMES and (MENUS / png).is_file():
+                lines.append(f"\t\t<frame{attributes([('png', png), ('width', width), ('height', height)])}/>")
+                continue
             self.draw(relative, index, len(data), width, height, MENUS / png, self.shown.get(tag, []))
             self.pngs.append(png)
             lines.append(f"\t\t<frame{attributes([('png', png), ('width', width), ('height', height)])}/>")
+        for kind, source, frame, width, height, x, y in port_settings.PORT_EXTRA_FRAMES.get(our_name(tag), []):
+            if kind == "png":
+                lines.append(f"\t\t<frame{attributes([('png', source), ('width', frame), ('height', width)])}/>")
+            else:
+                lines.append(f"\t\t<frame{attributes([('map', source), ('index', frame), ('width', width or None), ('height', height or None), ('x', x or None), ('y', y or None)])}/>")
         # (the port's frames after them: the Xbox map's, scaled)
         for source, index, width, height, x, y in port_settings.BITMAP_FRAMES.get(our_name(tag), []):
             self.added_frames.append((our_name(tag), source, index))

@@ -537,6 +537,67 @@ failed:
 	return NULL;
 }
 
+/* a size the mip chain can cover. 96 is not one: the speaker icons are the
+only menu pictures of such a size, and a mipmapped sample of them comes out
+blank, so they stay on the one sharp level */
+static int power_of_two_size(unsigned long value)
+{
+	return value && (value & (value - 1)) == 0;
+}
+
+unsigned char *hud_hires_override_pixels(long asset, unsigned long *width, unsigned long *height)
+{
+	const struct hud_hires_embedded *embedded;
+	unsigned char *pixels;
+	unsigned long decoded_width = 0, decoded_height = 0;
+
+	if (width)
+		*width = 0;
+	if (height)
+		*height = 0;
+	if (!width || !height || asset < 0 || asset >= hud_hires_asset_count() || textures[asset].failed)
+		return NULL;
+	embedded = &hud_hires_embedded[asset];
+	pixels = NULL;
+#ifdef HUD_HIRES_DECODE_AHEAD
+	/* (decoded as the map loaded, so the first frame only uploads) */
+	pthread_mutex_lock(&decode_lock);
+	while (textures[asset].decode_state == _decode_decoding)
+		pthread_cond_wait(&decode_finished, &decode_lock);
+	if (textures[asset].decode_state == _decode_done)
+	{
+		pixels = textures[asset].pixels;
+		decoded_width = textures[asset].width;
+		decoded_height = textures[asset].height;
+		textures[asset].pixels = NULL;
+		textures[asset].decode_state = _decode_none;
+	}
+	pthread_mutex_unlock(&decode_lock);
+#endif
+	if (!pixels)
+		pixels = png_decode((const unsigned char *)embedded->png, embedded->png_size, &decoded_width, &decoded_height);
+	if (!pixels)
+	{
+		platform_log("high-res hud: could not decode the texture for %s bitmap %d", embedded->tag, embedded->bitmap);
+		textures[asset].failed = 1;
+		return NULL;
+	}
+	*width = decoded_width;
+	*height = decoded_height;
+	return pixels;
+}
+
+unsigned char *hud_hires_png_pixels(const void *png, unsigned long size, unsigned long *width, unsigned long *height)
+{
+	if (width)
+		*width = 0;
+	if (height)
+		*height = 0;
+	if (!png || !size || !width || !height)
+		return NULL;
+	return png_decode(png, size, width, height);
+}
+
 /* a GL texture of a decoded PNG's texels (which it frees), as below */
 static unsigned int png_pixels_texture(unsigned char *pixels, unsigned long width, unsigned long height,
 	unsigned long *levels)
@@ -547,8 +608,11 @@ static unsigned int png_pixels_texture(unsigned char *pixels, unsigned long widt
 	if (!pixels)
 		return 0;
 	*levels = 1;
-	for (largest = width > height ? width : height; largest > 1; largest >>= 1)
-		(*levels)++;
+	if (power_of_two_size(width) && power_of_two_size(height))
+	{
+		for (largest = width > height ? width : height; largest > 1; largest >>= 1)
+			(*levels)++;
+	}
 #ifdef HALO_METAL
 	texture = xgpu_metal_texture_rgba(pixels, width, height, *levels);
 #else
@@ -559,7 +623,8 @@ static unsigned int png_pixels_texture(unsigned char *pixels, unsigned long widt
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, (GLint)*levels - 1);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)width, (GLsizei)height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-	glGenerateMipmap(GL_TEXTURE_2D);
+	if (*levels > 1)
+		glGenerateMipmap(GL_TEXTURE_2D);
 	xgpu_gl_state_invalidate();
 #endif
 	free(pixels);

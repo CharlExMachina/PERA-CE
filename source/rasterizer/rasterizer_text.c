@@ -254,9 +254,62 @@ static short hires_text_next_font = 0;
 static real text_scale = 1.0f;
 static real text_scale_origin_x = 0.0f;
 static real text_scale_origin_y = 0.0f;
+/* port: a 640x480 menu fitted into one pane (rasterizer_screen_fit_begin) */
+static boolean screen_fit_draw = FALSE;
+static boolean screen_fit_suspended = FALSE;
+static real screen_fit_scale = 1.0f;
+static real screen_fit_origin_x = 0.0f;
+static real screen_fit_origin_y = 0.0f;
+static boolean screen_fit_hits = FALSE;
+static real screen_hit_scale = 1.0f;
+static real screen_hit_origin_x = 0.0f;
+static real screen_hit_origin_y = 0.0f;
+static real screen_hit_pane_x = 0.0f;
+static real screen_hit_pane_y = 0.0f;
+static real screen_hit_ui = 0.0f;
+static real screen_fit_pane_w = 0.0f;
+static real screen_fit_pane_h = 0.0f;
 static pixel32 global_shadow_color = 0;
 static short rasterizer_text_unused = 0;
 static short magic_number= 12;
+
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+static struct rasterizer_text_transform
+{
+	real scale, anchor_x, anchor_y;
+} rasterizer_text_transform = { 1.0f, 0.0f, 0.0f };
+#endif
+
+static void rasterizer_text_submit_character(
+	struct dynamic_screen_vertex *vertices)
+{
+	short index;
+
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	if (rasterizer_text_transform.scale != 1.0f)
+	{
+		for (index = 0; index < NUMBER_OF_VERTICES_PER_QUADRILATERAL; ++index)
+		{
+			vertices[index].position.x = rasterizer_text_transform.anchor_x +
+				(vertices[index].position.x - rasterizer_text_transform.anchor_x) * rasterizer_text_transform.scale;
+			vertices[index].position.y = rasterizer_text_transform.anchor_y +
+				(vertices[index].position.y - rasterizer_text_transform.anchor_y) * rasterizer_text_transform.scale;
+		}
+	}
+#endif
+	/* port: the stock font's quads. the high res path scales its own */
+	if (screen_fit_draw && !screen_fit_suspended)
+	{
+		for (index = 0; index < NUMBER_OF_VERTICES_PER_QUADRILATERAL; ++index)
+		{
+			vertices[index].position.x = screen_fit_origin_x +
+				(vertices[index].position.x - screen_fit_origin_x) * screen_fit_scale;
+			vertices[index].position.y = screen_fit_origin_y +
+				(vertices[index].position.y - screen_fit_origin_y) * screen_fit_scale;
+		}
+	}
+	rasterizer_text_draw_character(vertices);
+}
 
 /* ---------- public code */
 
@@ -426,7 +479,7 @@ rasterizer_draw_character(
 		vertices[0].texture_coordinates.y = vertices[1].texture_coordinates.y = (real)v0;
 		vertices[2].texture_coordinates.y = vertices[3].texture_coordinates.y = (real)(v0 + dy);
 
-		rasterizer_text_draw_scaled_character(vertices);
+		rasterizer_text_submit_character(vertices);
 	}
 
 	return;
@@ -562,6 +615,25 @@ rasterizer_draw_string(
 
 	return;
 }
+
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+void rasterizer_draw_string_scaled(
+	rectangle2d const *bounds,
+	rectangle2d const *clip,
+	char const *string,
+	float scale,
+	float anchor_x,
+	float anchor_y)
+{
+	struct rasterizer_text_transform previous = rasterizer_text_transform;
+	/* Shrinking about a point inside the viewport preserves stock clipping. */
+	rasterizer_text_transform.scale = scale >= 0.5f && scale <= 1.0f ? scale : 1.0f;
+	rasterizer_text_transform.anchor_x = anchor_x;
+	rasterizer_text_transform.anchor_y = anchor_y;
+	rasterizer_draw_string(bounds, clip, NULL, 0, string);
+	rasterizer_text_transform = previous;
+}
+#endif
 
 void
 rasterizer_draw_unicode_string(
@@ -751,7 +823,7 @@ rasterizer_draw_character_with_dropshadow(
 			vertices[0].texture_coordinates.y = vertices[1].texture_coordinates.y = (real)v0;
 			vertices[2].texture_coordinates.y = vertices[3].texture_coordinates.y = (real)(v0 + dy);
 
-			rasterizer_text_draw_scaled_character(vertices);
+			rasterizer_text_submit_character(vertices);
 
 			if (!shadow)
 				break;
@@ -777,6 +849,123 @@ void rasterizer_text_set_scale(
 	text_scale = scale > 0.0f ? scale : 1.0f;
 	text_scale_origin_x = origin_x;
 	text_scale_origin_y = origin_y;
+
+	return;
+}
+
+void rasterizer_screen_fit_begin(
+	real scale,
+	real origin_x,
+	real origin_y,
+	real pane_x,
+	real pane_y,
+	real pane_w,
+	real pane_h,
+	real ui_offset)
+{
+	text_scale = scale;
+	text_scale_origin_x = origin_x;
+	text_scale_origin_y = origin_y;
+	screen_fit_draw = TRUE;
+	screen_fit_suspended = FALSE;
+	screen_fit_scale = scale;
+	screen_fit_origin_x = origin_x;
+	screen_fit_origin_y = origin_y;
+	screen_fit_pane_w = pane_w;
+	screen_fit_pane_h = pane_h;
+	screen_fit_hits = TRUE;
+	screen_hit_scale = scale;
+	screen_hit_origin_x = origin_x;
+	screen_hit_origin_y = origin_y;
+	screen_hit_pane_x = pane_x;
+	screen_hit_pane_y = pane_y;
+	screen_hit_ui = ui_offset;
+
+	return;
+}
+
+void rasterizer_screen_fit_end(
+	void)
+{
+	text_scale = 1.0f;
+	text_scale_origin_x = 0.0f;
+	text_scale_origin_y = 0.0f;
+	screen_fit_draw = FALSE;
+	screen_fit_suspended = FALSE;
+
+	return;
+}
+
+void rasterizer_screen_fit_clear(
+	void)
+{
+	rasterizer_screen_fit_end();
+	screen_fit_hits = FALSE;
+
+	return;
+}
+
+void rasterizer_screen_fit_suspend(
+	boolean suspend)
+{
+	screen_fit_suspended = suspend;
+
+	return;
+}
+
+boolean rasterizer_screen_fit_drawing(
+	void)
+{
+	return screen_fit_draw && !screen_fit_suspended;
+}
+
+void rasterizer_screen_fit_pane(
+	short *width,
+	short *height)
+{
+	if (width)
+		*width = (short)screen_fit_pane_w;
+	if (height)
+		*height = (short)screen_fit_pane_h;
+
+	return;
+}
+
+boolean rasterizer_screen_fit_pointer(
+	real *x,
+	real *y)
+{
+	real vx;
+	real vy;
+	real center_x;
+	real center_y;
+
+	if (!x || !y || !screen_fit_hits || !(screen_hit_scale > 0.0f))
+		return FALSE;
+	vx = *x - screen_hit_pane_x + screen_hit_ui;
+	vy = *y - screen_hit_pane_y;
+	center_x = screen_hit_origin_x * (1.0f - screen_hit_scale);
+	center_y = screen_hit_origin_y * (1.0f - screen_hit_scale);
+	*x = (vx - center_x) / screen_hit_scale;
+	*y = (vy - center_y) / screen_hit_scale;
+
+	return TRUE;
+}
+
+void rasterizer_screen_fit_vertices(
+	struct dynamic_screen_vertex *vertices)
+{
+	short vertex_index;
+
+	if (!rasterizer_screen_fit_drawing() || !vertices)
+		return;
+	for (vertex_index = 0; vertex_index < 4; vertex_index++)
+	{
+		vertices[vertex_index].position.x = screen_fit_origin_x +
+			(vertices[vertex_index].position.x - screen_fit_origin_x) * screen_fit_scale;
+		vertices[vertex_index].position.y = screen_fit_origin_y +
+			(vertices[vertex_index].position.y - screen_fit_origin_y) * screen_fit_scale;
+	}
 
 	return;
 }

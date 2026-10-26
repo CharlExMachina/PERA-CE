@@ -798,14 +798,6 @@ char const *custom_edition_maps_level_name(
 	return map ? map->level_name : NULL;
 }
 
-boolean custom_edition_maps_stock(
-	short display_index)
-{
-	struct custom_edition_map *map = custom_edition_map_get(display_index);
-
-	return map && stock_map_index(map->name) != NONE;
-}
-
 wchar_t *custom_edition_maps_name(
 	short display_index)
 {

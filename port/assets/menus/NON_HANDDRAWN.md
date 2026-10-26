@@ -41,28 +41,12 @@ picture of Gamepad Setup: the Xbox's Controller Setup's pictures of the button s
 | `main_menu/settings_select/player_setup/player_profile_edit/profile_options` | `ui\shell\main_menu\settings_select\player_setup\player_profile_edit\controller_edit\config_controller` frame 7 |
 | `main_menu/settings_select/player_setup/player_profile_edit/profile_options` | `ui\shell\main_menu\settings_select\player_setup\player_profile_edit\controller_edit\config_controller` frame 8 |
 
-## Placeholders, to be redrawn
+## Placeholders
 
-The Xbox's map has none of these (or other pictures under the name), so each frame is a placeholder
-until it is redrawn.
-
-| File | Size | The PC version's picture |
-| --- | --- | --- |
-| `ce/shell/main_menu/multiplayer_type_select/mp_options__0.png` | 512x256 | `shell/main_menu/multiplayer_type_select/mp_options__0.png` |
-| `ce/shell/main_menu/multiplayer_type_select/mp_options__1.png` | 512x256 | `shell/main_menu/multiplayer_type_select/mp_options__1.png` |
-| `ce/shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__0.png` | 512x256 | `shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__0.png` |
-| `ce/shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__3.png` | 512x256 | `shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__3.png` |
-| `ce/shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__4.png` | 512x256 | `shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__4.png` |
-| `ce/shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__6.png` | 512x256 | `shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__6.png` |
-| `ce/shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__7.png` | 512x256 | `shell/main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options__7.png` |
-| `ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__1.png` | 512x256 | `shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__1.png` |
-| `ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__3.png` | 512x256 | `shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__3.png` |
-| `ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__4.png` | 512x256 | `shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__4.png` |
-| `ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__5.png` | 512x256 | `shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__5.png` |
-| `ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__6.png` | 512x256 | `shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__6.png` |
-| `ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__8.png` | 512x256 | `shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__8.png` |
-
-13 of 183 frames are placeholders.
+The thirteen frames that were a black "PLACE HOLDER" picture now use a settings card the
+menus already load (the same Xbox `ui.map` frames as the other cards, or the voice speaker
+for Audio). `bitmaps.xml` names each one. `profile_options__4.png` is that speaker, placed
+in the card. The other placeholder PNGs are no longer referenced.
 
 The PC version's `ui\gamespy` and `ui\ticker` fonts are drawn with `ui\small_ui`, which
 the Xbox's map has.

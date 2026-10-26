@@ -352,9 +352,73 @@ the lookup */
 only those as arguments) */
 static unsigned int sampled_stages;
 
+#ifndef HALO_METAL
+/* A clamp-to-edge sample already has the correct interior/edge texel value.
+For a single level, blending it with the border by the footprint's coverage
+exactly restores clamp-to-border, including the half-texel linear fringe.
+Only unsupported GLES border samplers receive this helper (d3d8_gl.c; never
+the Metal renderer's, whose samplers have a border of their own). */
+static void border_sample_function(struct xgpu_text *text, const struct nv2a_pixel_shader_key *key, int stage)
+{
+	unsigned char axes = key->border_axes[stage];
+	unsigned char filtering = key->border_filter[stage];
+
+	if (!axes)
+		return;
+	if (filtering == 4)
+	{
+		/* Optional HUD redraws use a complete, unbiased mip chain. Correct
+		 * the bilinear border footprint separately at each selected level;
+		 * a level-zero coverage mask is wrong across mip transitions. */
+		xgpu_text_append(text,
+			"vec4 sample_border_level%d(vec2 uv, int mip)\n{\n"
+			"\tvec4 value = textureLod(tex%d, uv, float(mip));\n"
+			"\tvec2 size = vec2(textureSize(tex%d, mip));\n"
+			"\tvec2 coverage = clamp(vec2(0.5) + min(uv, vec2(1.0) - uv) * size, 0.0, 1.0);\n"
+			"\treturn mix(texture_border_color[%d], value, %s);\n}\n"
+			"vec4 sample_border%d(vec2 uv)\n{\n"
+			"\tvec2 size = vec2(textureSize(tex%d, 0));\n"
+			"\tvec2 dx = dFdx(uv) * size, dy = dFdy(uv) * size;\n"
+			"\tfloat lod = clamp(0.5 * log2(max(max(dot(dx, dx), dot(dy, dy)), 1.0)),\n"
+			"\t\t0.0, floor(log2(max(size.x, size.y))));\n"
+			"\tint low = int(floor(lod)), high = int(ceil(lod));\n"
+			"\treturn mix(sample_border_level%d(uv, low), sample_border_level%d(uv, high), fract(lod));\n}\n",
+			stage, stage, stage, stage,
+			axes == 3 ? "coverage.x * coverage.y" : axes == 1 ? "coverage.x" : "coverage.y",
+			stage, stage, stage, stage);
+		return;
+	}
+	xgpu_text_append(text,
+		"vec4 sample_border%d(vec2 uv)\n{\n"
+		"\tvec4 value = texture(tex%d, uv, texture_lod_bias[%d]);\n"
+		"\tvec2 size = vec2(textureSize(tex%d, 0));\n", stage, stage, stage, stage);
+	if (filtering == 1 || filtering == 2)
+	{
+		xgpu_text_append(text,
+			"\tvec2 dx = dFdx(uv) * size, dy = dFdy(uv) * size;\n"
+			"\tbool minifying = max(dot(dx, dx), dot(dy, dy)) * exp2(2.0 * texture_lod_bias[%d]) > 1.0;\n"
+			"\tbool linear_filter = %sminifying;\n", stage, filtering == 1 ? "" : "!");
+	}
+	else
+		xgpu_text_append(text, "\tbool linear_filter = %s;\n", filtering == 3 ? "true" : "false");
+	xgpu_text_append(text,
+		"\tvec2 coverage = linear_filter ? clamp(vec2(0.5) + min(uv, vec2(1.0) - uv) * size, 0.0, 1.0)\n"
+		"\t\t: step(vec2(0.0), uv) * (vec2(1.0) - step(vec2(1.0), uv));\n"
+		"\treturn mix(texture_border_color[%d], value, %s);\n}\n", stage,
+		axes == 3 ? "coverage.x * coverage.y" : axes == 1 ? "coverage.x" : "coverage.y");
+}
+#endif
+
 static void sample(struct xgpu_text *text, const struct nv2a_pixel_shader_key *key, int stage, const char *coordinates)
 {
 	sampled_stages |= 1u << stage;
+#ifndef HALO_METAL
+	if (key->border_axes[stage])
+	{
+		xgpu_text_append(text, "sample_border%d((%s).xy * texture_scale[%d].xy)", stage, coordinates, stage);
+		return;
+	}
+#endif
 	switch (key->sampler_type[stage])
 	{
 	case _xgpu_sampler_3d:
@@ -401,6 +465,10 @@ static void texture_stage(struct xgpu_text *text, const struct nv2a_pixel_shader
 		xgpu_text_append(text, "\tt%d = ", stage);
 		sample(text, key, stage, coordinates);
 		xgpu_text_append(text, ";\n");
+		/* A Custom Edition meter sheet still in the Xbox channel order is
+		read as (alpha, alpha, alpha, red) */
+		if (stage == 0 && key->ce_meter_channels && key->sampler_type[stage] == _xgpu_sampler_2d)
+			xgpu_text_append(text, "\tt0 = t0.aaar;\n");
 		if (stage == 0 && key->point_threshold && key->sampler_type[stage] == _xgpu_sampler_2d)
 		{
 			/* IDs must not be averaged with another segment or corrupted by
@@ -808,6 +876,8 @@ char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key)
 		xgpu_text_append(&text, "uniform %s tex%d;\n", sampler_declaration(key->sampler_type[stage]), stage);
 	if (key->source_blend)
 		xgpu_text_append(&text, "uniform vec4 blend_constant;\n");
+	for (stage = 0; stage < 4; stage++)
+		border_sample_function(&text, key, stage);
 	if (key->per_pixel_lighting)
 		model_lighting(&text, key->per_pixel_lighting == 2);
 	xgpu_text_append(&text,

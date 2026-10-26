@@ -32,7 +32,7 @@ has no MSG_NOSIGNAL (each socket is made with SO_NOSIGPIPE instead).
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#ifdef __APPLE__
+#if defined(__APPLE__) && !defined(HALO_IOS)
 #include <crt_externs.h>
 #endif
 
@@ -274,9 +274,34 @@ int posix_socket_sendto(int socket, const void *buffer, int length, int flags,
 	const void *address, int address_length)
 {
 	struct sockaddr_storage storage;
+	const struct sockaddr *destination = address_in(address, address_length, &storage);
+	int result = (int)sendto(socket, buffer, (size_t)length, flags | MSG_NOSIGNAL,
+		destination, (socklen_t)address_length);
 
-	return succeed((int)sendto(socket, buffer, (size_t)length, flags | MSG_NOSIGNAL,
-		address_in(address, address_length, &storage), (socklen_t)address_length));
+#ifdef __APPLE__
+	/* (Darwin refuses a destination on a connected datagram socket, which
+	Winsock and Linux take: the game names its connected peer so, which is
+	sent to as that peer; CoreCE's fix of its macOS and iOS hosts) */
+	if (result < 0 && errno == EISCONN && destination && address_length >= (int)sizeof(struct sockaddr_in))
+	{
+		const struct sockaddr_in *wanted = (const struct sockaddr_in *)destination;
+		struct sockaddr_in peer;
+		socklen_t peer_length = sizeof(peer);
+		int type = 0;
+		socklen_t type_length = sizeof(type);
+
+		if (wanted->sin_family == AF_INET &&
+			getsockopt(socket, SOL_SOCKET, SO_TYPE, &type, &type_length) == 0 && type == SOCK_DGRAM &&
+			getpeername(socket, (struct sockaddr *)&peer, &peer_length) == 0 && peer.sin_family == AF_INET &&
+			peer.sin_port == wanted->sin_port && peer.sin_addr.s_addr == wanted->sin_addr.s_addr)
+		{
+			result = (int)send(socket, buffer, (size_t)length, flags | MSG_NOSIGNAL);
+		}
+		else
+			errno = EISCONN;
+	}
+#endif
+	return succeed(result);
 }
 
 int posix_socket_recv(int socket, void *buffer, int length, int flags)
@@ -662,7 +687,7 @@ posix_ulong posix_resolve_ipv4(const char *host)
 
 int posix_command_line_argument(int index, char *buffer, posix_ulong size)
 {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(HALO_IOS)
 	(void)index;
 	(void)buffer;
 	(void)size;
@@ -763,7 +788,7 @@ int posix_user_secret(unsigned char *secret, int size)
 #endif
 }
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(HALO_IOS)
 /* runs a program with its arguments and waits for it; its exit status, or -1 */
 static int run_program(char *const arguments[])
 {
@@ -846,7 +871,7 @@ int posix_register_url_scheme(const char *scheme, const char *description)
 
 int posix_discord_connect(void)
 {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(HALO_IOS)
 	return -1;
 #else
 	/* where Discord (and its Flatpak and Snap packages) put discord-ipc-N */

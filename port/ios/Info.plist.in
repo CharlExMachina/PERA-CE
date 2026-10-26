@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>Halo</string>
+<key>CFBundleIdentifier</key><string>@HALO_BUNDLE_IDENTIFIER@</string>
+<key>CFBundleName</key><string>CoreCE</string>
+<key>CFBundleDisplayName</key><string>CoreCE</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>0.3.0</string>
+<key>CFBundleVersion</key><string>12</string>
+<key>LSRequiresIPhoneOS</key><true/>
+<key>MinimumOSVersion</key><string>26.0</string>
+<key>UIRequiredDeviceCapabilities</key><array><string>arm64</string><string>metal</string></array>
+<key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+<key>UISupportedInterfaceOrientations~ipad</key><array><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+<key>UIRequiresFullScreen</key><true/>
+<key>CADisableMinimumFrameDurationOnPhone</key><true/>
+<key>UIStatusBarHidden</key><true/>
+<key>UIViewControllerBasedStatusBarAppearance</key><false/>
+<key>UILaunchScreen</key><dict/>
+<key>UIFileSharingEnabled</key><true/>
+<key>UIApplicationSupportsIndirectInputEvents</key><true/>
+<key>LSSupportsOpeningDocumentsInPlace</key><true/>
+<key>NSMicrophoneUsageDescription</key><string>Use your microphone when you enable multiplayer voice chat.</string>
+<key>NSLocalNetworkUsageDescription</key><string>Find Halo games on your local network.</string>
+</dict></plist>

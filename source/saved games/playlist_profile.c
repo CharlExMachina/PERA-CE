@@ -84,6 +84,7 @@ symbols in this file:
 #include "saved games/saved_game_files.h"
 #include "tag_files/files.h"
 #include "game/game_engine_playlist.h"
+#include "hardcore_rules.h"
 #include "text/text_group.h"
 #include "tag_files/tag_groups.h"
 /* the saved game file checksum is an XDK content signature. */
@@ -267,6 +268,7 @@ void playlist_profiles_dispose(
 void playlist_profile_delete(
 	long playlist_profile_index)
 {
+	hardcore_rules_forget(playlist_profile_index);
 	if (playlist_profile_index != NONE &&
 		!delete_enumerated_saved_game_file(playlist_profile_index))
 	{
@@ -518,9 +520,10 @@ void playlist_profile_save_with_options(
 
 	if (playlist_profile_index != NONE)
 	{
-		game_engine_variant_cleanup(variant);
-		/* (a write still running reads the options it was given: it ends
-		first) */
+	game_engine_variant_cleanup(variant);
+	hardcore_rules_note_variant(variant);
+	/* (a write still running reads the options it was given: it ends
+	first) */
 		if (playlist_profile_globals.thread)
 		{
 			while (!thread_has_exited(playlist_profile_globals.thread))
@@ -531,6 +534,7 @@ void playlist_profile_save_with_options(
 		}
 		playlist_profile_write_options = *options;
 		playlist_profile_write(playlist_profile_index, variant);
+		hardcore_rules_store(playlist_profile_index);
 	}
 
 	return;

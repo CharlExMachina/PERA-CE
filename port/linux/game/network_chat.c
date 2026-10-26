@@ -964,6 +964,14 @@ static byte chat_config_flags(
 	return chat_config.known && !chat_joined_listed() ? chat_config.flags : 0;
 }
 
+/* whether this game's host has text chat on: a client goes by the host's
+message, and a listed public game has none */
+boolean network_chat_allowed(
+	void)
+{
+	return TEST_FLAG(chat_config_flags(), _chat_config_allowed_bit) != 0;
+}
+
 static void chat_send_to_clients(void *message, byte type, word size);
 
 /* (the host, in a game) its chat settings sent to every client as they
@@ -2366,7 +2374,8 @@ void network_chat_draw(
 		edge = window.y1 - 9 * line_height;
 	}
 	right = (short)MAX(window.x0 + window_width * CHAT_COLUMN_PERCENT / 100, left + 8 * line_height);
-	rows = local_player_count() > 1 ? CHAT_LINES_SHOWN_SPLIT : CHAT_LINES_SHOWN;
+	/* (a hardcore pane shows as many lines as a local split) */
+	rows = hud_split_screen() ? CHAT_LINES_SHOWN_SPLIT : CHAT_LINES_SHOWN;
 	if (touch)
 	{
 		/* (the touch controls' stick and buttons are at the bottom left: the

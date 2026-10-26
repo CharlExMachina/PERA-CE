@@ -13,6 +13,8 @@ binds as a placeholder bitmap (source/rasterizer/rasterizer_text.c).
 #ifndef TEXT_HIRES_H
 #define TEXT_HIRES_H
 
+#include <stdint.h>
+
 /* an embedded font, and the font tag it draws (by name) */
 struct text_hires_embedded
 {
@@ -56,6 +58,18 @@ int text_hires_glyph(long font, unsigned long code, struct text_hires_glyph *gly
 /* the atlas's placeholder: the D3D texture of the bitmap the game binds,
 and its size; NULL forgets it */
 void text_hires_register_atlas(const unsigned long *texture, unsigned long width, unsigned long height);
+
+/* White RGB with glyph coverage in alpha. A matching revision means nothing new. */
+struct text_hires_atlas_pixels
+{
+	const unsigned char *rgba;
+	unsigned long width, height;
+	uint64_t revision;
+	unsigned long dirty_top, dirty_bottom;
+};
+int text_hires_atlas_pixels(unsigned long data, struct text_hires_atlas_pixels *out);
+int text_hires_atlas_pixels_since(unsigned long data, uint64_t uploaded_revision,
+	struct text_hires_atlas_pixels *out);
 
 /* the GL texture of the atlas when data (a D3D texture's Data) is its
 placeholder's, its rasterized glyphs uploaded; 0 otherwise */

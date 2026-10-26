@@ -690,12 +690,6 @@ const char *profile_trace_name_text(
 	return text;
 }
 
-int profile_trace_name_is_aggregate(
-	int name)
-{
-	return name >= 0 && name < MAXIMUM_PROFILE_TRACE_NAMES && profile_trace_aggregate_names[name];
-}
-
 void profile_trace_begin(
 	int name)
 {

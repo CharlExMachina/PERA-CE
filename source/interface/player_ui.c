@@ -161,6 +161,7 @@ symbols in this file:
 #include "interface/virtual_keyboard.h"
 #include "main/main.h"
 #include "tag_files/tag_groups.h"
+#include "hardcore_rules.h"
 #include "player_ui.h"
 
 /* ---------- constants */
@@ -233,6 +234,8 @@ static struct
 	struct game_variant_options current;
 } player_ui_edit_options;
 static struct game_variant_options player_ui_multiplayer_options;
+/* port: which saved gametype those options belong to */
+static long player_ui_chosen_variant_index = NONE;
 static char player1_profile_path[0x100] = { 0 };
 
 /* ---------- public code */
@@ -437,7 +440,10 @@ boolean player_ui_edit_profile_is_dirty(
 					sizeof(struct game_variant)) ||
 					/* port: and its PC options */
 					csmemcmp(&player_ui_edit_options.original, &player_ui_edit_options.current,
-						sizeof(struct game_variant_options)))
+						sizeof(struct game_variant_options)) ||
+					/* port: training mode and the other match rules. they are
+					   saved beside the variant, so OK has to see them too. */
+					hardcore_rules_changed())
 				{
 					result = TRUE;
 				}
@@ -654,6 +660,18 @@ struct game_variant_options const *player_ui_get_game_variant_options(
 	void)
 {
 	return &player_ui_multiplayer_options;
+}
+
+void player_ui_set_chosen_variant_index(
+	long profile_index)
+{
+	player_ui_chosen_variant_index = profile_index;
+}
+
+long player_ui_get_chosen_variant_index(
+	void)
+{
+	return player_ui_chosen_variant_index;
 }
 
 boolean player_ui_game_variant_specified(
@@ -953,6 +971,29 @@ boolean player_ui_save_profile(
 		default:
 			error(_error_silent, "failed to save profile because we are not editing one");
 			break;
+	}
+
+	/* port: saving this session's gametype keeps a vehicle change from that
+	save. Another change leaves the match's vehicles alone. */
+	if (result &&
+		saved_game_file_get_type(player_ui_globals.edit_profile_index) == _saved_game_file_type_game_variant &&
+		player_ui_globals.edit_profile_index == player_ui_chosen_variant_index &&
+		player_ui_globals.multiplayer_variant_specified &&
+		(player_ui_edit_options.original.vehicle_respawn_time != player_ui_edit_options.current.vehicle_respawn_time ||
+			csmemcmp(player_ui_edit_options.original.vehicle_set, player_ui_edit_options.current.vehicle_set,
+				sizeof(player_ui_edit_options.current.vehicle_set)) ||
+			csmemcmp(player_ui_edit_options.original.vehicle_counts, player_ui_edit_options.current.vehicle_counts,
+				sizeof(player_ui_edit_options.current.vehicle_counts)) ||
+			player_ui_globals.edit_profile.original.variant.universal_variant.vehicle_set !=
+				player_ui_globals.edit_profile.current.variant.universal_variant.vehicle_set))
+	{
+		player_ui_multiplayer_options.vehicle_respawn_time = player_ui_edit_options.current.vehicle_respawn_time;
+		csmemcpy(player_ui_multiplayer_options.vehicle_set, player_ui_edit_options.current.vehicle_set,
+			sizeof(player_ui_multiplayer_options.vehicle_set));
+		csmemcpy(player_ui_multiplayer_options.vehicle_counts, player_ui_edit_options.current.vehicle_counts,
+			sizeof(player_ui_multiplayer_options.vehicle_counts));
+		player_ui_globals.multiplayer_variant.universal_variant.vehicle_set =
+			player_ui_globals.edit_profile.current.variant.universal_variant.vehicle_set;
 	}
 
 	clear_profile_edit_data();
@@ -1259,11 +1300,15 @@ static void set_local_player_controls_from_player_profile(
 	return;
 }
 
+void port_server_name_follow_profile(wchar_t const *previous, wchar_t const *next);
+
 void player_ui_set_active_player_profile(
 	short local_player_index,
 	long profile_index,
 	struct player_profile *profile)
 {
+	wchar_t previous_name[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH + 1];
+
 	match_assert(
 		"c:\\halo\\SOURCE\\interface\\player_ui.c",
 		0xE2,
@@ -1271,12 +1316,21 @@ void player_ui_set_active_player_profile(
 		(local_player_index<MAXIMUM_NUMBER_OF_LOCAL_PLAYERS) &&
 		(profile != NULL));
 
+	previous_name[0] = 0;
+	if (local_player_index == 0)
+	{
+		ustrncpy(previous_name, player_ui_globals.local_players[0].profile.player_name,
+			MAXIMUM_PLAYER_PROFILE_NAME_LENGTH);
+		previous_name[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = 0;
+	}
 	player_ui_globals.local_players[local_player_index].active_profile_index = profile_index;
 	csmemcpy(
 		&player_ui_globals.local_players[local_player_index].profile,
 		profile,
 		sizeof(*profile));
 	set_local_player_controls_from_player_profile(local_player_index);
+	if (local_player_index == 0)
+		port_server_name_follow_profile(previous_name, profile->player_name);
 	return;
 }
 

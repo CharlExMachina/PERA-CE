@@ -96,6 +96,19 @@ index, which reads no function: 0 */
 
 #define OBJECT_FRAME_INDEX_GET(object_index) ((object_index) + game_time_get())
 
+/* port: set while a frame is drawn, so a function read for the picture is
+the tick's value moved into the frame */
+static int object_function_render_depth = 0;
+
+static real object_function_addition(
+	struct object_datum *object,
+	struct object_function_definition *function,
+	real huh,
+	real const *outgoing,
+	boolean *active);
+static real object_function_wrap(
+	real value);
+
 /* ---------- structures */
 
 struct object_globals
@@ -1549,6 +1562,72 @@ void object_permute_region(
 	return;
 }
 
+void object_functions_set_for_render(
+	boolean for_render)
+{
+	if (for_render)
+		object_function_render_depth++;
+	else if (object_function_render_depth > 0)
+		object_function_render_depth--;
+}
+
+void object_function_values_for_render(
+	long object_index,
+	real values[NUMBER_OF_OUTGOING_OBJECT_FUNCTIONS])
+{
+	struct object_datum *object = object_get(object_index);
+	struct object_definition *definition = object_definition_get(object->definition_index);
+	real fraction = game_time_get_tick_fraction();
+	short function_count = (short)MIN(
+		definition->object.functions.count,
+		NUMBER_OF_OUTGOING_OBJECT_FUNCTIONS);
+	short function_index;
+	real huh;
+
+	csmemcpy(
+		values,
+		object->object.outgoing_function_values,
+		sizeof(object->object.outgoing_function_values));
+	/* a fraction of 0 is the tick itself, and 1 is the paused hold */
+	if (!(fraction > 0.0f) || !(fraction < 1.0f))
+		return;
+
+	huh = (57 * DATUM_INDEX_TO_ABSOLUTE_INDEX(object_index) + game_time_get()) * 0.033333335f;
+	for (function_index = 0; function_index < function_count; function_index++)
+	{
+		struct object_function_definition *function = TAG_BLOCK_GET_ELEMENT(
+			&definition->object.functions,
+			function_index,
+			struct object_function_definition);
+		boolean active;
+		real output;
+
+		/* port: an additive function steps by a whole tick. Move that step
+		across the frames. Anything else is the function at this moment. */
+		if (TEST_FLAG(function->flags, _object_function_clip_to_bounds_and_normalize))
+		{
+			output = object_function_addition(
+				object,
+				function,
+				huh,
+				object->object.outgoing_function_values,
+				&active);
+			values[function_index] = object_function_wrap(
+				object->object.outgoing_function_values[function_index] + fraction * output);
+		}
+		else
+		{
+			output = object_function_addition(
+				object,
+				function,
+				huh + fraction * 0.033333335f,
+				values,
+				&active);
+			values[function_index] = output;
+		}
+	}
+}
+
 boolean object_get_function_value(
 	long object_index,
 	short function_index,
@@ -1572,7 +1651,17 @@ boolean object_get_function_value(
 		it reads as off */
 		if (VALID_INDEX(function_index, NUMBER_OF_OUTGOING_OBJECT_FUNCTIONS))
 		{
-			*value_reference = object->object.outgoing_function_values[function_index];
+			if (object_function_render_depth > 0)
+			{
+				real shown[NUMBER_OF_OUTGOING_OBJECT_FUNCTIONS];
+
+				object_function_values_for_render(object_index, shown);
+				*value_reference = shown[function_index];
+			}
+			else
+			{
+				*value_reference = object->object.outgoing_function_values[function_index];
+			}
 
 			result = TEST_FLAG(object->object.functions_active_flags, function_index);
 		}
@@ -1791,6 +1880,77 @@ void objects_scripting_set_scale(
 	return;
 }
 
+/* a flag or an oddball: weapon_is_flag's bit, which a running game is not
+allowed to destroy */
+static boolean object_is_game_flag(
+	long object_index)
+{
+	struct object_datum *object = object_get(object_index);
+
+	return game_engine_running() &&
+		object->object.type == _object_type_weapon &&
+		weapon_is_flag(object_index);
+}
+
+/* port: deleting a flag while a game is running halted (objects.c 829).
+A machine that joined in progress deletes what the host does not have, and
+what leaves its view, and that delete can reach a flag. The flag stays, off
+whatever was about to take it along. The next sibling, which unlinking
+clears, is returned so the rest of that delete still runs. */
+static long object_spare_game_flag(
+	long object_index)
+{
+	struct object_datum *object = object_get(object_index);
+	struct object_header_datum *header = object_header_get(object_index);
+	long next_index = object->object.next_object_index;
+	long parent_index = object->object.parent_object_index;
+	static boolean logged = FALSE;
+
+	SET_FLAG(object->object.flags, _object_deleted_when_deactivated_bit, FALSE);
+	object_set_automatic_deactivation(object_index, FALSE);
+	if (parent_index != NONE)
+	{
+		if (TEST_FLAG(object->object.flags, _object_connected_to_map_bit))
+			object_detach(object_index);
+		else
+		{
+			object_remove_from_list(
+				&object_get(parent_index)->object.first_child_object_index,
+				object_index);
+			object = object_get(object_index);
+			object->object.parent_object_index = NONE;
+			object->object.parent_node_index = NONE;
+			SET_FLAG(header->flags, _object_header_child_bit, FALSE);
+			object_reconnect_to_map(object_index, NULL);
+			object_set_visibility(object_index, TRUE);
+		}
+		if (TEST_FLAG(_object_mask_unit, object_get(parent_index)->object.type))
+		{
+			struct unit_datum *unit = unit_get(parent_index);
+			short slot;
+
+			for (slot = 0; slot < MAXIMUM_WEAPONS_PER_UNIT; ++slot)
+			{
+				if (unit->unit.weapon_object_indices[slot] != object_index)
+					continue;
+				unit->unit.weapon_object_indices[slot] = NONE;
+				if (unit->unit.current_weapon_index == slot)
+					unit->unit.current_weapon_index = NONE;
+				if (unit->unit.desired_weapon_index == slot)
+					unit->unit.desired_weapon_index = NONE;
+			}
+		}
+	}
+	SET_FLAG(item_get(object_index)->item.flags, _item_attached_to_unit_bit, FALSE);
+	if (!logged)
+	{
+		logged = TRUE;
+		error(_error_silent, "a flag was kept: deleting it would have halted the game");
+	}
+
+	return next_index;
+}
+
 static void object_delete_initial_recursive(
 	long object_index,
 	boolean delete_siblings)
@@ -1798,13 +1958,16 @@ static void object_delete_initial_recursive(
 	struct object_header_datum *header = object_header_get(object_index);
 	struct object_datum *object = object_get(object_index);
 
-	/* (port: but on a client of the distributed netcode, which deletes the
-	host's objects on the host's word, a flag or ball among them: the game
-	deletes none, but a host may, and the client lets go of it first,
-	network_objects.c's distributed_client_delete) */
-	if (game_engine_running() && object->object.type == _object_type_weapon && !network_objects_client_deleting())
+	/* (port: a host's delete of its flag or ball does go through. Another
+	delete that reaches one, a late join or a view, still keeps it: deleting
+	it there halted, objects.c 829) */
+	if (object_is_game_flag(object_index) && !network_objects_client_deleting())
 	{
-		match_assert("c:\\halo\\SOURCE\\objects\\objects.c", 829, !(weapon_is_flag(object_index)));
+		long next_index = object_spare_game_flag(object_index);
+
+		if (delete_siblings && next_index != NONE)
+			object_delete_initial_recursive(next_index, TRUE);
+		return;
 	}
 	
 	if (object->object.first_child_object_index!=NONE)
@@ -4491,8 +4654,13 @@ void objects_update(
 			{
 				if (TEST_FLAG(object_header->flags, _object_header_active_bit))
 				{
-					match_assert("c:\\halo\\SOURCE\\objects\\objects.c", 369, object_header->cluster_index!=NONE);
-					if (!BIT_VECTOR_TEST_FLAG(active_cluster_bits, object_header->cluster_index))
+					/* A carried weapon put back in the world, or an object
+					whose position is outside the map, can be active with no
+					cluster. Indexing the visible-cluster bits with that
+					halts a machine joining a game in progress. */
+					if (object_header->cluster_index<0 ||
+						object_header->cluster_index>=cluster_count ||
+						!BIT_VECTOR_TEST_FLAG(active_cluster_bits, object_header->cluster_index))
 					{
 						if (TEST_FLAG(object_header->datum->object.flags, _object_deleted_when_deactivated_bit))
 						{
@@ -5140,7 +5308,20 @@ static void object_delete_recursive(
 	boolean delete_siblings)
 {
 	struct object_datum *object = object_get(object_index);
-	struct object_definition *object_definition = object_definition_get(object->definition_index);
+	struct object_definition *object_definition;
+
+	/* (port: a host's delete of its flag or ball does go through. Another
+	delete that reaches one, a late join or a view, still keeps it) */
+	if (object_is_game_flag(object_index) && !network_objects_client_deleting())
+	{
+		long next_index = object_spare_game_flag(object_index);
+
+		if (delete_siblings && next_index != NONE)
+			object_delete_recursive(next_index, TRUE);
+		return;
+	}
+
+	object_definition = object_definition_get(object->definition_index);
 
 	if (TEST_FLAG(object->object.flags, _object_garbage_bit))
 	{
@@ -5172,6 +5353,148 @@ static void object_delete_recursive(
 	return;
 }
 
+static real object_function_input_value(
+	struct object_datum *object,
+	real const *outgoing,
+	short index)
+{
+	if ((unsigned long)(index - 1) >=
+		(unsigned long)(NUMBER_OF_INCOMING_OBJECT_FUNCTIONS + NUMBER_OF_OUTGOING_OBJECT_FUNCTIONS))
+		return 0.0f;
+	if (index >= NUMBER_OF_INCOMING_OBJECT_FUNCTIONS + 1)
+		return outgoing[index - NUMBER_OF_INCOMING_OBJECT_FUNCTIONS - 1];
+	return object->object.incoming_function_values[index - 1];
+}
+
+static real object_function_wrap(
+	real value)
+{
+	value -= (real)floor((double)value);
+	if (!(value >= 0.0f))
+		value += 1.0f;
+	return value;
+}
+
+/* what one tick stores, before an additive function folds it into the value
+it already held. `outgoing` is the functions already computed. */
+static real object_function_addition(
+	struct object_datum *object,
+	struct object_function_definition *function,
+	real huh,
+	real const *outgoing,
+	boolean *active)
+{
+	real value;
+	real output;
+	boolean function_is_active = TRUE;
+	real period = function->runtime_one_over_period;
+
+	if (function->scale_period_by_function_index)
+	{
+		real function_value = object_function_input_value(
+			object,
+			outgoing,
+			function->scale_period_by_function_index);
+
+		if (function_value > 0.f)
+			period = period / function_value;
+	}
+
+	value = periodic_function_evaluate(function->function_type, huh * period);
+
+	if (function->scale_function_by_function_index)
+	{
+		value *= object_function_input_value(
+			object,
+			outgoing,
+			function->scale_function_by_function_index);
+	}
+
+	if (TEST_FLAG(function->flags, _object_function_invert_function_bit))
+		value = 1.f - value;
+
+	if (function->wobble_magnitude != 0.f)
+	{
+		real val = periodic_function_evaluate(
+			function->wobble_function_type,
+			huh * function->wobble_period);
+
+		value += (2.f * function->wobble_magnitude * (val - 0.5f));
+	}
+
+	if (function->square_wave_threshold != 0.f)
+		value = value > function->square_wave_threshold ? 1.f : 0.f;
+
+	if (function->step_count > 1)
+	{
+		real floor_value = floor(function->step_count * value);
+
+		value = floor_value * function->runtime_reciprocal_step_count;
+	}
+
+	if (function->runtime_reciprocal_sawtooth_count > 0.f)
+		value = fmod(value, function->runtime_reciprocal_sawtooth_count);
+
+	if (function->add_function_index)
+	{
+		value += object_function_input_value(object, outgoing, function->add_function_index);
+		value = MIN(value, 1.f);
+	}
+
+	if (function->scale_result_by_function_index)
+	{
+		value *= object_function_input_value(
+			object,
+			outgoing,
+			function->scale_result_by_function_index);
+	}
+
+	output = transition_function_evaluate(function->map_result_to_transition_function, value);
+
+	if (function->scale_by > 0.f)
+		output *= function->scale_by;
+
+	if (function->bounds_mode == _object_function_scale_to_fit_bounds)
+	{
+		output *= (function->upper_bound - function->lower_bound);
+		output += function->lower_bound;
+
+		if (function->lower_bound + _real_epsilon >= output)
+		{
+			function_is_active = TEST_FLAG(
+				function->flags,
+				_object_function_does_not_deactivate_below_lower_bound_bit);
+		}
+	}
+	else
+	{
+		if (function->lower_bound + _real_epsilon >= output)
+		{
+			output = function->lower_bound;
+			function_is_active = TEST_FLAG(
+				function->flags,
+				_object_function_does_not_deactivate_below_lower_bound_bit);
+		}
+
+		if (output > function->upper_bound)
+			output = function->upper_bound;
+
+		if (function->bounds_mode == _object_function_clip_to_bounds_and_normalize)
+		{
+			output = (output - function->lower_bound) * function->runtime_reciprocal_bounds_range;
+		}
+	}
+
+	if (function->turn_off_with_function_index != NONE &&
+		!TEST_FLAG(object->object.functions_active_flags, function->turn_off_with_function_index))
+	{
+		function_is_active = FALSE;
+	}
+
+	*active = function_is_active;
+	return output;
+}
+
 static void object_compute_function_values(
 	long object_index)
 {
@@ -5191,112 +5514,20 @@ static void object_compute_function_values(
 
 	for (function_index = 0; function_index<function_count; ++function_index)
 	{
-		real value;
-		real output;
-
 		struct object_function_definition* function = TAG_BLOCK_GET_ELEMENT(
 			&object_definition->object.functions,
 			function_index,
 			struct object_function_definition);
-		boolean function_is_active = TRUE;
-		real period = function->runtime_one_over_period;
+		boolean function_is_active;
+		real output = object_function_addition(
+			object,
+			function,
+			huh,
+			object->object.outgoing_function_values,
+			&function_is_active);
 
-		if (function->scale_period_by_function_index)
-		{
-			real function_value = OBJECT_INCOMING_FUNCTION_GET_VALUE(object, function->scale_period_by_function_index);
-			if (function_value>0.f)
-			{
-				period = period/function_value;
-			}
-		}
-
-		value = periodic_function_evaluate(function->function_type, huh*period);
-
-		if (function->scale_function_by_function_index)
-		{
-			value*= OBJECT_INCOMING_FUNCTION_GET_VALUE(object, function->scale_function_by_function_index);
-		}
-
-		if (TEST_FLAG(function->flags, _object_function_invert_function_bit))
-		{
-			value = 1.f-value;
-		}
-
-		if (function->wobble_magnitude!=0.f)
-		{
-			real val = periodic_function_evaluate(function->wobble_function_type, huh*function->wobble_period);
-			value+= (2.f*function->wobble_magnitude * (val-0.5f));
-		}
-
-		if (function->square_wave_threshold!=0.f)
-		{
-			value = value>function->square_wave_threshold ? 1.f : 0.f ;
-		}
-
-		if (function->step_count>1)
-		{
-			real floor_value = floor(function->step_count*value);
-			value = floor_value*function->runtime_reciprocal_step_count;
-		}
-
-		if (function->runtime_reciprocal_sawtooth_count>0.f)
-		{
-			value = fmod(value, function->runtime_reciprocal_sawtooth_count);
-		}
-
-		if (function->add_function_index)
-		{
-			value+= OBJECT_INCOMING_FUNCTION_GET_VALUE(object, function->add_function_index);
-			value = MIN(value, 1.f);
-		}
-
-		if (function->scale_result_by_function_index)
-		{
-			value*= OBJECT_INCOMING_FUNCTION_GET_VALUE(object, function->scale_result_by_function_index);
-		}
-
-		output = transition_function_evaluate(function->map_result_to_transition_function, value);
-
-		if (function->scale_by>0.f)
-		{
-			output*= function->scale_by;
-		}
-
-		if (function->bounds_mode==_object_function_scale_to_fit_bounds)
-		{
-			output*= (function->upper_bound-function->lower_bound);
-			output+= function->lower_bound;
-
-			if (function->lower_bound+_real_epsilon>=output)
-			{
-				function_is_active = TEST_FLAG(function->flags, _object_function_does_not_deactivate_below_lower_bound_bit);
-			}
-		}
-		else
-		{
-			if (function->lower_bound+_real_epsilon>=output)
-			{
-				output = function->lower_bound;
-				function_is_active = TEST_FLAG(function->flags, _object_function_does_not_deactivate_below_lower_bound_bit);
-			}
-
-			if (output>function->upper_bound)
-			{
-				output = function->upper_bound;
-			}
-
-			if (function->bounds_mode==_object_function_clip_to_bounds_and_normalize)
-			{
-				output = (output-function->lower_bound)*function->runtime_reciprocal_bounds_range;
-			}
-		}
-
-		if (function->turn_off_with_function_index!=NONE &&
-			!TEST_FLAG(object->object.functions_active_flags, function->turn_off_with_function_index))
-		{
-			function_is_active = FALSE;
-		}
-
+		/* bit 1 is the additive function (the bounds-mode name shares its
+		value). It folds this tick onto the value already held. */
 		if (TEST_FLAG(function->flags, _object_function_clip_to_bounds_and_normalize))
 		{
 			output = fmod(output+object->object.outgoing_function_values[function_index], 1.f);

@@ -592,13 +592,12 @@ int host_sdl_set_window_fullscreen_mode(uint32_t window, const int *fields)
 	return SDL_SetWindowFullscreenMode(object, &closest);
 }
 
-int host_sdl_warp_mouse(uint32_t window, float x, float y)
+void host_sdl_warp_mouse(uint32_t window, float x, float y)
 {
 	SDL_Window *object = handle_get(window, _handle_window);
 
 	if (object)
 		SDL_WarpMouseInWindow(object, x, y);
-	return object != NULL;
 }
 
 int host_sdl_set_window_mouse_grab(uint32_t window, int grabbed)
@@ -714,7 +713,7 @@ int host_sdl_show_cursor(int shown)
 	return shown ? SDL_ShowCursor() : SDL_HideCursor();
 }
 
-uint32_t host_sdl_key_from_scancode(int32_t scancode, int32_t modifiers, int key_event)
+uint32_t host_sdl_key_from_scancode_state(int32_t scancode, int32_t modifiers, int key_event)
 {
 	return SDL_GetKeyFromScancode((SDL_Scancode)scancode, (SDL_Keymod)modifiers, key_event != 0);
 }

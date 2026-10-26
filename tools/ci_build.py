@@ -54,6 +54,14 @@ def run(command, cwd=ROOT):
     subprocess.run([str(part) for part in command], cwd=cwd, check=True)
 
 
+def android_install_build_number(environment):
+    """Keep APK upgrade ordering independent of the upstream-only updater."""
+    number = environment.get("GITHUB_RUN_NUMBER", "")
+    if number.isascii() and number.isdecimal() and 0 < int(number) <= 2100000000:
+        return number
+    return "0"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("platform", choices=sorted(OUTPUTS))
@@ -98,7 +106,9 @@ def main() -> int:
         run(["ninja", "android"])
         gradlew = "gradlew.bat" if os.name == "nt" else "./gradlew"
         variant = "release" if args.config == "release" else "debug"
-        run([gradlew, "--console=plain", "-q", f"assemble{variant.capitalize()}"], cwd=ROOT / "port/android")
+        run([gradlew, "--console=plain", "-q",
+             "-PhaloInstallBuildNumber=" + android_install_build_number(os.environ),
+             f"assemble{variant.capitalize()}"], cwd=ROOT / "port/android")
         outputs = [APKS[variant]]
     else:
         run(["ninja", args.platform])
@@ -150,6 +160,8 @@ def main() -> int:
     # Android's APK has its own copy)
     if args.platform != "android":
         shutil.copy2(ROOT / "port/assets/network/brokers.txt", dist / "brokers.txt")
+        # the match and campaign loading film, beside the game
+        shutil.copy2(ROOT / "port/assets/opening/opening_frames.bin", dist / "opening_frames.bin")
     return 0
 
 

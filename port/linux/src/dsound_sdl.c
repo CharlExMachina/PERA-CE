@@ -48,6 +48,7 @@ skips opening a device; audio.channels chooses stereo or 5.1
 #include "platform.h"
 #include "sdl_platform.h"
 #include "port_config.h"
+#include "native_audio.h"
 #include "voice_audio.h"
 
 #include <SDL3/SDL.h>
@@ -181,6 +182,14 @@ static float master_volume = 1.0f;
 /* 2 or 6 (audio.channels), chosen when the device first opens; the game
 sets its mix bins by it, so it holds while the game runs */
 static unsigned long output_channels = 2;
+
+static float audio_setting_volume(const char *name)
+{
+	double value = config_real(name);
+
+	/* Manual config edits can bypass the settings page's range checks. */
+	return !(value >= 0.0) ? 0.0f : value > 1.0 ? 1.0f : (float)value;
+}
 
 /* the I3DL2 listener properties (SetI3DL2Listener), which the reverb models:
 DirectSound's defaults until the game sets an environment, their room level
@@ -1627,7 +1636,7 @@ static void audio_start(void)
 	if (audio_started)
 		return;
 	audio_started = TRUE;
-	master_volume = (float)config_real("audio.volume");
+	halo_audio_apply_settings();
 	reverb_enabled = config_boolean("audio.reverb");
 	resampler_mode = resampler_mode_read();
 	resampler_initialize();
@@ -1983,7 +1992,7 @@ VOID WINAPI DirectSoundDoWork(void)
 	if (volume_read_at != config_changes())
 	{
 		volume_read_at = config_changes();
-		master_volume = (float)config_real("audio.volume");
+		halo_audio_apply_settings();
 		reverb_enabled = config_boolean("audio.reverb");
 		resampler_mode = resampler_mode_read();
 	}
@@ -2362,3 +2371,5 @@ HRESULT WINAPI IDirectSoundBuffer_SetCurrentPosition(LPDIRECTSOUNDBUFFER buffer,
 HRESULT WINAPI IDirectSoundBuffer_SetLoopRegion(LPDIRECTSOUNDBUFFER buffer, DWORD loop_start, DWORD loop_length) { (void)buffer; (void)loop_start; (void)loop_length; return DS_OK; }
 HRESULT WINAPI IDirectSoundBuffer_SetPitch(LPDIRECTSOUNDBUFFER buffer, LONG pitch) { (void)buffer; (void)pitch; return DS_OK; }
 HRESULT WINAPI IDirectSoundBuffer_SetVolume(LPDIRECTSOUNDBUFFER buffer, LONG volume) { (void)buffer; (void)volume; return DS_OK; }
+
+#include "performance_audio.inc"

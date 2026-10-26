@@ -61,7 +61,7 @@ SDL_TAG = "release-3.4.16"
 PAGE_EXPORTS = ["_main", "_malloc", "_free", "_web_state", "_web_net_receive", "_web_net_peer_lost",
                 "_web_p2p_fingerprint", "_web_p2p_described", "_web_p2p_receive"]
 # the page's fonts, the menus' own (port/assets/fonts)
-SITE_FONTS = ["OpenCE-Regular.ttf", "Overpass-750.ttf", "Overpass-900.ttf"]
+SITE_FONTS = ["CoreCE-Regular.ttf", "Overpass-750.ttf", "Overpass-900.ttf"]
 # the memory watch by page contents, shared with the Android host
 # (port/web/src/web_memory_watch.c)
 WATCH_HASH = ANDROID_DIR / "host" / "host_watch_hash.c"

@@ -64,6 +64,11 @@ symbols in this file:
 #include "input/input.h"
 #include "interface/terminal.h"
 #include "math/real_math.h"
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+#include "../../port/linux/game/performance_options.h"
+#include "../../port/linux/game/performance_sound.h"
+#include "performance_audio.h"
+#endif
 
 /* ---------- constants */
 
@@ -134,6 +139,10 @@ void console_open(
 		/* port: not in the profiling build (as in console_update) */
 #ifndef HALO_PROFILE
 		profile_global_enable = FALSE;
+#endif
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		if (console_globals.active)
+			console_printf(FALSE, "PB Options: type pb for controls (timer, markers, audio).");
 #endif
 	}
 
@@ -218,6 +227,10 @@ void console_warning(
 	return;
 }
 
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+#include "performance_console.inc"
+#endif
+
 static boolean console_process_command(
 	const char *command)
 {
@@ -237,6 +250,9 @@ static boolean console_process_command(
 	console_globals.previous_command_count = MIN(console_globals.previous_command_count + 1, MAXIMUM_NUMBER_OF_PREVIOUS_COMMANDS);
 	console_globals.selected_previous_command_index = NONE;
 
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	if (console_process_native_command(command)) return TRUE;
+#endif
 	return hs_compile_and_evaluate(command);
 }
 
@@ -333,8 +349,18 @@ static void console_complete(
 	}
 	else
 	{
-		token = console_get_text_to_autocomplete();
-		count = hs_tokens_enumerate(token, NONE, matching_items, NUMBEROF(matching_items));
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		boolean native_only;
+		count = performance_console_complete(console_globals.input_state.result,
+			&token, matching_items, NUMBEROF(matching_items), &native_only);
+		if (count != NONE && !native_only)
+			count += hs_tokens_enumerate(token, NONE, matching_items + count, NUMBEROF(matching_items) - count);
+		if (count == NONE)
+#endif
+		{
+			token = console_get_text_to_autocomplete();
+			count = hs_tokens_enumerate(token, NONE, matching_items, NUMBEROF(matching_items));
+		}
 	}
 
 	if (count)

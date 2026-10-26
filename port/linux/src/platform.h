@@ -15,6 +15,7 @@ against the SDK prototype it replaces.
 types (select, fd_set, timeval, ...) are then moved out of glibc's way while
 the SDK headers are read, exactly as game code sees them. */
 #include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <sys/select.h>
 #include <sys/time.h>
@@ -98,6 +99,9 @@ host path below the data root. Components are matched case-insensitively
 against what exists on disk, as the Xbox file system is case-insensitive. */
 void platform_translate_path(const char *xbox_path, char *host_path, unsigned long host_path_size);
 const char *platform_data_root(void);
+/* The opening film. maps/opening_frames.bin when that file is already
+present, otherwise the copy shipped beside the game. NULL when neither is. */
+FILE *platform_open_opening_film(void);
 /* the Halo Custom Edition install the Xbox drive h:\ is (paths.custom_edition),
 or "" when none is set or it has no maps folder */
 const char *platform_custom_edition_root(void);
@@ -175,6 +179,12 @@ void *halo_custom_edition_tag_cache(void);
 (xbox_textures.c; also declared for the game there) */
 void halo_custom_edition_texels_channels(const void *texels, unsigned char channel_order);
 void halo_custom_edition_texels_forget(void);
+/* A HUD meter draw is in progress (hud_draw.c). While it is, a Custom
+Edition sheet still in the Xbox channel order is sampled with alpha as the
+fill threshold and red as the shape. The address is the one
+halo_custom_edition_texels_channels was given. */
+void halo_custom_edition_hud_meter(int active);
+int halo_custom_edition_meter_channels(const void *texels);
 
 /* ---------- guest memory write tracking (memory_watch.c)
 

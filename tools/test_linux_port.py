@@ -32,6 +32,23 @@ def test_strip_cplusplus_keeps_c_branches_only():
     assert linux_msvc_semantics.strip_cplusplus(text).split() == ["a", "c1", "b", "c", "c2", "end"]
 
 
+def test_semantics_scan_includes_mixed_case_sdk_symlinks(tmp_path):
+    sdk = tmp_path / "sdk"
+    sdk.mkdir()
+    header = sdk / "Math.Inl"
+    header.write_text("__inline int sdk_inline(int x) { return x; }\n")
+    overlay = tmp_path / "overlay"
+    overlay.mkdir()
+    mixed = overlay / "Math.Inl"
+    mixed.symlink_to(header)
+    files = linux_msvc_semantics.source_files([overlay])
+    assert files == [mixed]
+    assert linux_msvc_semantics.scan_inline_functions(files, all_inlines=True) == {"sdk_inline"}
+    # Distinct aliases and overlapping input roots must not scan it repeatedly.
+    (overlay / "another_name.inl").symlink_to(header)
+    assert len(linux_msvc_semantics.source_files([overlay, sdk])) == 1
+
+
 def write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="latin-1")
@@ -413,7 +430,7 @@ def test_config_has_each_section_once(tmp_path):
     (stubs / "SDL3" / "SDL.h").write_text("")
     (stubs / "platform.h").write_text("void platform_log(const char *format, ...);\n")
     # (beside the stubs, which it then includes instead of the platform layer's)
-    for name in ("port_config.c", "port_config.h"):
+    for name in ("port_config.c", "port_config.h", "input_bindings.def"):
         shutil.copy(root / "port/linux/src" / name, stubs / name)
     (tmp_path / "main.c").write_text(CONFIG_PROGRAM)
     program = tmp_path / "config_program"

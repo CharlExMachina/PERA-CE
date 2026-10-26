@@ -133,6 +133,12 @@ static void folders_find(void)
 		snprintf(path, sizeof(path), "%s/halo_guest.elf", resource_directory);
 		if (stat(path, &information) != 0)
 			snprintf(resource_directory, sizeof(resource_directory), "%s/..", executable);
+		/* the opening film the app carries (port/assets/opening), which the
+		game opens when the maps folder has none of its own
+		(platform_open_opening_film, xbox_files.c) */
+		snprintf(path, sizeof(path), "%s/opening_frames.bin", resource_directory);
+		if (stat(path, &information) == 0)
+			setenv("HALO_OPENING_FILM", path, 0);
 	}
 }
 

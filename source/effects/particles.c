@@ -94,6 +94,9 @@ symbols in this file:
 #include "scenario/scenario.h"
 #include "sound/game_sound.h"
 #include "sound/sound_definitions.h"
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+#include "performance_sound.h"
+#endif
 
 /* ---------- constants */
 
@@ -243,6 +246,9 @@ void particles_initialize(
 void particles_initialize_for_new_map(
 	void)
 {
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	performance_sound_reset(_performance_sound_particle);
+#endif
 	data_make_valid(particle_data);
 
 	return;
@@ -251,6 +257,9 @@ void particles_initialize_for_new_map(
 void particles_dispose_from_old_map(
 	void)
 {
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	performance_sound_reset(_performance_sound_particle);
+#endif
 	data_make_invalid(particle_data);
 
 	return;
@@ -269,6 +278,9 @@ void particle_delete(
 	long particle_index)
 {
 	datum_delete(particle_data, particle_index);
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	performance_sound_forget(_performance_sound_particle, particle_index);
+#endif
 
 	return;
 }
@@ -361,6 +373,50 @@ static boolean new_particle_is_visible(
 		return TRUE;
 
 	return FALSE;
+}
+
+/* port: the picture is drawn more than once a tick. A flash's sprite
+changes once a tick, so the cel is held and its edge cuts. */
+boolean particle_sprite_blend(
+	long particle_index,
+	short *next_frame_index,
+	real *weight)
+{
+	struct particle_datum *particle = particle_get(particle_index);
+	struct particle_definition *definition = particle_definition_get(particle->definition_index);
+	struct bitmap_group *bitmap = bitmap_group_get(definition->bitmap.index);
+	struct bitmap_group_sequence *sequence;
+	short next;
+	real weight_value;
+
+	if (particle->frame_index < 0 || particle->sequence_index < 0 || !bitmap ||
+		particle->sequence_index >= bitmap->sequences.count)
+	{
+		return FALSE;
+	}
+	sequence = TAG_BLOCK_GET_ELEMENT(
+		&bitmap->sequences,
+		particle->sequence_index,
+		struct bitmap_group_sequence);
+	if (TEST_FLAG(particle->flags, _particle_datum_animates_backwards_bit))
+		next = (short)(particle->frame_index - 1);
+	else
+		next = (short)(particle->frame_index + 1);
+	if (next < 0 || next >= sequence->sprites.count)
+		return FALSE;
+	if (TEST_FLAG(definition->flags, _particle_definition_animate_once_per_frame_bit))
+		weight_value = game_time_get_tick_fraction();
+	else if (particle->frame_span > 0.0f && particle->frame_time >= 0.0f)
+		weight_value = particle->frame_time / particle->frame_span;
+	else
+		return FALSE;
+	if (!(weight_value > 0.0f))
+		return FALSE;
+	if (weight_value > 1.0f)
+		weight_value = 1.0f;
+	*next_frame_index = next;
+	*weight = weight_value;
+	return TRUE;
 }
 
 real particle_get_radius(
@@ -871,6 +927,11 @@ void particle_new(
 
 	particle = particle_get(particle_index);
 
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	/* A particle can create delayed death/collision effects or sounds. Keep
+	 * its originating presentation role separately from its saved datum. */
+	performance_sound_capture(_performance_sound_particle, particle_index);
+#endif
 	particle->flags = 0;
 	if (TEST_FLAG(definition->flags, _particle_definition_can_animate_backwards_bit))
 	{
@@ -1031,6 +1092,10 @@ void particles_update(
 		struct particle_datum *particle = particle_get(particle_index);
 		struct particle_definition *definition = particle_definition_get(particle->definition_index);
 		boolean was_new = (particle->age == 0.0f);
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		unsigned previous_sound_role = performance_sound_push(
+			performance_sound_role(_performance_sound_particle, particle_index));
+#endif
 
 		if (render.frame_index - particle->last_rendered_frame_index >
 			MAXIMUM_PARTICLE_UNRENDERED_FRAME_COUNT &&
@@ -1055,6 +1120,9 @@ void particles_update(
 					particle_update_physics(particle_index, dt);
 			}
 		}
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+		performance_sound_pop(previous_sound_role);
+#endif
 	}
 
 	profile_exit(particles_update_section);

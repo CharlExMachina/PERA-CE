@@ -21,6 +21,9 @@ host_sdl_ticks
 host_sdl_thread_id
 host_sdl_create_window
 host_sdl_window_size_in_pixels
+host_sdl_window_size
+host_sdl_warp_mouse
+host_sdl_video_fullscreen
 host_sdl_set_relative_mouse
 host_sdl_gl_set_attribute
 host_sdl_gl_create_context
@@ -43,6 +46,7 @@ host_sdl_rumble_gamepad
 host_sdl_close_gamepad
 host_sdl_scancode_name
 host_sdl_scancode_from_name
+host_sdl_key_from_scancode
 host_sdl_open_audio_stream
 host_sdl_put_audio_stream_data
 host_sdl_resume_audio_stream_device

@@ -718,6 +718,9 @@ def generate_linux_build(n: Writer, sln: Any) -> None:
     # internet play's MQTT brokers, a file beside the game (network.brokers_file)
     brokers = build_dir / "brokers.txt"
     n.build(outputs=brokers, rule="linux_copy", inputs=Path("port/assets/network/brokers.txt"))
+    # the match and campaign loading film, beside the game
+    film = build_dir / "opening_frames.bin"
+    n.build(outputs=film, rule="linux_copy", inputs=Path("port/assets/opening/opening_frames.bin"))
     n.build(outputs="linux", rule="phony",
-            inputs=[output, brokers, validator, *sdl_outputs])
+            inputs=[output, brokers, film, validator, *sdl_outputs])
     n.newline()
