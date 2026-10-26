@@ -693,7 +693,8 @@ static short sound_find_best_channel(
 	long sound_index);
 static short source_audible(
 	struct sound_source *source,
-	real maximum_distance);
+	real maximum_distance,
+	boolean local_players_only);
 static void refresh_sounds(
 	void);
 static void refresh_listener(
@@ -1629,7 +1630,8 @@ static long update_potentially_audible_looping_sound(
 			sound_definition_get_maximum_distance(definition_index);
 		short listener_index = source_audible(
 			&looping_sound->source,
-			maximum_distance);
+			maximum_distance,
+			FALSE);
 
 		if (listener_index != NONE)
 		{
@@ -2552,7 +2554,11 @@ long sound_new_impulse(
 					{
 						short listener_index = source_audible(
 							source,
-							maximum_distance);
+							maximum_distance,
+							definition->sound_class == _sound_class_scripted_dialog_to_player ||
+								definition->sound_class == _sound_class_scripted_dialog_to_other ||
+								definition->sound_class == _sound_class_scripted_dialog_force_unspatialized ||
+								definition->sound_class == _sound_class_scripted_other);
 
 						if (listener_index != NONE)
 						{
@@ -2932,7 +2938,7 @@ boolean sound_refresh_looping(
 				}
 
 				if (loop->component_sound_count == 0 &&
-					source_audible(source, definition->runtime_maximum_distance) == NONE)
+					source_audible(source, definition->runtime_maximum_distance, FALSE) == NONE)
 				{
 					datum_delete(looping_sound_data, looping_sound_index);
 				}
@@ -3358,13 +3364,35 @@ void sound_dispose_from_old_map(
 
 static short source_audible(
 	struct sound_source *source,
-	real maximum_distance)
+	real maximum_distance,
+	boolean local_players_only)
 {
 	short nearest_listener_index = NONE;
 
+	/* a teammate pane is a listener so that pane hears the world. scripted
+	   timer and dialog lines stay with this machine's own players, so those
+	   panes do not each play the countdown. */
 	if (source->spatialization_mode == _sound_spatialization_mode_none)
 	{
 		nearest_listener_index = 0;
+		if (local_players_only &&
+			local_player_get_player_index(nearest_listener_index) == NONE)
+		{
+			short listener_index;
+
+			nearest_listener_index = NONE;
+			for (
+				listener_index = 0;
+				listener_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS;
+				listener_index++)
+			{
+				if (local_player_get_player_index(listener_index) != NONE)
+				{
+					nearest_listener_index = listener_index;
+					break;
+				}
+			}
+		}
 	}
 	else if (source->spatialization_mode == _sound_spatialization_mode_relative)
 	{
@@ -3383,6 +3411,9 @@ static short source_audible(
 			listener_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS;
 			listener_index++)
 		{
+			if (local_players_only &&
+				local_player_get_player_index(listener_index) == NONE)
+				continue;
 			if (listener_get(listener_index)->valid)
 			{
 				real distance_squared = source_distance_squared(
@@ -3447,7 +3478,11 @@ static void refresh_sounds(
 			short listener_index = source_audible(
 				&sound->source,
 				sound_definition_get_maximum_distance(
-					sound->definition_index));
+					sound->definition_index),
+				definition->sound_class == _sound_class_scripted_dialog_to_player ||
+					definition->sound_class == _sound_class_scripted_dialog_to_other ||
+					definition->sound_class == _sound_class_scripted_dialog_force_unspatialized ||
+					definition->sound_class == _sound_class_scripted_other);
 
 			render_debug_sound(sound_index);
 

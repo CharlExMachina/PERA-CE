@@ -1,12 +1,12 @@
 /*
 HARDCORE_TIMER.C
 
-The match clock at the bottom right, from the game's own ticks, in any
-multiplayer game when Graphics' Match Timer is on. On with Voice plays
-this machine's countdown. A map that has talking_timer keeps that
-announcer instead, and Off leaves the global as the map authored it.
-power_call is never forced. Team scores draw only when that match option
-is on.
+The match clock at the bottom right of each pane, from the game's own
+ticks, in any multiplayer game when Graphics' Match Timer is on. A split
+screen draws one on every pane. On with Voice plays this machine's
+countdown once. A map that has talking_timer keeps that announcer
+instead, and Off leaves the global as the map authored it. power_call is
+never forced. Team scores draw only when that match option is on.
 */
 
 #include "cseries.h"
@@ -27,6 +27,7 @@ is on.
 #include "scenario/scenario.h"
 #include "text/draw_string.h"
 #include "hs/hs.h"
+#include "render/render.h"
 #include "hardcore_rules.h"
 #include "hardcore_timer.h"
 #include "port_config.h"
@@ -137,19 +138,56 @@ int hardcore_timer_map_announces(
 		hardcore_timer_talking!=NONE;
 }
 
+/* where this pane draws the clock. the row is 215 of a 240-tall cell, so
+   each split pane gets the bottom of that pane, and a full screen stays
+   on the bottom of the screen. coordinates are this pane's own. */
+struct hardcore_timer_place
+{
+	short top;
+	short shift;
+	short clock_x0;
+	short clock_x1;
+	short clock_y1;
+};
+
+static void hardcore_timer_place(
+	struct hardcore_timer_place *place)
+{
+	short pane_w;
+	short pane_h;
+	short shift;
+	short x0;
+	short x1;
+	short pull;
+
+	pane_w = (short)(render.camera.viewport_bounds.x1 - render.camera.viewport_bounds.x0);
+	pane_h = (short)(render.camera.viewport_bounds.y1 - render.camera.viewport_bounds.y0);
+	if (pane_w<1)
+		pane_w = HARDCORE_TIMER_WIDTH;
+	if (pane_h<1)
+		pane_h = HARDCORE_TIMER_HEIGHT;
+	shift = (short)(((HARDCORE_TIMER_LEFT + HARDCORE_TIMER_WIDTH) / 2) *
+		(pane_w - HARDCORE_TIMER_WIDTH) / HARDCORE_TIMER_WIDTH);
+	x0 = (short)(HARDCORE_TIMER_LEFT + shift);
+	x1 = (short)(HARDCORE_TIMER_WIDTH + shift);
+	pull = x1>pane_w ? (short)(x1 - pane_w) : 0;
+	if ((short)(x0 - pull)<0)
+		pull = x0;
+	place->top = (short)(pane_h * HARDCORE_TIMER_ROW_NUMERATOR /
+		HARDCORE_TIMER_ROW_DENOMINATOR);
+	place->shift = (short)(shift - pull);
+	place->clock_x0 = (short)(x0 - pull);
+	place->clock_x1 = (short)(x1 - pull);
+	place->clock_y1 = pane_h;
+}
+
 short hardcore_timer_top(
 	void)
 {
-	return (short)(HARDCORE_TIMER_HEIGHT * HARDCORE_TIMER_ROW_NUMERATOR /
-		HARDCORE_TIMER_ROW_DENOMINATOR);
-}
+	struct hardcore_timer_place place;
 
-/* the clock's own sideways move, so the counters stay a fixed gap left of it */
-static short hardcore_timer_wide_shift(
-	void)
-{
-	return (short)(((HARDCORE_TIMER_LEFT + HARDCORE_TIMER_WIDTH) / 2) *
-		(halo_screen_width() - HARDCORE_TIMER_WIDTH) / HARDCORE_TIMER_WIDTH);
+	hardcore_timer_place(&place);
+	return place.top;
 }
 
 /* a clock under a minute is " :45". left of a square, that blank would
@@ -199,8 +237,8 @@ static void hardcore_score_render(
 	if (!hardcore_rules_live()->team_scores || !game_engine_has_teams() ||
 		!game_engine || !game_engine->format_team_name || !players_globals)
 		return;
-	/* the first occupied slot, which is the team this screen is showing */
-	slot = local_player_get_next(NONE);
+	/* the player this pane is showing, so that pane's team is the top line */
+	slot = (short)render.local_player_index;
 	player = player_try_and_get(slot == NONE ? NONE : local_player_get_player_index(slot));
 	if (!player || player->team_index<0)
 		return;
@@ -257,7 +295,7 @@ static void hardcore_score_render(
 		draw_string_set_draw_mode(font_index, NONE, 0, 0, &color);
 		bounds.x0 = text_x;
 		bounds.y0 = row;
-		bounds.x1 = (short)halo_screen_width();
+		bounds.x1 = (short)(render.camera.viewport_bounds.x1 - render.camera.viewport_bounds.x0);
 		bounds.y1 = (short)(row + line_box);
 		rasterizer_text_set_shadow_color(0xC0000000);
 		rasterizer_draw_unicode_string(&bounds, &bounds, NULL, 0, text[line]);
@@ -276,7 +314,7 @@ void hardcore_timer_render(
 	wchar_t text[6];
 	real_argb_color color;
 	rectangle2d bounds;
-	short shift;
+	struct hardcore_timer_place place;
 
 	/* off draws nothing. on and voice draw in any multiplayer game */
 	if (!hardcore_timer_mode() || !game_in_progress() || !game_engine_running() ||
@@ -311,19 +349,16 @@ void hardcore_timer_render(
 	color.blue = HARDCORE_TIMER_BLUE;
 	draw_string_set_draw_mode(font_index, NONE, 0, 0, &color);
 
-	bounds.y0 = hardcore_timer_top();
-	bounds.x0 = HARDCORE_TIMER_LEFT;
-	bounds.y1 = HARDCORE_TIMER_HEIGHT;
-	bounds.x1 = HARDCORE_TIMER_WIDTH;
-	/* the same side shift a chapter title gets on a screen wider than 640 */
-	shift = hardcore_timer_wide_shift();
-	bounds.x0 = (short)(bounds.x0 + shift);
-	bounds.x1 = (short)(bounds.x1 + shift);
+	hardcore_timer_place(&place);
+	bounds.y0 = place.top;
+	bounds.x0 = place.clock_x0;
+	bounds.y1 = place.clock_y1;
+	bounds.x1 = place.clock_x1;
 
 	rasterizer_text_set_shadow_color(0xC0000000);
 	rasterizer_draw_unicode_string(&bounds, &bounds, NULL, 0, text);
 	rasterizer_text_set_shadow_color(0);
-	hardcore_score_render(font_index, shift);
+	hardcore_score_render(font_index, place.shift);
 
 	return;
 }

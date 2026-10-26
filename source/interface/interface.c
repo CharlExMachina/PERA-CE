@@ -106,7 +106,6 @@ symbols in this file:
 #include "units/unit_definitions.h"
 #include "units/units.h"
 #include "map_share.h" /* port: port/linux/game/map_share.c */
-#include "hardcore_timer.h" /* port: port/linux/game/hardcore_timer.c */
 #include "hardcore_views.h" /* port: a teammate pane still gets the weapon mask */
 #include "fork_update_notice.h" /* port: port/linux/game/fork_update_notice.c */
 
@@ -388,8 +387,6 @@ void interface_draw_fullscreen_overlays(
 	void)
 {
 	cinematic_render();
-	/* port: a hardcore match's clock. a classic game does not draw it */
-	hardcore_timer_render();
 	interface_splitscreen_render();
 	hud_render_timer();
 	/* port: a newer Mac release, in the same place in a game and in the menus */

@@ -17,11 +17,11 @@ void hardcore_timer_after_scripts(void);
    Otherwise Voice plays the countdown shipped with the game. */
 int hardcore_timer_map_announces(void);
 
-/* The match clock, bottom right, as one time. Drawn in multiplayer when
-   the client clock is on. Nothing is drawn over a menu. */
+/* The match clock, bottom right of the pane being drawn. A split screen
+   draws it on every pane. Nothing is drawn over a menu. */
 void hardcore_timer_render(void);
 
-/* The top of the clock's digits, in the 480-tall screen. The random
+/* The top of the clock's digits in the pane being drawn. The random
    percent uses it so the two sit on one line. */
 short hardcore_timer_top(void);
 

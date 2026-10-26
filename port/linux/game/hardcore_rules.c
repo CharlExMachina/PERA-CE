@@ -1094,12 +1094,12 @@ void hardcore_rules_render(void)
 	if (font == NONE)
 		return;
 	snprintf(text, sizeof(text), "RANDOM %d%%", hardcore_random_percent);
-	/* window_bounds is the title-safe frame, and that frame ends 36 above
-	the screen. The clock is on the screen, so this row is too. */
-	bounds = render.camera.window_bounds;
-	bounds.x0 = (short)(bounds.x0 + 16);
+	/* this pane's coordinates. the safe frame ends above the pane, and the
+	clock is on the pane, so this row is too. */
+	bounds.x0 = (short)(render.camera.window_bounds.x0 - render.camera.viewport_bounds.x0 + 16);
+	bounds.x1 = (short)(render.camera.window_bounds.x1 - render.camera.viewport_bounds.x0);
 	bounds.y0 = hardcore_timer_top();
-	bounds.y1 = 480;
+	bounds.y1 = (short)(render.camera.viewport_bounds.y1 - render.camera.viewport_bounds.y0);
 	if (bounds.x0 >= bounds.x1 || bounds.y0 >= bounds.y1)
 		return;
 	for (index = 0; text[index] && index < 47; index++)

@@ -111,7 +111,7 @@ symbols in this file:
 #include "text/draw_string.h"
 #include "coop_spectate.h" /* port: port/linux/game/coop_spectate.c */
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
-/* the match clock is hardcore_timer_render. this file no longer draws one */
+#include "hardcore_timer.h" /* port: the match clock, on each pane */
 #include "hardcore_views.h" /* port: a teammate pane draws that player's HUD */
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
 #include "text/text_group.h"
@@ -1238,6 +1238,10 @@ void hud_draw_screen(
 		{
 			hud_play_unit_sounds(player, FALSE);
 		}
+
+		/* port: the blue match clock, bottom right of this pane. the
+		countdown is not played from here. */
+		hardcore_timer_render();
 
 		/* port: messages and chat stay on the local pane. a dead
 		teammate pane still draws that player's respawn line */
